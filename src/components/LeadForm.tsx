@@ -20,12 +20,14 @@ const LeadForm = ({ source = "sales" }: { source?: "sales" | "site_agent" }) => 
     category: "" as LeadCategory | "",
     valueInRupees: "",
     notes: "",
+    nextFollowUpDate: "",
+    nextFollowUpTime: "",
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.customerName || !form.customerPhone || !form.category || !form.valueInRupees) {
-      toast.error("Please fill all required fields");
+    if (!form.customerName || !form.customerPhone || !form.category || !form.valueInRupees || !form.nextFollowUpDate || !form.nextFollowUpTime) {
+      toast.error("Please fill all required fields including follow-up date & time");
       return;
     }
     addLead({
@@ -37,9 +39,12 @@ const LeadForm = ({ source = "sales" }: { source?: "sales" | "site_agent" }) => 
       assignedTo: user?.id || "",
       notes: form.notes,
       source,
+      nextFollowUpDate: form.nextFollowUpDate,
+      nextFollowUpTime: form.nextFollowUpTime,
+      createdBy: user?.id || "",
     });
     toast.success("Lead added successfully!");
-    setForm({ customerName: "", customerPhone: "", category: "", valueInRupees: "", notes: "" });
+    setForm({ customerName: "", customerPhone: "", category: "", valueInRupees: "", notes: "", nextFollowUpDate: "", nextFollowUpTime: "" });
     setOpen(false);
   };
 
@@ -50,7 +55,7 @@ const LeadForm = ({ source = "sales" }: { source?: "sales" | "site_agent" }) => 
           <Plus className="w-4 h-4" /> Add Lead
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>New Lead</DialogTitle>
         </DialogHeader>
@@ -80,6 +85,16 @@ const LeadForm = ({ source = "sales" }: { source?: "sales" | "site_agent" }) => 
             <div className="space-y-1.5">
               <Label>Value (₹) *</Label>
               <Input type="number" value={form.valueInRupees} onChange={e => setForm(f => ({ ...f, valueInRupees: e.target.value }))} placeholder="85000" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Next Follow-up Date *</Label>
+              <Input type="date" value={form.nextFollowUpDate} onChange={e => setForm(f => ({ ...f, nextFollowUpDate: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Next Follow-up Time *</Label>
+              <Input type="time" value={form.nextFollowUpTime} onChange={e => setForm(f => ({ ...f, nextFollowUpTime: e.target.value }))} />
             </div>
           </div>
           <div className="space-y-1.5">
