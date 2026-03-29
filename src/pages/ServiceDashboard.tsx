@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
-import { useData } from "@/contexts/DataContext";
+import { useData, LEAD_CATEGORIES, LeadCategory } from "@/contexts/DataContext";
 import StatCard from "@/components/StatCard";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,36 +10,50 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Wrench, IndianRupee, Clock, CheckCircle, Plus, AlertCircle, MapPin, Phone } from "lucide-react";
+import { Wrench, IndianRupee, Clock, Plus, AlertCircle, MapPin, Phone, Truck, UserPlus } from "lucide-react";
 import { toast } from "sonner";
-import { LEAD_CATEGORIES, LeadCategory } from "@/contexts/DataContext";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const STATUS_BADGE: Record<string, string> = {
   pending: "bg-warning/10 text-warning",
   assigned: "bg-primary/10 text-primary",
   in_progress: "bg-accent/10 text-accent",
   completed: "bg-success/10 text-success",
+  in_transit: "bg-primary/10 text-primary",
+  delivered: "bg-success/10 text-success",
 };
 
 const ServiceDashboard = () => {
-  const { serviceJobs, addServiceJob, updateServiceJob } = useData();
+  const { serviceJobs, addServiceJob, updateServiceJob, getStaffByRole } = useData();
   const [dateFilter, setDateFilter] = useState("");
+  const [tab, setTab] = useState("all");
   const [addOpen, setAddOpen] = useState(false);
+  const [assignOpen, setAssignOpen] = useState<string | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState("");
+  const [assignDate, setAssignDate] = useState("");
   const [form, setForm] = useState({
     customerName: "", customerPhone: "", address: "", category: "" as LeadCategory | "",
     description: "", dateToAttend: "", value: "", isFOC: false,
     claimPartNo: "", claimReason: "", claimDueDate: "",
   });
 
+  const fieldAgents = getStaffByRole("field_agent");
+
   const filteredJobs = useMemo(() => {
-    if (!dateFilter) return serviceJobs;
-    return serviceJobs.filter(j => j.dateReceived >= dateFilter);
-  }, [serviceJobs, dateFilter]);
+    let jobs = serviceJobs;
+    if (dateFilter) jobs = jobs.filter(j => j.dateReceived >= dateFilter);
+    if (tab === "deliveries") jobs = jobs.filter(j => j.type === "delivery");
+    else if (tab === "services") jobs = jobs.filter(j => j.type === "service");
+    else if (tab === "pending") jobs = jobs.filter(j => j.status === "pending");
+    else if (tab === "completed") jobs = jobs.filter(j => j.status === "completed");
+    return jobs;
+  }, [serviceJobs, dateFilter, tab]);
 
   const todayStr = new Date().toISOString().split("T")[0];
   const todayJobs = serviceJobs.filter(j => j.dateToAttend === todayStr);
-  const totalRevenue = filteredJobs.filter(j => !j.isFOC).reduce((s, j) => s + j.value, 0);
-  const pendingClaims = serviceJobs.filter(j => j.claimPartNo);
+  const totalRevenue = serviceJobs.filter(j => !j.isFOC && j.status === "completed").reduce((s, j) => s + j.value, 0);
+  const pendingJobs = serviceJobs.filter(j => j.status === "pending");
+  const deliveryJobs = serviceJobs.filter(j => j.type === "delivery");
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,10 +69,24 @@ const ServiceDashboard = () => {
       claimPartNo: form.claimPartNo || undefined,
       claimReason: form.claimReason || undefined,
       claimDueDate: form.claimDueDate || undefined,
+      type: "service",
     });
     toast.success("Service job logged!");
     setForm({ customerName: "", customerPhone: "", address: "", category: "", description: "", dateToAttend: "", value: "", isFOC: false, claimPartNo: "", claimReason: "", claimDueDate: "" });
     setAddOpen(false);
+  };
+
+  const handleAssignAgent = (jobId: string) => {
+    if (!selectedAgent) { toast.error("Select a field agent"); return; }
+    updateServiceJob(jobId, {
+      assignedAgent: selectedAgent,
+      status: "assigned",
+      dateToAttend: assignDate || undefined,
+    });
+    toast.success("Job assigned to field agent!");
+    setAssignOpen(null);
+    setSelectedAgent("");
+    setAssignDate("");
   };
 
   return (
@@ -66,7 +94,7 @@ const ServiceDashboard = () => {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">Service Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Manage service jobs, claims & revenue</p>
+          <p className="text-sm text-muted-foreground">Manage service jobs, deliveries & claims</p>
         </div>
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild>
@@ -98,7 +126,6 @@ const ServiceDashboard = () => {
                 <div className="space-y-1.5"><Label>Value (₹)</Label><Input type="number" value={form.value} onChange={e => setForm(f => ({ ...f, value: e.target.value }))} /></div>
               )}
               <div className="space-y-1.5"><Label>Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} /></div>
-
               <div className="border-t pt-3 space-y-3">
                 <p className="text-sm font-semibold text-muted-foreground">Claim Details (if applicable)</p>
                 <div className="grid grid-cols-2 gap-3">
@@ -107,7 +134,6 @@ const ServiceDashboard = () => {
                 </div>
                 <div className="space-y-1.5"><Label>Reason for Part</Label><Input value={form.claimReason} onChange={e => setForm(f => ({ ...f, claimReason: e.target.value }))} /></div>
               </div>
-
               <Button type="submit" className="w-full gradient-primary">Save Service Job</Button>
             </form>
           </DialogContent>
@@ -116,54 +142,93 @@ const ServiceDashboard = () => {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard title="Today's Jobs" value={todayJobs.length} icon={<Clock className="w-5 h-5" />} />
-        <StatCard title="Total Jobs" value={filteredJobs.length} icon={<Wrench className="w-5 h-5" />} />
+        <StatCard title="Pending" value={pendingJobs.length} icon={<AlertCircle className="w-5 h-5" />} />
         <StatCard title="Revenue" value={`₹${totalRevenue.toLocaleString("en-IN")}`} icon={<IndianRupee className="w-5 h-5" />} />
-        <StatCard title="Pending Claims" value={pendingClaims.length} icon={<AlertCircle className="w-5 h-5" />} />
+        <StatCard title="Deliveries" value={deliveryJobs.length} icon={<Truck className="w-5 h-5" />} />
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex gap-3 flex-wrap items-center">
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList>
+            <TabsTrigger value="all">All</TabsTrigger>
+            <TabsTrigger value="pending">Pending</TabsTrigger>
+            <TabsTrigger value="services">Services</TabsTrigger>
+            <TabsTrigger value="deliveries">Deliveries</TabsTrigger>
+            <TabsTrigger value="completed">Completed</TabsTrigger>
+          </TabsList>
+        </Tabs>
         <Input type="date" className="w-40" value={dateFilter} onChange={e => setDateFilter(e.target.value)} />
       </div>
 
       <div className="space-y-3">
         {filteredJobs.map(job => (
-          <Card key={job.id} className="shadow-card">
+          <Card key={job.id} className={`shadow-card ${job.status === "pending" ? "border-warning/30" : job.status === "completed" ? "border-success/30" : ""}`}>
             <CardContent className="p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="font-semibold">{job.customerName}</h3>
-                    <Badge className={STATUS_BADGE[job.status]}>{job.status.replace("_", " ")}</Badge>
+                    <Badge className={STATUS_BADGE[job.status] || ""}>{job.status.replace("_", " ")}</Badge>
+                    {job.type === "delivery" && <Badge variant="outline" className="text-xs gap-1"><Truck className="w-3 h-3" />Delivery</Badge>}
                     {job.isFOC && <Badge variant="outline" className="text-xs">FOC</Badge>}
                     {job.claimPartNo && <Badge variant="outline" className="text-xs border-destructive/30 text-destructive">Claim</Badge>}
                   </div>
                   <p className="text-sm mt-1">{job.description}</p>
                   <div className="flex items-center gap-4 mt-1.5 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{job.customerPhone}</span>
-                    <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{job.address}</span>
+                    {job.address && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{job.address}</span>}
                   </div>
                   {job.claimPartNo && (
                     <p className="text-xs text-destructive mt-1">Part: {job.claimPartNo} | {job.claimReason} | Due: {job.claimDueDate}</p>
                   )}
                 </div>
-                <div className="text-right shrink-0">
+                <div className="text-right shrink-0 space-y-1">
                   {!job.isFOC && <p className="font-bold">₹{job.value.toLocaleString("en-IN")}</p>}
                   <p className="text-xs text-muted-foreground">Attend: {job.dateToAttend}</p>
-                  <Select value={job.status} onValueChange={v => updateServiceJob(job.id, { status: v as any })}>
-                    <SelectTrigger className="w-28 h-7 text-xs mt-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="assigned">Assigned</SelectItem>
-                      <SelectItem value="in_progress">In Progress</SelectItem>
-                      <SelectItem value="completed">Completed</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  {job.status === "pending" && (
+                    <Button size="sm" className="gap-1 text-xs h-7" onClick={() => setAssignOpen(job.id)}>
+                      <UserPlus className="w-3 h-3" />Assign Agent
+                    </Button>
+                  )}
+                  {job.assignedAgent && (
+                    <p className="text-xs text-muted-foreground">
+                      Agent: {getStaffByRole("field_agent").find(a => a.id === job.assignedAgent)?.name || job.assignedAgent}
+                    </p>
+                  )}
                 </div>
               </div>
             </CardContent>
           </Card>
         ))}
+        {filteredJobs.length === 0 && (
+          <Card className="shadow-card"><CardContent className="p-8 text-center text-muted-foreground">No jobs found.</CardContent></Card>
+        )}
       </div>
+
+      {/* Assign Agent Dialog */}
+      <Dialog open={!!assignOpen} onOpenChange={open => { if (!open) setAssignOpen(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader><DialogTitle>Assign Field Agent</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>Field Agent *</Label>
+              <Select value={selectedAgent} onValueChange={setSelectedAgent}>
+                <SelectTrigger><SelectValue placeholder="Select agent" /></SelectTrigger>
+                <SelectContent>
+                  {fieldAgents.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Date/Time to Attend</Label>
+              <Input type="date" value={assignDate} onChange={e => setAssignDate(e.target.value)} />
+            </div>
+            <Button className="w-full gradient-primary" onClick={() => assignOpen && handleAssignAgent(assignOpen)}>
+              Assign Job
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -1,13 +1,15 @@
 import { ReactNode, useState } from "react";
 import { useAuth, UserRole } from "@/contexts/AuthContext";
+import { useData } from "@/contexts/DataContext";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   Building2, LayoutDashboard, Users, Wrench, Navigation, MapPin,
-  LogOut, Menu, X, Bell, ChevronRight, CalendarDays, BarChart3,
+  LogOut, Menu, X, ChevronRight, CalendarDays, BarChart3,
   ClipboardList, FileText, MapPinned
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import NotificationPanel from "@/components/NotificationPanel";
 
 interface NavItem {
   to: string;
@@ -15,36 +17,6 @@ interface NavItem {
   icon: ReactNode;
   badge?: number;
 }
-
-const NAV_ITEMS: Record<UserRole, NavItem[]> = {
-  admin: [
-    { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" /> },
-    { to: "/sales", label: "Sales", icon: <Users className="w-5 h-5" /> },
-    { to: "/service", label: "Service", icon: <Wrench className="w-5 h-5" /> },
-    { to: "/field-agents", label: "Field Agents", icon: <Navigation className="w-5 h-5" /> },
-    { to: "/site-agents", label: "Site Agents", icon: <MapPin className="w-5 h-5" /> },
-  ],
-  sales: [
-    { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" /> },
-    { to: "/leads", label: "My Leads", icon: <ClipboardList className="w-5 h-5" /> },
-    { to: "/pipeline", label: "Pipeline", icon: <BarChart3 className="w-5 h-5" /> },
-  ],
-  service_head: [
-    { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" /> },
-    { to: "/service-jobs", label: "Service Jobs", icon: <Wrench className="w-5 h-5" /> },
-    { to: "/claims", label: "Claims", icon: <FileText className="w-5 h-5" /> },
-    { to: "/calendar", label: "Calendar", icon: <CalendarDays className="w-5 h-5" /> },
-  ],
-  field_agent: [
-    { to: "/", label: "My Jobs", icon: <Wrench className="w-5 h-5" /> },
-    { to: "/map", label: "Map", icon: <MapPinned className="w-5 h-5" /> },
-  ],
-  site_agent: [
-    { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" /> },
-    { to: "/site-visits", label: "Site Visits", icon: <MapPin className="w-5 h-5" /> },
-    { to: "/my-leads", label: "My Leads", icon: <ClipboardList className="w-5 h-5" /> },
-  ],
-};
 
 const ROLE_LABELS: Record<UserRole, string> = {
   admin: "Admin",
@@ -56,21 +28,53 @@ const ROLE_LABELS: Record<UserRole, string> = {
 
 const AppLayout = ({ children }: { children: ReactNode }) => {
   const { user, logout } = useAuth();
+  const { leads, serviceJobs, notifications } = useData();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const location = useLocation();
 
   if (!user) return null;
+
+  const overdueCount = leads.filter(l => l.status === "overdue").length;
+  const pendingJobCount = serviceJobs.filter(j => j.status === "pending").length;
+  const myUnread = notifications.filter(n => (n.userId === user.id || user.role === "admin") && !n.read).length;
+
+  const NAV_ITEMS: Record<UserRole, NavItem[]> = {
+    admin: [
+      { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" /> },
+      { to: "/sales", label: "Sales", icon: <Users className="w-5 h-5" />, badge: overdueCount || undefined },
+      { to: "/service", label: "Service", icon: <Wrench className="w-5 h-5" />, badge: pendingJobCount || undefined },
+      { to: "/field-agents", label: "Field Agents", icon: <Navigation className="w-5 h-5" /> },
+      { to: "/site-agents", label: "Site Agents", icon: <MapPin className="w-5 h-5" /> },
+    ],
+    sales: [
+      { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" />, badge: overdueCount || undefined },
+      { to: "/leads", label: "My Leads", icon: <ClipboardList className="w-5 h-5" /> },
+      { to: "/pipeline", label: "Pipeline", icon: <BarChart3 className="w-5 h-5" /> },
+    ],
+    service_head: [
+      { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" />, badge: pendingJobCount || undefined },
+      { to: "/service-jobs", label: "Service Jobs", icon: <Wrench className="w-5 h-5" /> },
+      { to: "/claims", label: "Claims", icon: <FileText className="w-5 h-5" /> },
+      { to: "/calendar", label: "Calendar", icon: <CalendarDays className="w-5 h-5" /> },
+    ],
+    field_agent: [
+      { to: "/", label: "My Jobs", icon: <Wrench className="w-5 h-5" /> },
+      { to: "/map", label: "Map", icon: <MapPinned className="w-5 h-5" /> },
+    ],
+    site_agent: [
+      { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" /> },
+      { to: "/site-visits", label: "Site Visits", icon: <MapPin className="w-5 h-5" /> },
+      { to: "/my-leads", label: "My Leads", icon: <ClipboardList className="w-5 h-5" /> },
+    ],
+  };
 
   const navItems = NAV_ITEMS[user.role];
 
   return (
     <div className="min-h-screen flex bg-background">
-      {/* Mobile overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 bg-foreground/20 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* Sidebar */}
       <aside className={`fixed lg:sticky top-0 left-0 h-screen w-64 gradient-sidebar z-50 flex flex-col transition-transform duration-200 ${sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}>
         <div className="p-4 flex items-center gap-2 border-b border-sidebar-border">
           <div className="gradient-primary rounded-lg p-1.5">
@@ -99,7 +103,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
             >
               {item.icon}
               {item.label}
-              {item.badge && (
+              {item.badge && item.badge > 0 && (
                 <Badge className="ml-auto bg-destructive text-destructive-foreground text-xs px-1.5 py-0">{item.badge}</Badge>
               )}
             </NavLink>
@@ -122,17 +126,13 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
         </div>
       </aside>
 
-      {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
         <header className="sticky top-0 z-30 bg-card/80 backdrop-blur-sm border-b border-border px-4 py-3 flex items-center gap-3">
           <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-foreground">
             <Menu className="w-5 h-5" />
           </button>
           <div className="flex-1" />
-          <Button variant="ghost" size="icon" className="relative">
-            <Bell className="w-5 h-5" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-destructive rounded-full" />
-          </Button>
+          <NotificationPanel />
         </header>
         <main className="flex-1 p-4 lg:p-6 overflow-y-auto">
           {children}
