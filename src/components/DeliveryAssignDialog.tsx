@@ -21,17 +21,18 @@ const DeliveryAssignDialog = ({ lead, open, onOpenChange }: Props) => {
   const [deliveryDate, setDeliveryDate] = useState("");
   const [deliveryNotes, setDeliveryNotes] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!deliveryDate) {
-      toast.error("Delivery date is required");
-      return;
+    if (!deliveryDate) { toast.error("Delivery date is required"); return; }
+    try {
+      await assignDelivery(lead.id, deliveryDate, deliveryNotes, user?.id || "");
+      toast.success("Delivery assigned to Service Head!");
+      onOpenChange(false);
+      setDeliveryDate("");
+      setDeliveryNotes("");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to assign delivery");
     }
-    assignDelivery(lead.id, deliveryDate, deliveryNotes, "3", user?.id || "");
-    toast.success("Delivery assigned to Service Head!");
-    onOpenChange(false);
-    setDeliveryDate("");
-    setDeliveryNotes("");
   };
 
   return (
@@ -39,27 +40,18 @@ const DeliveryAssignDialog = ({ lead, open, onOpenChange }: Props) => {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Truck className="w-5 h-5 text-primary" />
-            Assign for Delivery
+            <Truck className="w-5 h-5 text-primary" />Assign for Delivery
           </DialogTitle>
         </DialogHeader>
         <div className="p-3 bg-muted rounded-lg text-sm mb-2">
-          <p><span className="font-medium">Customer:</span> {lead.customerName}</p>
+          <p><span className="font-medium">Customer:</span> {lead.customer_name}</p>
           <p><span className="font-medium">Category:</span> {lead.category}</p>
-          <p><span className="font-medium">Value:</span> ₹{lead.valueInRupees.toLocaleString("en-IN")}</p>
+          <p><span className="font-medium">Value:</span> ₹{Number(lead.value_in_rupees).toLocaleString("en-IN")}</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label>Delivery Date *</Label>
-            <Input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Delivery Address & Notes</Label>
-            <Textarea value={deliveryNotes} onChange={e => setDeliveryNotes(e.target.value)} placeholder="Delivery address, special instructions..." rows={3} />
-          </div>
-          <Button type="submit" className="w-full gradient-primary gap-2">
-            <Truck className="w-4 h-4" /> Send to Service Head
-          </Button>
+          <div className="space-y-1.5"><Label>Delivery Date *</Label><Input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} /></div>
+          <div className="space-y-1.5"><Label>Delivery Address & Notes</Label><Textarea value={deliveryNotes} onChange={e => setDeliveryNotes(e.target.value)} placeholder="Delivery address, special instructions..." rows={3} /></div>
+          <Button type="submit" className="w-full gradient-primary gap-2"><Truck className="w-4 h-4" /> Send to Service Head</Button>
         </form>
       </DialogContent>
     </Dialog>

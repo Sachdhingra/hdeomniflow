@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useData, LEAD_CATEGORIES } from "@/contexts/DataContext";
 import { useAuth } from "@/contexts/AuthContext";
 import StatCard from "@/components/StatCard";
@@ -10,63 +10,51 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, Wrench, IndianRupee, TrendingUp, MapPin, BarChart3, UserPlus, Trophy, Truck, Shield } from "lucide-react";
+import { Users, Wrench, IndianRupee, TrendingUp, MapPin, BarChart3, UserPlus, Trophy, Truck } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 const AdminDashboard = () => {
-  const { leads, serviceJobs, siteVisits, staff, addStaff, removeStaff } = useData();
-  const { allUsers } = useAuth();
+  const { leads, serviceJobs, siteVisits, profiles, getProfilesByRole } = useData();
+  const { allProfiles, refreshProfiles } = useAuth();
   const [tab, setTab] = useState("overview");
   const [dateFilter, setDateFilter] = useState("");
-  const [employeeFilter, setEmployeeFilter] = useState("all");
   const [staffOpen, setStaffOpen] = useState(false);
-  const [newStaff, setNewStaff] = useState({ name: "", email: "", role: "" as any, password: "" });
+  const [newStaff, setNewStaff] = useState({ name: "", email: "", role: "", password: "" });
 
-  const salesLeads = leads.filter(l => l.source === "sales");
-  const siteLeads = leads.filter(l => l.source === "site_agent");
-  const totalPipeline = salesLeads.reduce((s, l) => s + l.valueInRupees, 0);
-  const wonValue = salesLeads.filter(l => l.status === "won").reduce((s, l) => s + l.valueInRupees, 0);
-  const serviceRevenue = serviceJobs.filter(j => !j.isFOC && j.status === "completed").reduce((s, j) => s + j.value, 0);
+  const totalPipeline = leads.reduce((s, l) => s + Number(l.value_in_rupees), 0);
+  const wonValue = leads.filter(l => l.status === "won").reduce((s, l) => s + Number(l.value_in_rupees), 0);
+  const serviceRevenue = serviceJobs.filter(j => !j.is_foc && j.status === "completed").reduce((s, j) => s + Number(j.value), 0);
   const todayStr = new Date().toISOString().split("T")[0];
   const overdueLeads = leads.filter(l => l.status === "overdue");
   const deliveryJobs = serviceJobs.filter(j => j.type === "delivery");
 
-  // Per-salesperson stats
-  const salesStaff = staff.filter(s => s.role === "sales" && s.active);
-  const salesPerformance = salesStaff.map(s => {
-    const sLeads = leads.filter(l => l.assignedTo === s.id);
+  const salesProfiles = getProfilesByRole("sales");
+  const salesPerformance = salesProfiles.map(s => {
+    const sLeads = leads.filter(l => l.assigned_to === s.id);
     const won = sLeads.filter(l => l.status === "won");
     return {
       ...s,
       totalLeads: sLeads.length,
       wonLeads: won.length,
-      wonValue: won.reduce((sum, l) => sum + l.valueInRupees, 0),
+      wonValue: won.reduce((sum, l) => sum + Number(l.value_in_rupees), 0),
       conversion: sLeads.length ? Math.round((won.length / sLeads.length) * 100) : 0,
     };
   }).sort((a, b) => b.wonValue - a.wonValue);
 
-  // Field agent stats
-  const fieldStaff = staff.filter(s => s.role === "field_agent" && s.active);
-  const fieldPerformance = fieldStaff.map(s => {
-    const jobs = serviceJobs.filter(j => j.assignedAgent === s.id);
+  const fieldProfiles = getProfilesByRole("field_agent");
+  const fieldPerformance = fieldProfiles.map(s => {
+    const jobs = serviceJobs.filter(j => j.assigned_agent === s.id);
     const completed = jobs.filter(j => j.status === "completed");
-    return {
-      ...s,
-      totalJobs: jobs.length,
-      completedJobs: completed.length,
-      onTime: completed.length, // simplified
-    };
+    return { ...s, totalJobs: jobs.length, completedJobs: completed.length };
   });
 
-  // Site agent stats
-  const siteStaff = staff.filter(s => s.role === "site_agent" && s.active);
-  const sitePerformance = siteStaff.map(s => {
-    const visits = siteVisits.filter(v => v.agentId === s.id);
-    const agentLeads = leads.filter(l => l.source === "site_agent" && l.assignedTo === s.id);
+  const siteProfiles = getProfilesByRole("site_agent");
+  const sitePerformance = siteProfiles.map(s => {
+    const visits = siteVisits.filter(v => v.agent_id === s.id);
+    const agentLeads = leads.filter(l => l.source === "site_agent" && l.assigned_to === s.id);
     return {
-      ...s,
-      totalVisits: visits.length,
-      totalLeads: agentLeads.length,
+      ...s, totalVisits: visits.length, totalLeads: agentLeads.length,
       todayVisits: visits.filter(v => v.date === todayStr).length,
     };
   });
@@ -74,18 +62,36 @@ const AdminDashboard = () => {
   const categoryStats = LEAD_CATEGORIES.map(c => ({
     ...c,
     count: leads.filter(l => l.category === c.value).length,
-    totalValue: leads.filter(l => l.category === c.value).reduce((s, l) => s + l.valueInRupees, 0),
+    totalValue: leads.filter(l => l.category === c.value).reduce((s, l) => s + Number(l.value_in_rupees), 0),
   })).filter(c => c.count > 0);
 
-  const handleAddStaff = (e: React.FormEvent) => {
+  const handleAddStaff = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newStaff.name || !newStaff.email || !newStaff.role) {
+    if (!newStaff.name || !newStaff.email || !newStaff.role || !newStaff.password) {
       toast.error("Fill all fields"); return;
     }
-    addStaff({ name: newStaff.name, email: newStaff.email, role: newStaff.role, active: true });
-    toast.success(`${newStaff.name} added as ${newStaff.role}!`);
-    setNewStaff({ name: "", email: "", role: "", password: "" });
-    setStaffOpen(false);
+    try {
+      // Create user via Supabase auth admin (this will trigger profile creation via trigger)
+      const { data, error } = await supabase.auth.signUp({
+        email: newStaff.email,
+        password: newStaff.password,
+        options: { data: { name: newStaff.name } },
+      });
+      if (error) throw error;
+      if (data.user) {
+        // Assign role
+        await supabase.from("user_roles").insert({
+          user_id: data.user.id,
+          role: newStaff.role as any,
+        });
+        toast.success(`${newStaff.name} added as ${newStaff.role}!`);
+        setNewStaff({ name: "", email: "", role: "", password: "" });
+        setStaffOpen(false);
+        await refreshProfiles();
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to add staff");
+    }
   };
 
   return (
@@ -132,7 +138,7 @@ const AdminDashboard = () => {
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard title="Sales Leads" value={salesLeads.length} icon={<Users className="w-5 h-5" />} />
+        <StatCard title="Sales Leads" value={leads.length} icon={<Users className="w-5 h-5" />} />
         <StatCard title="Pipeline Value" value={`₹${(totalPipeline / 1000).toFixed(0)}K`} icon={<IndianRupee className="w-5 h-5" />} />
         <StatCard title="Won Value" value={`₹${(wonValue / 1000).toFixed(0)}K`} icon={<TrendingUp className="w-5 h-5" />} trendUp trend="Closed" />
         <StatCard title="Service Revenue" value={`₹${serviceRevenue.toLocaleString("en-IN")}`} icon={<Wrench className="w-5 h-5" />} />
@@ -158,7 +164,7 @@ const AdminDashboard = () => {
               <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Users className="w-4 h-4 text-primary" />Sales Pipeline</CardTitle></CardHeader>
               <CardContent className="space-y-2">
                 {(["new", "contacted", "follow_up", "negotiation", "overdue", "won", "lost"] as const).map(status => {
-                  const count = salesLeads.filter(l => l.status === status).length;
+                  const count = leads.filter(l => l.status === status).length;
                   return (
                     <div key={status} className={`flex items-center justify-between text-sm ${status === "overdue" ? "text-destructive font-medium" : ""}`}>
                       <span className="capitalize">{status.replace("_", " ")}</span>
@@ -185,8 +191,8 @@ const AdminDashboard = () => {
               <CardContent className="space-y-2">
                 <div className="flex justify-between text-sm"><span>Total Visits</span><Badge variant="outline">{siteVisits.length}</Badge></div>
                 <div className="flex justify-between text-sm"><span>Today</span><Badge variant="outline">{siteVisits.filter(v => v.date === todayStr).length}</Badge></div>
-                <div className="flex justify-between text-sm"><span>Site Leads</span><Badge variant="outline">{siteLeads.length}</Badge></div>
-                <div className="flex justify-between text-sm"><span>Lead Value</span><span className="text-sm font-semibold">₹{siteLeads.reduce((s, l) => s + l.valueInRupees, 0).toLocaleString("en-IN")}</span></div>
+                <div className="flex justify-between text-sm"><span>Site Leads</span><Badge variant="outline">{leads.filter(l => l.source === "site_agent").length}</Badge></div>
+                <div className="flex justify-between text-sm"><span>Lead Value</span><span className="text-sm font-semibold">₹{leads.filter(l => l.source === "site_agent").reduce((s, l) => s + Number(l.value_in_rupees), 0).toLocaleString("en-IN")}</span></div>
               </CardContent>
             </Card>
           </div>
@@ -209,9 +215,7 @@ const AdminDashboard = () => {
 
         <TabsContent value="sales" className="space-y-4 mt-4">
           <Card className="shadow-card">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2"><Trophy className="w-4 h-4 text-warning" />Sales Leaderboard</CardTitle>
-            </CardHeader>
+            <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Trophy className="w-4 h-4 text-warning" />Sales Leaderboard</CardTitle></CardHeader>
             <CardContent>
               <div className="space-y-3">
                 {salesPerformance.map((sp, idx) => (
@@ -231,6 +235,7 @@ const AdminDashboard = () => {
                     </div>
                   </div>
                 ))}
+                {salesPerformance.length === 0 && <p className="text-muted-foreground text-sm text-center py-4">No sales staff yet.</p>}
               </div>
             </CardContent>
           </Card>
@@ -261,6 +266,7 @@ const AdminDashboard = () => {
                 </CardContent>
               </Card>
             ))}
+            {fieldPerformance.length === 0 && <p className="text-muted-foreground text-sm">No field agents yet.</p>}
           </div>
         </TabsContent>
 
@@ -281,13 +287,14 @@ const AdminDashboard = () => {
                 </CardContent>
               </Card>
             ))}
+            {sitePerformance.length === 0 && <p className="text-muted-foreground text-sm">No site agents yet.</p>}
           </div>
         </TabsContent>
 
         <TabsContent value="staff" className="space-y-4 mt-4">
           <div className="space-y-3">
-            {staff.map(s => (
-              <Card key={s.id} className={`shadow-card ${!s.active ? "opacity-50" : ""}`}>
+            {allProfiles.map(s => (
+              <Card key={s.id} className="shadow-card">
                 <CardContent className="p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center text-primary-foreground font-bold">
@@ -298,19 +305,11 @@ const AdminDashboard = () => {
                       <p className="text-xs text-muted-foreground">{s.email}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="capitalize">{s.role.replace("_", " ")}</Badge>
-                    {s.active ? (
-                      <Button size="sm" variant="destructive" className="text-xs" onClick={() => { removeStaff(s.id); toast.success("Staff deactivated"); }}>
-                        Remove
-                      </Button>
-                    ) : (
-                      <Badge className="bg-muted text-muted-foreground">Inactive</Badge>
-                    )}
-                  </div>
+                  <Badge variant="outline" className="capitalize">{s.role.replace("_", " ")}</Badge>
                 </CardContent>
               </Card>
             ))}
+            {allProfiles.length === 0 && <p className="text-muted-foreground text-sm text-center py-4">No staff members yet.</p>}
           </div>
         </TabsContent>
       </Tabs>

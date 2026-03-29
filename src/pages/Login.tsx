@@ -4,26 +4,36 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, Users, Wrench, MapPin, Navigation, Shield } from "lucide-react";
-
-const ROLES: { value: UserRole; label: string; icon: React.ReactNode; desc: string }[] = [
-  { value: "admin", label: "Admin", icon: <Shield className="w-5 h-5" />, desc: "Full access to all modules" },
-  { value: "sales", label: "Sales Team", icon: <Users className="w-5 h-5" />, desc: "Manage leads & pipeline" },
-  { value: "service_head", label: "Service Head", icon: <Wrench className="w-5 h-5" />, desc: "Service jobs & claims" },
-  { value: "field_agent", label: "Field Agent", icon: <Navigation className="w-5 h-5" />, desc: "On-site service visits" },
-  { value: "site_agent", label: "Site Agent", icon: <MapPin className="w-5 h-5" />, desc: "New site prospecting" },
-];
+import { Building2, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 const Login = () => {
-  const { login } = useAuth();
-  const [selectedRole, setSelectedRole] = useState<UserRole>("sales");
+  const { login, loading: authLoading } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    login(email, password, selectedRole);
+    if (!email || !password) {
+      toast.error("Please enter email and password");
+      return;
+    }
+    setSubmitting(true);
+    const error = await login(email, password);
+    if (error) {
+      toast.error(error);
+    }
+    setSubmitting(false);
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -38,29 +48,9 @@ const Login = () => {
 
         <Card className="shadow-card">
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Select Role & Sign In</CardTitle>
+            <CardTitle className="text-lg">Sign In</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-2 mb-5">
-              {ROLES.map(r => (
-                <button
-                  key={r.value}
-                  onClick={() => setSelectedRole(r.value)}
-                  className={`flex flex-col items-start gap-1 p-3 rounded-lg border text-left transition-all text-sm ${
-                    selectedRole === r.value
-                      ? "border-primary bg-primary/5 ring-1 ring-primary"
-                      : "border-border hover:border-primary/30 hover:bg-muted/50"
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className={selectedRole === r.value ? "text-primary" : "text-muted-foreground"}>{r.icon}</span>
-                    <span className="font-medium">{r.label}</span>
-                  </div>
-                  <span className="text-xs text-muted-foreground">{r.desc}</span>
-                </button>
-              ))}
-            </div>
-
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
@@ -70,14 +60,11 @@ const Login = () => {
                 <Label htmlFor="password">Password</Label>
                 <Input id="password" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} />
               </div>
-              <Button type="submit" className="w-full gradient-primary">
-                Sign In as {ROLES.find(r => r.value === selectedRole)?.label}
+              <Button type="submit" className="w-full gradient-primary" disabled={submitting}>
+                {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                Sign In
               </Button>
             </form>
-
-            <p className="text-xs text-center text-muted-foreground mt-4">
-              Demo mode — click Sign In with any role to explore
-            </p>
           </CardContent>
         </Card>
       </div>

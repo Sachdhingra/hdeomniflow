@@ -23,11 +23,10 @@ const SalesPipeline = () => {
         <h1 className="text-2xl font-bold">Sales Pipeline</h1>
         <p className="text-sm text-muted-foreground">Track lead progression through stages</p>
       </div>
-
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {PIPELINE_STAGES.map(stage => {
           const stageLeads = salesLeads.filter(l => l.status === stage.status);
-          const total = stageLeads.reduce((s, l) => s + l.valueInRupees, 0);
+          const total = stageLeads.reduce((s, l) => s + Number(l.value_in_rupees), 0);
           return (
             <Card key={stage.status} className={`border-l-4 ${stage.color} ${stage.status === "overdue" ? "bg-destructive/5" : ""}`}>
               <CardHeader className="pb-2">
@@ -42,11 +41,11 @@ const SalesPipeline = () => {
               <CardContent className="space-y-2">
                 {stageLeads.map(lead => (
                   <div key={lead.id} className={`p-2 rounded-md ${stage.status === "overdue" ? "bg-destructive/10" : "bg-muted/50"}`}>
-                    <p className="text-sm font-medium">{lead.customerName}</p>
-                    <p className="text-xs text-muted-foreground">₹{lead.valueInRupees.toLocaleString("en-IN")}</p>
-                    {lead.nextFollowUpDate && (
+                    <p className="text-sm font-medium">{lead.customer_name}</p>
+                    <p className="text-xs text-muted-foreground">₹{Number(lead.value_in_rupees).toLocaleString("en-IN")}</p>
+                    {lead.next_follow_up_date && (
                       <p className={`text-xs mt-0.5 ${stage.status === "overdue" ? "text-destructive" : "text-muted-foreground"}`}>
-                        📅 {lead.nextFollowUpDate}
+                        📅 {lead.next_follow_up_date}
                       </p>
                     )}
                   </div>

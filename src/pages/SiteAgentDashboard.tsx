@@ -24,13 +24,11 @@ const SiteAgentDashboard = () => {
     location: "", society: "", notes: "",
     customerName: "", customerPhone: "",
     category: "" as LeadCategory | "",
-    budget: "",
-    followUpDate: "",
-    visitStatus: "new",
+    budget: "", followUpDate: "", visitStatus: "new",
   });
 
-  const myVisits = siteVisits.filter(v => v.agentId === user?.id);
-  const myLeads = leads.filter(l => l.source === "site_agent" && l.assignedTo === user?.id);
+  const myVisits = siteVisits.filter(v => v.agent_id === user?.id);
+  const myLeads = leads.filter(l => l.source === "site_agent" && l.assigned_to === user?.id);
   const todayStr = new Date().toISOString().split("T")[0];
   const todayVisits = myVisits.filter(v => v.date === todayStr);
 
@@ -43,31 +41,35 @@ const SiteAgentDashboard = () => {
   const handleEndTrip = () => {
     setTripStarted(false);
     const duration = tripStartTime ? Math.round((Date.now() - tripStartTime.getTime()) / 60000) : 0;
-    const estimatedKm = Math.round(duration * 0.5); // rough estimate
+    const estimatedKm = Math.round(duration * 0.5);
     toast.success(`Trip ended! Duration: ${duration} min, Est. KM: ${estimatedKm}`);
   };
 
-  const handleAddVisit = (e: React.FormEvent) => {
+  const handleAddVisit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.location) { toast.error("Location required"); return; }
-    addSiteVisit({
-      agentId: user?.id || "",
-      location: form.location,
-      society: form.society,
-      date: todayStr,
-      photos: [],
-      notes: form.notes,
-      leadsGenerated: form.customerName ? 1 : 0,
-      customerName: form.customerName || undefined,
-      customerPhone: form.customerPhone || undefined,
-      category: form.category as LeadCategory || undefined,
-      budget: form.budget ? Number(form.budget) : undefined,
-      followUpDate: form.followUpDate || undefined,
-      status: form.visitStatus,
-    });
-    toast.success("Site visit logged!");
-    setForm({ location: "", society: "", notes: "", customerName: "", customerPhone: "", category: "", budget: "", followUpDate: "", visitStatus: "new" });
-    setVisitOpen(false);
+    try {
+      await addSiteVisit({
+        agent_id: user?.id || "",
+        location: form.location,
+        society: form.society,
+        date: todayStr,
+        photos: [],
+        notes: form.notes,
+        leads_generated: form.customerName ? 1 : 0,
+        customer_name: form.customerName || null,
+        customer_phone: form.customerPhone || null,
+        category: (form.category as LeadCategory) || null,
+        budget: form.budget ? Number(form.budget) : null,
+        follow_up_date: form.followUpDate || null,
+        status: form.visitStatus,
+      });
+      toast.success("Site visit logged!");
+      setForm({ location: "", society: "", notes: "", customerName: "", customerPhone: "", category: "", budget: "", followUpDate: "", visitStatus: "new" });
+      setVisitOpen(false);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to log visit");
+    }
   };
 
   return (
@@ -117,10 +119,7 @@ const SiteAgentDashboard = () => {
           <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader><DialogTitle>Log Site Visit</DialogTitle></DialogHeader>
             <form onSubmit={handleAddVisit} className="space-y-4">
-              <div className="space-y-1.5">
-                <Label>Location (Auto GPS) *</Label>
-                <Input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} placeholder="Area / Address" />
-              </div>
+              <div className="space-y-1.5"><Label>Location (Auto GPS) *</Label><Input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} placeholder="Area / Address" /></div>
               <div className="space-y-1.5"><Label>Society / Community</Label><Input value={form.society} onChange={e => setForm(f => ({ ...f, society: e.target.value }))} placeholder="Society name" /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5"><Label>Customer Name</Label><Input value={form.customerName} onChange={e => setForm(f => ({ ...f, customerName: e.target.value }))} /></div>
@@ -169,14 +168,13 @@ const SiteAgentDashboard = () => {
         </Button>
       </div>
 
-      {/* End of day summary */}
       {todayVisits.length > 0 && (
         <Card className="shadow-card bg-primary/5 border-primary/20">
           <CardContent className="p-4">
             <h3 className="font-semibold mb-2">Today's Summary</h3>
             <div className="grid grid-cols-3 gap-4 text-center">
               <div><p className="text-2xl font-bold">{todayVisits.length}</p><p className="text-xs text-muted-foreground">Visits</p></div>
-              <div><p className="text-2xl font-bold">{todayVisits.filter(v => v.customerName).length}</p><p className="text-xs text-muted-foreground">Leads</p></div>
+              <div><p className="text-2xl font-bold">{todayVisits.filter(v => v.customer_name).length}</p><p className="text-xs text-muted-foreground">Leads</p></div>
               <div><p className="text-2xl font-bold">—</p><p className="text-xs text-muted-foreground">KM Traveled</p></div>
             </div>
           </CardContent>
@@ -189,18 +187,18 @@ const SiteAgentDashboard = () => {
           <p className="text-muted-foreground text-sm">No visits logged yet. Start prospecting!</p>
         ) : (
           <div className="space-y-3">
-            {[...myVisits].reverse().map(visit => (
+            {myVisits.map(visit => (
               <Card key={visit.id} className="shadow-card">
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between">
                     <div>
                       <h3 className="font-semibold">{visit.location}</h3>
                       {visit.society && <p className="text-sm text-muted-foreground">{visit.society}</p>}
-                      {visit.customerName && (
-                        <p className="text-sm mt-1">👤 {visit.customerName} {visit.customerPhone && `• ${visit.customerPhone}`}</p>
+                      {visit.customer_name && (
+                        <p className="text-sm mt-1">👤 {visit.customer_name} {visit.customer_phone && `• ${visit.customer_phone}`}</p>
                       )}
                       {visit.category && <Badge variant="outline" className="text-xs mt-1">{LEAD_CATEGORIES.find(c => c.value === visit.category)?.label}</Badge>}
-                      {visit.budget && <span className="text-xs text-muted-foreground ml-2">Budget: ₹{visit.budget.toLocaleString("en-IN")}</span>}
+                      {visit.budget && <span className="text-xs text-muted-foreground ml-2">Budget: ₹{Number(visit.budget).toLocaleString("en-IN")}</span>}
                       {visit.notes && <p className="text-sm text-muted-foreground mt-1">{visit.notes}</p>}
                     </div>
                     <div className="text-right text-sm text-muted-foreground shrink-0">
