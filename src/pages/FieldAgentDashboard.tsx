@@ -19,38 +19,35 @@ const FieldAgentDashboard = () => {
   const [remarks, setRemarks] = useState("");
   const [gpsActive, setGpsActive] = useState(false);
 
-  const myJobs = serviceJobs.filter(j => j.assignedAgent === user?.id);
+  const myJobs = serviceJobs.filter(j => j.assigned_agent === user?.id);
   const todayStr = new Date().toISOString().split("T")[0];
-  const todayJobs = myJobs.filter(j => j.dateToAttend === todayStr);
+  const todayJobs = myJobs.filter(j => j.date_to_attend === todayStr);
   const completedJobs = myJobs.filter(j => j.status === "completed");
   const activeJobs = myJobs.filter(j => j.status === "in_progress");
 
-  const handleAccept = (id: string) => {
-    updateServiceJob(id, {
+  const handleAccept = async (id: string) => {
+    await updateServiceJob(id, {
       status: "in_progress",
-      acceptedAt: new Date().toISOString(),
-      travelStartedAt: new Date().toISOString(),
+      accepted_at: new Date().toISOString(),
+      travel_started_at: new Date().toISOString(),
     });
     setGpsActive(true);
     toast.success("Job accepted! GPS tracking started. 📍");
   };
 
-  const handleReached = (id: string) => {
-    updateServiceJob(id, { agentReachedAt: new Date().toISOString() });
+  const handleReached = async (id: string) => {
+    await updateServiceJob(id, { agent_reached_at: new Date().toISOString() });
     toast.success("Location reached! Service head notified. ✅");
   };
 
-  const handleComplete = () => {
+  const handleComplete = async () => {
     if (!completeDialog) return;
-    if (!remarks.trim()) {
-      toast.error("Please add remarks before completing");
-      return;
-    }
-    updateServiceJob(completeDialog, {
+    if (!remarks.trim()) { toast.error("Please add remarks before completing"); return; }
+    await updateServiceJob(completeDialog, {
       status: "completed",
-      completedAt: new Date().toISOString(),
+      completed_at: new Date().toISOString(),
       remarks,
-      photos: ["photo_placeholder.jpg"], // In real app, this would be actual uploaded photos
+      photos: ["photo_placeholder.jpg"],
     });
     toast.success("Job completed! 🎉");
     setCompleteDialog(null);
@@ -65,9 +62,7 @@ const FieldAgentDashboard = () => {
           <p className="text-sm text-muted-foreground">Today's assigned service & delivery visits</p>
         </div>
         {gpsActive && (
-          <Badge className="bg-success/10 text-success gap-1 animate-pulse">
-            <MapPin className="w-3 h-3" />GPS Active
-          </Badge>
+          <Badge className="bg-success/10 text-success gap-1 animate-pulse"><MapPin className="w-3 h-3" />GPS Active</Badge>
         )}
       </div>
 
@@ -83,20 +78,17 @@ const FieldAgentDashboard = () => {
       ) : (
         <div className="space-y-3">
           {myJobs.map(job => (
-            <Card
-              key={job.id}
-              className={`shadow-card ${job.status === "completed" ? "border-success/30 bg-success/5" : job.status === "in_progress" ? "border-primary/30" : ""}`}
-            >
+            <Card key={job.id} className={`shadow-card ${job.status === "completed" ? "border-success/30 bg-success/5" : job.status === "in_progress" ? "border-primary/30" : ""}`}>
               <CardContent className="p-4 space-y-3">
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-lg">{job.customerName}</h3>
+                      <h3 className="font-semibold text-lg">{job.customer_name}</h3>
                       {job.type === "delivery" && <Badge variant="outline" className="gap-1"><Truck className="w-3 h-3" />Delivery</Badge>}
                     </div>
                     <p className="text-sm text-muted-foreground">{job.description}</p>
                     <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground">
-                      <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" />{job.customerPhone}</span>
+                      <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" />{job.customer_phone}</span>
                     </div>
                     <div className="flex items-center gap-1 mt-1 text-sm text-muted-foreground">
                       <MapPin className="w-3.5 h-3.5" />{job.address}
@@ -109,27 +101,25 @@ const FieldAgentDashboard = () => {
                   }>{job.status.replace("_", " ")}</Badge>
                 </div>
 
-                {/* Timestamps */}
                 <div className="text-xs space-y-0.5 text-muted-foreground">
-                  {job.acceptedAt && <p>✅ Accepted: {new Date(job.acceptedAt).toLocaleTimeString("en-IN")}</p>}
-                  {job.travelStartedAt && <p>🚗 Travel started: {new Date(job.travelStartedAt).toLocaleTimeString("en-IN")}</p>}
-                  {job.agentReachedAt && <p className="text-success">📍 Reached: {new Date(job.agentReachedAt).toLocaleTimeString("en-IN")}</p>}
-                  {job.completedAt && <p className="text-success">🎉 Completed: {new Date(job.completedAt).toLocaleTimeString("en-IN")}</p>}
+                  {job.accepted_at && <p>✅ Accepted: {new Date(job.accepted_at).toLocaleTimeString("en-IN")}</p>}
+                  {job.travel_started_at && <p>🚗 Travel started: {new Date(job.travel_started_at).toLocaleTimeString("en-IN")}</p>}
+                  {job.agent_reached_at && <p className="text-success">📍 Reached: {new Date(job.agent_reached_at).toLocaleTimeString("en-IN")}</p>}
+                  {job.completed_at && <p className="text-success">🎉 Completed: {new Date(job.completed_at).toLocaleTimeString("en-IN")}</p>}
                 </div>
 
-                {/* Action buttons - large for mobile */}
                 <div className="flex gap-2 flex-wrap">
                   {job.status === "assigned" && (
                     <Button size="lg" className="gradient-primary gap-2 flex-1 min-h-[48px] text-base" onClick={() => handleAccept(job.id)}>
                       <Navigation className="w-5 h-5" />Accept & Start GPS
                     </Button>
                   )}
-                  {job.status === "in_progress" && !job.agentReachedAt && (
+                  {job.status === "in_progress" && !job.agent_reached_at && (
                     <Button size="lg" variant="outline" className="gap-2 flex-1 min-h-[48px] text-base" onClick={() => handleReached(job.id)}>
                       <MapPin className="w-5 h-5" />I've Reached
                     </Button>
                   )}
-                  {job.status === "in_progress" && job.agentReachedAt && !job.completedAt && (
+                  {job.status === "in_progress" && job.agent_reached_at && !job.completed_at && (
                     <Button size="lg" className="bg-success text-success-foreground gap-2 flex-1 min-h-[48px] text-base" onClick={() => setCompleteDialog(job.id)}>
                       <CheckCircle className="w-5 h-5" />Complete Job
                     </Button>
@@ -144,7 +134,6 @@ const FieldAgentDashboard = () => {
         </div>
       )}
 
-      {/* Job Completion Dialog */}
       <Dialog open={!!completeDialog} onOpenChange={open => { if (!open) setCompleteDialog(null); }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Complete Job</DialogTitle></DialogHeader>
@@ -161,9 +150,7 @@ const FieldAgentDashboard = () => {
               <Label>Remarks *</Label>
               <Textarea value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Job details, issues faced, etc." rows={3} />
             </div>
-            <Button className="w-full gradient-primary min-h-[48px] text-base" onClick={handleComplete}>
-              ✅ Mark as Completed
-            </Button>
+            <Button className="w-full gradient-primary min-h-[48px] text-base" onClick={handleComplete}>✅ Mark as Completed</Button>
           </div>
         </DialogContent>
       </Dialog>

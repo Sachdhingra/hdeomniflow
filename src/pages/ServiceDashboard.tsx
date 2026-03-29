@@ -19,12 +19,10 @@ const STATUS_BADGE: Record<string, string> = {
   assigned: "bg-primary/10 text-primary",
   in_progress: "bg-accent/10 text-accent",
   completed: "bg-success/10 text-success",
-  in_transit: "bg-primary/10 text-primary",
-  delivered: "bg-success/10 text-success",
 };
 
 const ServiceDashboard = () => {
-  const { serviceJobs, addServiceJob, updateServiceJob, getStaffByRole } = useData();
+  const { serviceJobs, addServiceJob, updateServiceJob, getProfilesByRole, profiles } = useData();
   const [dateFilter, setDateFilter] = useState("");
   const [tab, setTab] = useState("all");
   const [addOpen, setAddOpen] = useState(false);
@@ -37,11 +35,11 @@ const ServiceDashboard = () => {
     claimPartNo: "", claimReason: "", claimDueDate: "",
   });
 
-  const fieldAgents = getStaffByRole("field_agent");
+  const fieldAgents = getProfilesByRole("field_agent");
 
   const filteredJobs = useMemo(() => {
     let jobs = serviceJobs;
-    if (dateFilter) jobs = jobs.filter(j => j.dateReceived >= dateFilter);
+    if (dateFilter) jobs = jobs.filter(j => j.date_received >= dateFilter);
     if (tab === "deliveries") jobs = jobs.filter(j => j.type === "delivery");
     else if (tab === "services") jobs = jobs.filter(j => j.type === "service");
     else if (tab === "pending") jobs = jobs.filter(j => j.status === "pending");
@@ -50,38 +48,40 @@ const ServiceDashboard = () => {
   }, [serviceJobs, dateFilter, tab]);
 
   const todayStr = new Date().toISOString().split("T")[0];
-  const todayJobs = serviceJobs.filter(j => j.dateToAttend === todayStr);
-  const totalRevenue = serviceJobs.filter(j => !j.isFOC && j.status === "completed").reduce((s, j) => s + j.value, 0);
+  const todayJobs = serviceJobs.filter(j => j.date_to_attend === todayStr);
+  const totalRevenue = serviceJobs.filter(j => !j.is_foc && j.status === "completed").reduce((s, j) => s + Number(j.value), 0);
   const pendingJobs = serviceJobs.filter(j => j.status === "pending");
   const deliveryJobs = serviceJobs.filter(j => j.type === "delivery");
 
-  const handleAdd = (e: React.FormEvent) => {
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.customerName || !form.customerPhone || !form.category) {
-      toast.error("Fill required fields"); return;
+    if (!form.customerName || !form.customerPhone || !form.category) { toast.error("Fill required fields"); return; }
+    try {
+      await addServiceJob({
+        customer_name: form.customerName, customer_phone: form.customerPhone,
+        address: form.address, category: form.category as LeadCategory,
+        description: form.description,
+        date_to_attend: form.dateToAttend || null, value: form.isFOC ? 0 : Number(form.value),
+        is_foc: form.isFOC, status: "pending",
+        claim_part_no: form.claimPartNo || null,
+        claim_reason: form.claimReason || null,
+        claim_due_date: form.claimDueDate || null,
+        type: "service",
+      });
+      toast.success("Service job logged!");
+      setForm({ customerName: "", customerPhone: "", address: "", category: "", description: "", dateToAttend: "", value: "", isFOC: false, claimPartNo: "", claimReason: "", claimDueDate: "" });
+      setAddOpen(false);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to add job");
     }
-    addServiceJob({
-      customerName: form.customerName, customerPhone: form.customerPhone,
-      address: form.address, category: form.category as LeadCategory,
-      description: form.description, dateReceived: todayStr,
-      dateToAttend: form.dateToAttend, value: form.isFOC ? 0 : Number(form.value),
-      isFOC: form.isFOC, status: "pending", assignedAgent: "",
-      claimPartNo: form.claimPartNo || undefined,
-      claimReason: form.claimReason || undefined,
-      claimDueDate: form.claimDueDate || undefined,
-      type: "service",
-    });
-    toast.success("Service job logged!");
-    setForm({ customerName: "", customerPhone: "", address: "", category: "", description: "", dateToAttend: "", value: "", isFOC: false, claimPartNo: "", claimReason: "", claimDueDate: "" });
-    setAddOpen(false);
   };
 
-  const handleAssignAgent = (jobId: string) => {
+  const handleAssignAgent = async (jobId: string) => {
     if (!selectedAgent) { toast.error("Select a field agent"); return; }
-    updateServiceJob(jobId, {
-      assignedAgent: selectedAgent,
+    await updateServiceJob(jobId, {
+      assigned_agent: selectedAgent,
       status: "assigned",
-      dateToAttend: assignDate || undefined,
+      date_to_attend: assignDate || undefined,
     });
     toast.success("Job assigned to field agent!");
     setAssignOpen(null);
@@ -167,32 +167,32 @@ const ServiceDashboard = () => {
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-semibold">{job.customerName}</h3>
+                    <h3 className="font-semibold">{job.customer_name}</h3>
                     <Badge className={STATUS_BADGE[job.status] || ""}>{job.status.replace("_", " ")}</Badge>
                     {job.type === "delivery" && <Badge variant="outline" className="text-xs gap-1"><Truck className="w-3 h-3" />Delivery</Badge>}
-                    {job.isFOC && <Badge variant="outline" className="text-xs">FOC</Badge>}
-                    {job.claimPartNo && <Badge variant="outline" className="text-xs border-destructive/30 text-destructive">Claim</Badge>}
+                    {job.is_foc && <Badge variant="outline" className="text-xs">FOC</Badge>}
+                    {job.claim_part_no && <Badge variant="outline" className="text-xs border-destructive/30 text-destructive">Claim</Badge>}
                   </div>
                   <p className="text-sm mt-1">{job.description}</p>
                   <div className="flex items-center gap-4 mt-1.5 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{job.customerPhone}</span>
+                    <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{job.customer_phone}</span>
                     {job.address && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{job.address}</span>}
                   </div>
-                  {job.claimPartNo && (
-                    <p className="text-xs text-destructive mt-1">Part: {job.claimPartNo} | {job.claimReason} | Due: {job.claimDueDate}</p>
+                  {job.claim_part_no && (
+                    <p className="text-xs text-destructive mt-1">Part: {job.claim_part_no} | {job.claim_reason} | Due: {job.claim_due_date}</p>
                   )}
                 </div>
                 <div className="text-right shrink-0 space-y-1">
-                  {!job.isFOC && <p className="font-bold">₹{job.value.toLocaleString("en-IN")}</p>}
-                  <p className="text-xs text-muted-foreground">Attend: {job.dateToAttend}</p>
+                  {!job.is_foc && <p className="font-bold">₹{Number(job.value).toLocaleString("en-IN")}</p>}
+                  <p className="text-xs text-muted-foreground">Attend: {job.date_to_attend}</p>
                   {job.status === "pending" && (
                     <Button size="sm" className="gap-1 text-xs h-7" onClick={() => setAssignOpen(job.id)}>
                       <UserPlus className="w-3 h-3" />Assign Agent
                     </Button>
                   )}
-                  {job.assignedAgent && (
+                  {job.assigned_agent && (
                     <p className="text-xs text-muted-foreground">
-                      Agent: {getStaffByRole("field_agent").find(a => a.id === job.assignedAgent)?.name || job.assignedAgent}
+                      Agent: {profiles.find(p => p.id === job.assigned_agent)?.name || "—"}
                     </p>
                   )}
                 </div>
@@ -205,7 +205,6 @@ const ServiceDashboard = () => {
         )}
       </div>
 
-      {/* Assign Agent Dialog */}
       <Dialog open={!!assignOpen} onOpenChange={open => { if (!open) setAssignOpen(null); }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>Assign Field Agent</DialogTitle></DialogHeader>
@@ -223,9 +222,7 @@ const ServiceDashboard = () => {
               <Label>Date/Time to Attend</Label>
               <Input type="date" value={assignDate} onChange={e => setAssignDate(e.target.value)} />
             </div>
-            <Button className="w-full gradient-primary" onClick={() => assignOpen && handleAssignAgent(assignOpen)}>
-              Assign Job
-            </Button>
+            <Button className="w-full gradient-primary" onClick={() => assignOpen && handleAssignAgent(assignOpen)}>Assign Job</Button>
           </div>
         </DialogContent>
       </Dialog>

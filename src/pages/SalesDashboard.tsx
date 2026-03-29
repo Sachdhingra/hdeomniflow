@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Users, IndianRupee, TrendingUp, AlertCircle, Phone, Calendar, Truck, Clock } from "lucide-react";
 import { toast } from "sonner";
+import type { Lead } from "@/contexts/DataContext";
 
 const STATUS_COLORS: Record<LeadStatus, string> = {
   new: "bg-primary/10 text-primary",
@@ -29,50 +30,54 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
 
 const SalesDashboard = () => {
   const { user } = useAuth();
-  const { leads, updateLeadStatus } = useData();
+  const { leads, updateLead } = useData();
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [dateFilter, setDateFilter] = useState("");
   const [viewMode, setViewMode] = useState<"my" | "all">(user?.role === "admin" ? "all" : "my");
-  const [deliveryLead, setDeliveryLead] = useState<any>(null);
+  const [deliveryLead, setDeliveryLead] = useState<Lead | null>(null);
 
-  // Lead add reminder
   useEffect(() => {
     if (user?.role !== "sales") return;
     const interval = setInterval(() => {
       const todayStr = new Date().toISOString().split("T")[0];
-      const todayLeads = leads.filter(l => l.createdAt === todayStr && l.assignedTo === user.id);
+      const todayLeads = leads.filter(l => l.created_at.startsWith(todayStr) && l.assigned_to === user.id);
       if (todayLeads.length === 0) {
         toast.warning("Reminder: You haven't added any leads today! 🔔", { duration: 5000 });
       }
-    }, 2 * 60 * 60 * 1000); // Every 2 hours
+    }, 2 * 60 * 60 * 1000);
     return () => clearInterval(interval);
   }, [user, leads]);
 
   const filteredLeads = useMemo(() => {
     return leads.filter(l => {
-      if (l.source !== "sales" && l.source !== "site_agent") return false;
-      // For site agent viewing my-leads, show only their leads
-      if (user?.role === "site_agent") return l.assignedTo === user.id;
-      // My leads vs all leads
+      if (user?.role === "site_agent") return l.assigned_to === user.id;
       if (viewMode === "my" && user?.role !== "admin") {
-        if (l.assignedTo !== user?.id) return false;
+        if (l.assigned_to !== user?.id) return false;
       }
       if (categoryFilter !== "all" && l.category !== categoryFilter) return false;
       if (statusFilter !== "all" && l.status !== statusFilter) return false;
-      if (dateFilter && l.createdAt < dateFilter) return false;
+      if (dateFilter && l.created_at < dateFilter) return false;
       return true;
     });
   }, [leads, categoryFilter, statusFilter, dateFilter, viewMode, user]);
 
-  const totalValue = filteredLeads.reduce((s, l) => s + l.valueInRupees, 0);
-  const wonValue = filteredLeads.filter(l => l.status === "won").reduce((s, l) => s + l.valueInRupees, 0);
+  const totalValue = filteredLeads.reduce((s, l) => s + Number(l.value_in_rupees), 0);
+  const wonValue = filteredLeads.filter(l => l.status === "won").reduce((s, l) => s + Number(l.value_in_rupees), 0);
   const overdueLeads = filteredLeads.filter(l => l.status === "overdue");
   const needFollowUp = filteredLeads.filter(l => {
-    const lastDate = new Date(l.lastFollowUp);
+    const lastDate = new Date(l.last_follow_up);
     const daysSince = Math.floor((Date.now() - lastDate.getTime()) / 86400000);
     return daysSince >= 2 && l.status !== "won" && l.status !== "lost";
   });
+
+  const handleStatusChange = async (id: string, status: LeadStatus) => {
+    try {
+      await updateLead(id, { status, last_follow_up: new Date().toISOString() });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update status");
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -113,7 +118,6 @@ const SalesDashboard = () => {
         <StatCard title="Conversion" value={filteredLeads.length ? `${Math.round((filteredLeads.filter(l => l.status === "won").length / filteredLeads.length) * 100)}%` : "0%"} icon={<TrendingUp className="w-5 h-5" />} />
       </div>
 
-      {/* Filters */}
       <div className="flex gap-3 flex-wrap items-center">
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
           <SelectTrigger className="w-36"><SelectValue placeholder="Category" /></SelectTrigger>
@@ -141,53 +145,43 @@ const SalesDashboard = () => {
         )}
       </div>
 
-      {/* Lead cards */}
       <div className="space-y-3">
         {filteredLeads.map(lead => (
-          <Card
-            key={lead.id}
-            className={`shadow-card hover:shadow-card-hover transition-shadow ${lead.status === "overdue" ? "border-destructive/50 bg-destructive/5" : ""}`}
-          >
+          <Card key={lead.id} className={`shadow-card hover:shadow-card-hover transition-shadow ${lead.status === "overdue" ? "border-destructive/50 bg-destructive/5" : ""}`}>
             <CardContent className="p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-semibold">{lead.customerName}</h3>
+                    <h3 className="font-semibold">{lead.customer_name}</h3>
                     <Badge variant="outline" className={STATUS_COLORS[lead.status]}>{STATUS_LABELS[lead.status]}</Badge>
                     <Badge variant="outline" className="text-xs">{LEAD_CATEGORIES.find(c => c.value === lead.category)?.label}</Badge>
                   </div>
                   <div className="flex items-center gap-4 mt-1.5 text-sm text-muted-foreground">
-                    <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" />{lead.customerPhone}</span>
-                    <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />{lead.createdAt}</span>
+                    <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" />{lead.customer_phone}</span>
+                    <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />{lead.created_at.split("T")[0]}</span>
                   </div>
-                  {lead.nextFollowUpDate && (
+                  {lead.next_follow_up_date && (
                     <p className={`text-xs mt-1 ${lead.status === "overdue" ? "text-destructive font-semibold" : "text-muted-foreground"}`}>
-                      📅 Follow-up: {lead.nextFollowUpDate} at {lead.nextFollowUpTime}
+                      📅 Follow-up: {lead.next_follow_up_date} at {lead.next_follow_up_time}
                     </p>
                   )}
                   {lead.notes && <p className="text-sm text-muted-foreground mt-1">{lead.notes}</p>}
                 </div>
                 <div className="text-right shrink-0 space-y-1">
-                  <p className="text-lg font-bold">₹{lead.valueInRupees.toLocaleString("en-IN")}</p>
-                  <Select value={lead.status} onValueChange={v => updateLeadStatus(lead.id, v as LeadStatus, user?.id || "")}>
+                  <p className="text-lg font-bold">₹{Number(lead.value_in_rupees).toLocaleString("en-IN")}</p>
+                  <Select value={lead.status} onValueChange={v => handleStatusChange(lead.id, v as LeadStatus)}>
                     <SelectTrigger className="w-28 h-7 text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {Object.entries(STATUS_LABELS).map(([k, v]) => (
-                        <SelectItem key={k} value={k}>{v}</SelectItem>
-                      ))}
+                      {Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  {lead.status === "won" && !lead.deliveryDate && (
-                    <Button
-                      size="sm"
-                      className="w-full gap-1 bg-success text-success-foreground hover:bg-success/90 text-xs h-7"
-                      onClick={() => setDeliveryLead(lead)}
-                    >
+                  {lead.status === "won" && !lead.delivery_date && (
+                    <Button size="sm" className="w-full gap-1 bg-success text-success-foreground hover:bg-success/90 text-xs h-7" onClick={() => setDeliveryLead(lead)}>
                       <Truck className="w-3 h-3" />Assign Delivery
                     </Button>
                   )}
-                  {lead.deliveryDate && (
-                    <p className="text-xs text-success">🚚 Delivery: {lead.deliveryDate}</p>
+                  {lead.delivery_date && (
+                    <p className="text-xs text-success">🚚 Delivery: {lead.delivery_date}</p>
                   )}
                 </div>
               </div>
@@ -195,9 +189,7 @@ const SalesDashboard = () => {
           </Card>
         ))}
         {filteredLeads.length === 0 && (
-          <Card className="shadow-card">
-            <CardContent className="p-8 text-center text-muted-foreground">No leads found.</CardContent>
-          </Card>
+          <Card className="shadow-card"><CardContent className="p-8 text-center text-muted-foreground">No leads found.</CardContent></Card>
         )}
       </div>
 
