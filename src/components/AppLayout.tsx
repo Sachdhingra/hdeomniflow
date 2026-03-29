@@ -35,7 +35,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
 
   const overdueCount = leads.filter(l => l.status === "overdue").length;
   const pendingJobCount = serviceJobs.filter(j => j.status === "pending").length;
-  const myUnread = notifications.filter(n => (n.userId === user.id || user.role === "admin") && !n.read).length;
+  const myUnread = notifications.filter(n => (n.user_id === user.id || user.role === "admin") && !n.read).length;
 
   const NAV_ITEMS: Record<UserRole, NavItem[]> = {
     admin: [

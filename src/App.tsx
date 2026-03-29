@@ -16,11 +16,20 @@ import ServiceClaims from "@/pages/ServiceClaims";
 import FieldAgentDashboard from "@/pages/FieldAgentDashboard";
 import SiteAgentDashboard from "@/pages/SiteAgentDashboard";
 import NotFound from "@/pages/NotFound";
+import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
 
 const AppRoutes = () => {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   if (!user) return <Login />;
 
