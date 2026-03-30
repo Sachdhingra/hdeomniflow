@@ -71,24 +71,19 @@ const AdminDashboard = () => {
       toast.error("Fill all fields"); return;
     }
     try {
-      // Create user via Supabase auth admin (this will trigger profile creation via trigger)
-      const { data, error } = await supabase.auth.signUp({
-        email: newStaff.email,
-        password: newStaff.password,
-        options: { data: { name: newStaff.name } },
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+
+      const res = await supabase.functions.invoke("create-user", {
+        body: { name: newStaff.name, email: newStaff.email, password: newStaff.password, role: newStaff.role },
       });
-      if (error) throw error;
-      if (data.user) {
-        // Assign role
-        await supabase.from("user_roles").insert({
-          user_id: data.user.id,
-          role: newStaff.role as any,
-        });
-        toast.success(`${newStaff.name} added as ${newStaff.role}!`);
-        setNewStaff({ name: "", email: "", role: "", password: "" });
-        setStaffOpen(false);
-        await refreshProfiles();
-      }
+      if (res.error) throw new Error(res.error.message || "Failed to create user");
+      if (res.data?.error) throw new Error(res.data.error);
+
+      toast.success(`${newStaff.name} added as ${newStaff.role}!`);
+      setNewStaff({ name: "", email: "", role: "", password: "" });
+      setStaffOpen(false);
+      await refreshProfiles();
     } catch (err: any) {
       toast.error(err.message || "Failed to add staff");
     }
