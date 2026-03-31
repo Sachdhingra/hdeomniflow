@@ -112,8 +112,12 @@ const AdminDashboard = () => {
     return { ...p, active: profile?.active ?? true };
   });
 
+  if (error && leads.length === 0) return <LoadingError message={error} onRetry={retryLoad} />;
+  if (summaryLoading && leads.length === 0) return <DashboardSkeleton />;
+
   return (
     <div className="space-y-6">
+      {error && <LoadingError message={error} onRetry={retryLoad} />}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">Admin Dashboard</h1>
