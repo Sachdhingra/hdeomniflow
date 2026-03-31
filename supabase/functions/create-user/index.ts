@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,7 +17,6 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    // Verify the caller is an admin
     const callerClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
       global: { headers: { Authorization: authHeader } },
     });
@@ -26,19 +25,27 @@ Deno.serve(async (req) => {
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
-    // Check caller is admin
     const { data: isAdmin } = await adminClient.rpc("has_role", {
       _user_id: caller.id,
       _role: "admin",
     });
     if (!isAdmin) throw new Error("Only admins can create users");
 
-    const { name, email, password, role } = await req.json();
-    if (!name || !email || !password || !role) {
-      throw new Error("Missing required fields: name, email, password, role");
+    const { name, password, role } = await req.json();
+    if (!name || !password || !role) {
+      throw new Error("Missing required fields: name, password, role");
     }
 
-    // Create user with admin API
+    const email = `${name.toLowerCase().replace(/\s+/g, ".")}@furncrm.local`;
+
+    // Check if username already exists
+    const { data: existing } = await adminClient
+      .from("profiles")
+      .select("id")
+      .eq("name", name)
+      .maybeSingle();
+    if (existing) throw new Error("A user with this name already exists");
+
     const { data: newUser, error: createError } = await adminClient.auth.admin.createUser({
       email,
       password,
@@ -47,23 +54,21 @@ Deno.serve(async (req) => {
     });
     if (createError) throw createError;
 
-    // Assign role
     const { error: roleError } = await adminClient
       .from("user_roles")
       .insert({ user_id: newUser.user.id, role });
     if (roleError) throw roleError;
 
-    // Update profile name
     await adminClient
       .from("profiles")
-      .update({ name })
+      .update({ name, email })
       .eq("id", newUser.user.id);
 
     return new Response(
       JSON.stringify({ success: true, user_id: newUser.user.id }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (err) {
+  } catch (err: any) {
     return new Response(
       JSON.stringify({ error: err.message }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }

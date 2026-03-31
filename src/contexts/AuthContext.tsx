@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import type { User as SupabaseUser, Session } from "@supabase/supabase-js";
+import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 export type UserRole = "admin" | "sales" | "service_head" | "field_agent" | "site_agent";
 
@@ -14,7 +14,7 @@ export interface User {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<string | null>;
+  login: (username: string, password: string) => Promise<string | null>;
   logout: () => Promise<void>;
   allProfiles: User[];
   refreshProfiles: () => Promise<void>;
@@ -51,14 +51,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [allProfiles, setAllProfiles] = useState<User[]>([]);
 
   const refreshProfiles = async () => {
-    const { data: profiles } = await supabase.from("profiles").select("id, name, email");
+    const { data: profiles } = await supabase.from("profiles").select("id, name, email, active");
     const { data: roles } = await supabase.from("user_roles").select("user_id, role");
     if (profiles && roles) {
       const users: User[] = profiles
         .map(p => {
           const r = roles.find(r => r.user_id === p.id);
           if (!r) return null;
-          return { id: p.id, name: p.name, email: p.email, role: r.role as UserRole };
+          return { id: p.id, name: p.name, email: p.email, role: r.role as UserRole, active: (p as any).active };
         })
         .filter(Boolean) as User[];
       setAllProfiles(users);
@@ -93,9 +93,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (user) refreshProfiles();
   }, [user]);
 
-  const login = async (email: string, password: string): Promise<string | null> => {
+  const login = async (username: string, password: string): Promise<string | null> => {
+    // Convert username to internal email format
+    const email = `${username.toLowerCase().replace(/\s+/g, ".")}@furncrm.local`;
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return error.message;
+    if (error) {
+      if (error.message.includes("Invalid login")) {
+        return "Invalid username or password";
+      }
+      if (error.message.includes("banned") || error.message.includes("disabled")) {
+        return "Your account has been disabled. Contact admin.";
+      }
+      return error.message;
+    }
     return null;
   };
 

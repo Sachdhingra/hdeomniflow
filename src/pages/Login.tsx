@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAuth, UserRole } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,18 +9,18 @@ import { toast } from "sonner";
 
 const Login = () => {
   const { login, loading: authLoading } = useAuth();
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) {
-      toast.error("Please enter email and password");
+    if (!username || !password) {
+      toast.error("Please enter username and password");
       return;
     }
     setSubmitting(true);
-    const error = await login(email, password);
+    const error = await login(username, password);
     if (error) {
       toast.error(error);
     }
@@ -53,8 +53,8 @@ const Login = () => {
           <CardContent>
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" placeholder="you@company.com" value={email} onChange={e => setEmail(e.target.value)} />
+                <Label htmlFor="username">Username</Label>
+                <Input id="username" type="text" placeholder="Your name" value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>

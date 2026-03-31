@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useData, LEAD_CATEGORIES } from "@/contexts/DataContext";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, User } from "@/contexts/AuthContext";
 import StatCard from "@/components/StatCard";
+import CsvImport from "@/components/CsvImport";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,7 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, Wrench, IndianRupee, TrendingUp, MapPin, BarChart3, UserPlus, Trophy, Truck } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Users, Wrench, IndianRupee, TrendingUp, MapPin, BarChart3, UserPlus, Trophy, Truck, KeyRound, Ban, CheckCircle, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -20,7 +22,10 @@ const AdminDashboard = () => {
   const [tab, setTab] = useState("overview");
   const [dateFilter, setDateFilter] = useState("");
   const [staffOpen, setStaffOpen] = useState(false);
-  const [newStaff, setNewStaff] = useState({ name: "", email: "", role: "", password: "" });
+  const [newStaff, setNewStaff] = useState({ name: "", role: "", password: "" });
+  const [resetPwOpen, setResetPwOpen] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const totalPipeline = leads.reduce((s, l) => s + Number(l.value_in_rupees), 0);
   const wonValue = leads.filter(l => l.status === "won").reduce((s, l) => s + Number(l.value_in_rupees), 0);
@@ -67,27 +72,48 @@ const AdminDashboard = () => {
 
   const handleAddStaff = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newStaff.name || !newStaff.email || !newStaff.role || !newStaff.password) {
+    if (!newStaff.name || !newStaff.role || !newStaff.password) {
       toast.error("Fill all fields"); return;
     }
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
-
       const res = await supabase.functions.invoke("create-user", {
-        body: { name: newStaff.name, email: newStaff.email, password: newStaff.password, role: newStaff.role },
+        body: { name: newStaff.name, password: newStaff.password, role: newStaff.role },
       });
       if (res.error) throw new Error(res.error.message || "Failed to create user");
       if (res.data?.error) throw new Error(res.data.error);
-
       toast.success(`${newStaff.name} added as ${newStaff.role}!`);
-      setNewStaff({ name: "", email: "", role: "", password: "" });
+      setNewStaff({ name: "", role: "", password: "" });
       setStaffOpen(false);
       await refreshProfiles();
     } catch (err: any) {
       toast.error(err.message || "Failed to add staff");
     }
   };
+
+  const handleUserAction = async (action: string, userId: string, password?: string) => {
+    setActionLoading(userId + action);
+    try {
+      const body: any = { action, user_id: userId };
+      if (password) body.password = password;
+      const res = await supabase.functions.invoke("manage-user", { body });
+      if (res.error) throw new Error(res.error.message);
+      if (res.data?.error) throw new Error(res.data.error);
+      toast.success(`User ${action === "reset_password" ? "password reset" : action === "disable" ? "disabled" : action === "enable" ? "enabled" : "deleted"} successfully`);
+      if (action === "reset_password") { setResetPwOpen(null); setNewPassword(""); }
+      await refreshProfiles();
+    } catch (err: any) {
+      toast.error(err.message || "Action failed");
+    }
+    setActionLoading(null);
+  };
+
+  // Get all profiles with active status
+  const allUsersWithStatus = allProfiles.map(p => {
+    const profile = profiles.find(pr => pr.id === p.id);
+    return { ...p, active: profile?.active ?? true };
+  });
 
   return (
     <div className="space-y-6">
@@ -96,32 +122,35 @@ const AdminDashboard = () => {
           <h1 className="text-2xl font-bold">Admin Dashboard</h1>
           <p className="text-sm text-muted-foreground">Complete business overview & management</p>
         </div>
-        <Dialog open={staffOpen} onOpenChange={setStaffOpen}>
-          <DialogTrigger asChild>
-            <Button className="gradient-primary gap-2"><UserPlus className="w-4 h-4" />Add Staff</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader><DialogTitle>Add New Staff</DialogTitle></DialogHeader>
-            <form onSubmit={handleAddStaff} className="space-y-4">
-              <div className="space-y-1.5"><Label>Full Name *</Label><Input value={newStaff.name} onChange={e => setNewStaff(f => ({ ...f, name: e.target.value }))} /></div>
-              <div className="space-y-1.5"><Label>Email *</Label><Input type="email" value={newStaff.email} onChange={e => setNewStaff(f => ({ ...f, email: e.target.value }))} /></div>
-              <div className="space-y-1.5"><Label>Password *</Label><Input type="password" value={newStaff.password} onChange={e => setNewStaff(f => ({ ...f, password: e.target.value }))} /></div>
-              <div className="space-y-1.5">
-                <Label>Role *</Label>
-                <Select value={newStaff.role} onValueChange={v => setNewStaff(f => ({ ...f, role: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="sales">Sales</SelectItem>
-                    <SelectItem value="service_head">Service Head</SelectItem>
-                    <SelectItem value="field_agent">Field Agent</SelectItem>
-                    <SelectItem value="site_agent">Site Agent</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button type="submit" className="w-full gradient-primary">Add Staff Member</Button>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <div className="flex gap-2 flex-wrap">
+          <CsvImport salesProfiles={allProfiles.filter(p => p.role === "sales") as User[]} />
+          <Dialog open={staffOpen} onOpenChange={setStaffOpen}>
+            <DialogTrigger asChild>
+              <Button className="gradient-primary gap-2"><UserPlus className="w-4 h-4" />Add Staff</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader><DialogTitle>Add New Staff</DialogTitle></DialogHeader>
+              <form onSubmit={handleAddStaff} className="space-y-4">
+                <div className="space-y-1.5"><Label>Username *</Label><Input placeholder="Enter unique name" value={newStaff.name} onChange={e => setNewStaff(f => ({ ...f, name: e.target.value }))} /></div>
+                <div className="space-y-1.5"><Label>Password *</Label><Input type="password" value={newStaff.password} onChange={e => setNewStaff(f => ({ ...f, password: e.target.value }))} /></div>
+                <div className="space-y-1.5">
+                  <Label>Role *</Label>
+                  <Select value={newStaff.role} onValueChange={v => setNewStaff(f => ({ ...f, role: v }))}>
+                    <SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="sales">Sales</SelectItem>
+                      <SelectItem value="service_head">Service Head</SelectItem>
+                      <SelectItem value="field_agent">Field Agent</SelectItem>
+                      <SelectItem value="site_agent">Site Agent</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button type="submit" className="w-full gradient-primary">Add Staff Member</Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {overdueLeads.length > 0 && (
@@ -139,10 +168,6 @@ const AdminDashboard = () => {
         <StatCard title="Service Revenue" value={`₹${serviceRevenue.toLocaleString("en-IN")}`} icon={<Wrench className="w-5 h-5" />} />
       </div>
 
-      <div className="flex gap-3 flex-wrap">
-        <Input type="date" className="w-40" value={dateFilter} onChange={e => setDateFilter(e.target.value)} placeholder="Filter by date" />
-      </div>
-
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="flex-wrap">
           <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -150,7 +175,7 @@ const AdminDashboard = () => {
           <TabsTrigger value="service">Service</TabsTrigger>
           <TabsTrigger value="field">Field Agents</TabsTrigger>
           <TabsTrigger value="site">Site Agents</TabsTrigger>
-          <TabsTrigger value="staff">Staff Management</TabsTrigger>
+          <TabsTrigger value="staff">User Management</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4 mt-4">
@@ -169,29 +194,24 @@ const AdminDashboard = () => {
                 })}
               </CardContent>
             </Card>
-
             <Card className="shadow-card">
               <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Wrench className="w-4 h-4 text-primary" />Service & Delivery</CardTitle></CardHeader>
               <CardContent className="space-y-2">
                 <div className="flex justify-between text-sm"><span>Total Jobs</span><Badge variant="outline">{serviceJobs.length}</Badge></div>
                 <div className="flex justify-between text-sm"><span>Deliveries</span><Badge variant="outline">{deliveryJobs.length}</Badge></div>
                 <div className="flex justify-between text-sm"><span>Pending</span><Badge className="bg-warning/10 text-warning">{serviceJobs.filter(j => j.status === "pending").length}</Badge></div>
-                <div className="flex justify-between text-sm"><span>In Progress</span><Badge variant="outline">{serviceJobs.filter(j => j.status === "in_progress").length}</Badge></div>
                 <div className="flex justify-between text-sm"><span>Completed</span><Badge className="bg-success/10 text-success">{serviceJobs.filter(j => j.status === "completed").length}</Badge></div>
               </CardContent>
             </Card>
-
             <Card className="shadow-card">
               <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><MapPin className="w-4 h-4 text-primary" />Site Agents</CardTitle></CardHeader>
               <CardContent className="space-y-2">
                 <div className="flex justify-between text-sm"><span>Total Visits</span><Badge variant="outline">{siteVisits.length}</Badge></div>
                 <div className="flex justify-between text-sm"><span>Today</span><Badge variant="outline">{siteVisits.filter(v => v.date === todayStr).length}</Badge></div>
                 <div className="flex justify-between text-sm"><span>Site Leads</span><Badge variant="outline">{leads.filter(l => l.source === "site_agent").length}</Badge></div>
-                <div className="flex justify-between text-sm"><span>Lead Value</span><span className="text-sm font-semibold">₹{leads.filter(l => l.source === "site_agent").reduce((s, l) => s + Number(l.value_in_rupees), 0).toLocaleString("en-IN")}</span></div>
               </CardContent>
             </Card>
           </div>
-
           <Card className="shadow-card">
             <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><BarChart3 className="w-4 h-4 text-primary" />Category Breakdown</CardTitle></CardHeader>
             <CardContent>
@@ -219,14 +239,11 @@ const AdminDashboard = () => {
                     <div className="flex-1">
                       <p className="font-medium">{sp.name}</p>
                       <div className="flex gap-4 text-xs text-muted-foreground mt-0.5">
-                        <span>Leads: {sp.totalLeads}</span>
-                        <span>Won: {sp.wonLeads}</span>
-                        <span>Conversion: {sp.conversion}%</span>
+                        <span>Leads: {sp.totalLeads}</span><span>Won: {sp.wonLeads}</span><span>Conversion: {sp.conversion}%</span>
                       </div>
                     </div>
                     <div className="text-right">
                       <p className="font-bold text-success">₹{(sp.wonValue / 1000).toFixed(0)}K</p>
-                      <p className="text-xs text-muted-foreground">Won Value</p>
                     </div>
                   </div>
                 ))}
@@ -253,8 +270,7 @@ const AdminDashboard = () => {
                   <div>
                     <p className="font-medium">{fp.name}</p>
                     <div className="flex gap-4 text-xs text-muted-foreground mt-0.5">
-                      <span>Total Jobs: {fp.totalJobs}</span>
-                      <span>Completed: {fp.completedJobs}</span>
+                      <span>Total: {fp.totalJobs}</span><span>Done: {fp.completedJobs}</span>
                     </div>
                   </div>
                   <Badge className="bg-success/10 text-success">{fp.completedJobs}/{fp.totalJobs}</Badge>
@@ -273,9 +289,7 @@ const AdminDashboard = () => {
                   <div>
                     <p className="font-medium">{sp.name}</p>
                     <div className="flex gap-4 text-xs text-muted-foreground mt-0.5">
-                      <span>Visits: {sp.totalVisits}</span>
-                      <span>Today: {sp.todayVisits}</span>
-                      <span>Leads: {sp.totalLeads}</span>
+                      <span>Visits: {sp.totalVisits}</span><span>Today: {sp.todayVisits}</span><span>Leads: {sp.totalLeads}</span>
                     </div>
                   </div>
                   <Badge variant="outline">{sp.totalVisits} visits</Badge>
@@ -287,25 +301,79 @@ const AdminDashboard = () => {
         </TabsContent>
 
         <TabsContent value="staff" className="space-y-4 mt-4">
-          <div className="space-y-3">
-            {allProfiles.map(s => (
-              <Card key={s.id} className="shadow-card">
-                <CardContent className="p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center text-primary-foreground font-bold">
-                      {s.name.charAt(0)}
-                    </div>
-                    <div>
-                      <p className="font-medium">{s.name}</p>
-                      <p className="text-xs text-muted-foreground">{s.email}</p>
-                    </div>
-                  </div>
-                  <Badge variant="outline" className="capitalize">{s.role.replace("_", " ")}</Badge>
-                </CardContent>
-              </Card>
-            ))}
-            {allProfiles.length === 0 && <p className="text-muted-foreground text-sm text-center py-4">No staff members yet.</p>}
-          </div>
+          <Card className="shadow-card">
+            <CardHeader className="pb-2"><CardTitle className="text-sm">User Management</CardTitle></CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Role</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {allUsersWithStatus.map(u => (
+                      <TableRow key={u.id}>
+                        <TableCell className="font-medium">{u.name}</TableCell>
+                        <TableCell><Badge variant="outline" className="capitalize">{u.role.replace("_", " ")}</Badge></TableCell>
+                        <TableCell>
+                          <Badge className={u.active ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}>
+                            {u.active ? "Active" : "Disabled"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex gap-1 justify-end flex-wrap">
+                            <Dialog open={resetPwOpen === u.id} onOpenChange={o => { setResetPwOpen(o ? u.id : null); setNewPassword(""); }}>
+                              <DialogTrigger asChild>
+                                <Button size="sm" variant="outline" className="gap-1 h-7 text-xs">
+                                  <KeyRound className="w-3 h-3" />Reset
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader><DialogTitle>Reset Password for {u.name}</DialogTitle></DialogHeader>
+                                <div className="space-y-3">
+                                  <Input type="password" placeholder="New password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+                                  <Button
+                                    className="w-full"
+                                    disabled={!newPassword || actionLoading === u.id + "reset_password"}
+                                    onClick={() => handleUserAction("reset_password", u.id, newPassword)}
+                                  >
+                                    {actionLoading === u.id + "reset_password" ? <Loader2 className="w-4 h-4 animate-spin" /> : "Reset Password"}
+                                  </Button>
+                                </div>
+                              </DialogContent>
+                            </Dialog>
+                            {u.active ? (
+                              <Button size="sm" variant="outline" className="gap-1 h-7 text-xs text-destructive" onClick={() => handleUserAction("disable", u.id)}
+                                disabled={actionLoading === u.id + "disable"}>
+                                <Ban className="w-3 h-3" />Disable
+                              </Button>
+                            ) : (
+                              <Button size="sm" variant="outline" className="gap-1 h-7 text-xs text-success" onClick={() => handleUserAction("enable", u.id)}
+                                disabled={actionLoading === u.id + "enable"}>
+                                <CheckCircle className="w-3 h-3" />Enable
+                              </Button>
+                            )}
+                            <Button size="sm" variant="outline" className="gap-1 h-7 text-xs text-destructive" onClick={() => {
+                              if (confirm("Delete this user permanently?")) handleUserAction("delete", u.id);
+                            }} disabled={actionLoading === u.id + "delete"}>
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {allUsersWithStatus.length === 0 && (
+                      <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-6">No staff members yet.</TableCell></TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

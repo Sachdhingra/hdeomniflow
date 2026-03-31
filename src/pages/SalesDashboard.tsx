@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Users, IndianRupee, TrendingUp, AlertCircle, Phone, Calendar, Truck, Clock } from "lucide-react";
+import { Users, IndianRupee, TrendingUp, AlertCircle, Phone, Calendar, Truck, Clock, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import type { Lead } from "@/contexts/DataContext";
 
@@ -33,21 +33,30 @@ const SalesDashboard = () => {
   const { leads, updateLead } = useData();
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [dateFilter, setDateFilter] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [viewMode, setViewMode] = useState<"my" | "all">(user?.role === "admin" ? "all" : "my");
   const [deliveryLead, setDeliveryLead] = useState<Lead | null>(null);
+
+  const todayStr = new Date().toISOString().split("T")[0];
+  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
+  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split("T")[0];
 
   useEffect(() => {
     if (user?.role !== "sales") return;
     const interval = setInterval(() => {
-      const todayStr = new Date().toISOString().split("T")[0];
       const todayLeads = leads.filter(l => l.created_at.startsWith(todayStr) && l.assigned_to === user.id);
       if (todayLeads.length === 0) {
         toast.warning("Reminder: You haven't added any leads today! 🔔", { duration: 5000 });
       }
     }, 2 * 60 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [user, leads]);
+  }, [user, leads, todayStr]);
+
+  const setQuickDate = (from: string, to: string) => {
+    setFromDate(from);
+    setToDate(to);
+  };
 
   const filteredLeads = useMemo(() => {
     return leads.filter(l => {
@@ -57,13 +66,15 @@ const SalesDashboard = () => {
       }
       if (categoryFilter !== "all" && l.category !== categoryFilter) return false;
       if (statusFilter !== "all" && l.status !== statusFilter) return false;
-      if (dateFilter && l.created_at < dateFilter) return false;
+      if (fromDate && l.created_at.split("T")[0] < fromDate) return false;
+      if (toDate && l.created_at.split("T")[0] > toDate) return false;
       return true;
     });
-  }, [leads, categoryFilter, statusFilter, dateFilter, viewMode, user]);
+  }, [leads, categoryFilter, statusFilter, fromDate, toDate, viewMode, user]);
 
   const totalValue = filteredLeads.reduce((s, l) => s + Number(l.value_in_rupees), 0);
-  const wonValue = filteredLeads.filter(l => l.status === "won").reduce((s, l) => s + Number(l.value_in_rupees), 0);
+  const wonLeads = filteredLeads.filter(l => l.status === "won");
+  const wonValue = wonLeads.reduce((s, l) => s + Number(l.value_in_rupees), 0);
   const overdueLeads = filteredLeads.filter(l => l.status === "overdue");
   const needFollowUp = filteredLeads.filter(l => {
     const lastDate = new Date(l.last_follow_up);
@@ -111,32 +122,50 @@ const SalesDashboard = () => {
         </Card>
       )}
 
+      {/* Performance Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard title="Total Leads" value={filteredLeads.length} icon={<Users className="w-5 h-5" />} />
-        <StatCard title="Pipeline Value" value={`₹${(totalValue / 1000).toFixed(0)}K`} icon={<IndianRupee className="w-5 h-5" />} />
-        <StatCard title="Won Value" value={`₹${(wonValue / 1000).toFixed(0)}K`} icon={<TrendingUp className="w-5 h-5" />} trend="Closed deals" trendUp />
-        <StatCard title="Conversion" value={filteredLeads.length ? `${Math.round((filteredLeads.filter(l => l.status === "won").length / filteredLeads.length) * 100)}%` : "0%"} icon={<TrendingUp className="w-5 h-5" />} />
+        <StatCard title="Won Deals" value={wonLeads.length} icon={<Trophy className="w-5 h-5" />} trend={`${filteredLeads.length ? Math.round((wonLeads.length / filteredLeads.length) * 100) : 0}% conversion`} trendUp />
+        <StatCard title="Won Value" value={`₹${wonValue >= 1000 ? (wonValue / 1000).toFixed(0) + "K" : wonValue.toLocaleString("en-IN")}`} icon={<IndianRupee className="w-5 h-5" />} />
+        <StatCard title="Pipeline Value" value={`₹${totalValue >= 1000 ? (totalValue / 1000).toFixed(0) + "K" : totalValue.toLocaleString("en-IN")}`} icon={<TrendingUp className="w-5 h-5" />} />
+      </div>
+
+      {/* Quick Date Buttons + Filters */}
+      <div className="flex gap-2 flex-wrap items-center">
+        <Button size="sm" variant={fromDate === todayStr && toDate === todayStr ? "default" : "outline"} onClick={() => setQuickDate(todayStr, todayStr)}>Today</Button>
+        <Button size="sm" variant={fromDate === weekAgo && toDate === todayStr ? "default" : "outline"} onClick={() => setQuickDate(weekAgo, todayStr)}>This Week</Button>
+        <Button size="sm" variant={fromDate === monthStart && toDate === todayStr ? "default" : "outline"} onClick={() => setQuickDate(monthStart, todayStr)}>This Month</Button>
+        {(fromDate || toDate) && (
+          <Button size="sm" variant="ghost" onClick={() => { setFromDate(""); setToDate(""); }}>Clear</Button>
+        )}
       </div>
 
       <div className="flex gap-3 flex-wrap items-center">
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-muted-foreground">From</span>
+          <Input type="date" className="w-36 h-9" value={fromDate} onChange={e => setFromDate(e.target.value)} />
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-muted-foreground">To</span>
+          <Input type="date" className="w-36 h-9" value={toDate} onChange={e => setToDate(e.target.value)} />
+        </div>
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-36"><SelectValue placeholder="Category" /></SelectTrigger>
+          <SelectTrigger className="w-36 h-9"><SelectValue placeholder="Category" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Categories</SelectItem>
             {LEAD_CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-32"><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectTrigger className="w-32 h-9"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Status</SelectItem>
             {Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Input type="date" className="w-40" value={dateFilter} onChange={e => setDateFilter(e.target.value)} />
         {user?.role === "admin" && (
           <Select value={viewMode} onValueChange={v => setViewMode(v as "my" | "all")}>
-            <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-32 h-9"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Leads</SelectItem>
               <SelectItem value="my">My Leads</SelectItem>
