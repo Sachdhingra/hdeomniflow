@@ -27,7 +27,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 const ServiceDashboard = () => {
   const { user } = useAuth();
-  const { serviceJobs, addServiceJob, updateServiceJob, softDeleteServiceJob, getProfilesByRole, profiles, hasMoreJobs, loadMoreJobs } = useData();
+  const { serviceJobs, addServiceJob, updateServiceJob, softDeleteServiceJob, getProfilesByRole, profiles, hasMoreJobs, loadMoreJobs, error, retryLoad, loading } = useData();
   const [dateFilter, setDateFilter] = useState("");
   const [tab, setTab] = useState("all");
   const [addOpen, setAddOpen] = useState(false);
