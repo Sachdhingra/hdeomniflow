@@ -163,8 +163,8 @@ const AdminDashboard = () => {
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard title="Sales Leads" value={leads.length} icon={<Users className="w-5 h-5" />} />
-        <StatCard title="Pipeline Value" value={`₹${(totalPipeline / 1000).toFixed(0)}K`} icon={<IndianRupee className="w-5 h-5" />} />
+        <StatCard title="Sales Leads" value={summaryLoading ? "..." : summary.totalLeads} icon={<Users className="w-5 h-5" />} />
+        <StatCard title="Pipeline Value" value={summaryLoading ? "..." : `₹${(summary.totalPipelineValue / 1000).toFixed(0)}K`} icon={<IndianRupee className="w-5 h-5" />} />
         <StatCard title="Won Value" value={`₹${(wonValue / 1000).toFixed(0)}K`} icon={<TrendingUp className="w-5 h-5" />} trendUp trend="Closed" />
         <StatCard title="Service Revenue" value={`₹${serviceRevenue.toLocaleString("en-IN")}`} icon={<Wrench className="w-5 h-5" />} />
       </div>
