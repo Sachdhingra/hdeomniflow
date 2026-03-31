@@ -92,10 +92,12 @@ const AppRoutes = () => {
 
   return (
     <AppLayout>
-      <Routes>
-        {renderRoutes()}
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          {renderRoutes()}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </Suspense>
     </AppLayout>
   );
 };
