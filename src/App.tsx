@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -7,16 +8,23 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { DataProvider } from "@/contexts/DataContext";
 import AppLayout from "@/components/AppLayout";
 import Login from "@/pages/Login";
-import AdminDashboard from "@/pages/AdminDashboard";
-import SalesDashboard from "@/pages/SalesDashboard";
-import SalesPipeline from "@/pages/SalesPipeline";
-import ServiceDashboard from "@/pages/ServiceDashboard";
-import ServiceCalendar from "@/pages/ServiceCalendar";
-import ServiceClaims from "@/pages/ServiceClaims";
-import FieldAgentDashboard from "@/pages/FieldAgentDashboard";
-import SiteAgentDashboard from "@/pages/SiteAgentDashboard";
-import NotFound from "@/pages/NotFound";
 import { Loader2 } from "lucide-react";
+
+const AdminDashboard = lazy(() => import("@/pages/AdminDashboard"));
+const SalesDashboard = lazy(() => import("@/pages/SalesDashboard"));
+const SalesPipeline = lazy(() => import("@/pages/SalesPipeline"));
+const ServiceDashboard = lazy(() => import("@/pages/ServiceDashboard"));
+const ServiceCalendar = lazy(() => import("@/pages/ServiceCalendar"));
+const ServiceClaims = lazy(() => import("@/pages/ServiceClaims"));
+const FieldAgentDashboard = lazy(() => import("@/pages/FieldAgentDashboard"));
+const SiteAgentDashboard = lazy(() => import("@/pages/SiteAgentDashboard"));
+const NotFound = lazy(() => import("@/pages/NotFound"));
+
+const PageLoader = () => (
+  <div className="flex items-center justify-center py-20">
+    <Loader2 className="w-6 h-6 animate-spin text-primary" />
+  </div>
+);
 
 const queryClient = new QueryClient();
 
