@@ -42,6 +42,8 @@ const ServiceDashboard = () => {
 
   const fieldAgents = getProfilesByRole("field_agent");
   const isAdmin = user?.role === "admin";
+  const isServiceHead = user?.role === "service_head";
+  const canAssign = isAdmin || isServiceHead;
 
   const filteredJobs = useMemo(() => {
     let jobs = serviceJobs;
