@@ -22,6 +22,8 @@ export type Database = {
           created_by: string
           customer_name: string
           customer_phone: string
+          deleted_at: string | null
+          deleted_by: string | null
           delivery_assigned_to: string | null
           delivery_date: string | null
           delivery_notes: string | null
@@ -43,6 +45,8 @@ export type Database = {
           created_by: string
           customer_name: string
           customer_phone: string
+          deleted_at?: string | null
+          deleted_by?: string | null
           delivery_assigned_to?: string | null
           delivery_date?: string | null
           delivery_notes?: string | null
@@ -64,6 +68,8 @@ export type Database = {
           created_by?: string
           customer_name?: string
           customer_phone?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
           delivery_assigned_to?: string | null
           delivery_date?: string | null
           delivery_notes?: string | null
@@ -156,6 +162,8 @@ export type Database = {
           customer_phone: string
           date_received: string
           date_to_attend: string | null
+          deleted_at: string | null
+          deleted_by: string | null
           description: string
           id: string
           is_foc: boolean
@@ -183,6 +191,8 @@ export type Database = {
           customer_phone: string
           date_received?: string
           date_to_attend?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           description?: string
           id?: string
           is_foc?: boolean
@@ -210,6 +220,8 @@ export type Database = {
           customer_phone?: string
           date_received?: string
           date_to_attend?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           description?: string
           id?: string
           is_foc?: boolean
@@ -241,6 +253,8 @@ export type Database = {
           customer_name: string | null
           customer_phone: string | null
           date: string
+          deleted_at: string | null
+          deleted_by: string | null
           follow_up_date: string | null
           id: string
           lat: number | null
@@ -260,6 +274,8 @@ export type Database = {
           customer_name?: string | null
           customer_phone?: string | null
           date?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
           follow_up_date?: string | null
           id?: string
           lat?: number | null
@@ -279,6 +295,8 @@ export type Database = {
           customer_name?: string | null
           customer_phone?: string | null
           date?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
           follow_up_date?: string | null
           id?: string
           lat?: number | null
