@@ -95,6 +95,9 @@ const ServiceDashboard = () => {
     setAssignDate("");
   };
 
+  if (error && serviceJobs.length === 0) return <LoadingError message={error} onRetry={retryLoad} />;
+  if (loading && serviceJobs.length === 0) return <DashboardSkeleton />;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">

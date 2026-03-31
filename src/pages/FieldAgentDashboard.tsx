@@ -56,6 +56,9 @@ const FieldAgentDashboard = () => {
     setRemarks("");
   };
 
+  if (error && myJobs.length === 0) return <LoadingError message={error} onRetry={retryLoad} />;
+  if (loading && myJobs.length === 0) return <DashboardSkeleton />;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
