@@ -11,6 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MapPin, Clock, CheckCircle, Navigation, Phone, Camera, Wrench, Truck } from "lucide-react";
 import { toast } from "sonner";
+import LoadingError from "@/components/LoadingError";
+import { DashboardSkeleton } from "@/components/DashboardSkeleton";
 
 const FieldAgentDashboard = () => {
   const { user } = useAuth();
