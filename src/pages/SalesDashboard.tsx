@@ -4,6 +4,7 @@ import { useData, LEAD_CATEGORIES, LeadCategory, LeadStatus } from "@/contexts/D
 import StatCard from "@/components/StatCard";
 import LeadForm from "@/components/LeadForm";
 import DeliveryAssignDialog from "@/components/DeliveryAssignDialog";
+import DeleteButton from "@/components/DeleteButton";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -30,7 +31,7 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
 
 const SalesDashboard = () => {
   const { user } = useAuth();
-  const { leads, updateLead } = useData();
+  const { leads, updateLead, softDeleteLead, hasMoreLeads, loadMoreLeads } = useData();
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [fromDate, setFromDate] = useState("");
@@ -53,10 +54,7 @@ const SalesDashboard = () => {
     return () => clearInterval(interval);
   }, [user, leads, todayStr]);
 
-  const setQuickDate = (from: string, to: string) => {
-    setFromDate(from);
-    setToDate(to);
-  };
+  const setQuickDate = (from: string, to: string) => { setFromDate(from); setToDate(to); };
 
   const filteredLeads = useMemo(() => {
     return leads.filter(l => {
@@ -77,8 +75,7 @@ const SalesDashboard = () => {
   const wonValue = wonLeads.reduce((s, l) => s + Number(l.value_in_rupees), 0);
   const overdueLeads = filteredLeads.filter(l => l.status === "overdue");
   const needFollowUp = filteredLeads.filter(l => {
-    const lastDate = new Date(l.last_follow_up);
-    const daysSince = Math.floor((Date.now() - lastDate.getTime()) / 86400000);
+    const daysSince = Math.floor((Date.now() - new Date(l.last_follow_up).getTime()) / 86400000);
     return daysSince >= 2 && l.status !== "won" && l.status !== "lost";
   });
 
@@ -89,6 +86,8 @@ const SalesDashboard = () => {
       toast.error(err.message || "Failed to update status");
     }
   };
+
+  const isAdmin = user?.role === "admin";
 
   return (
     <div className="space-y-6">
@@ -122,7 +121,6 @@ const SalesDashboard = () => {
         </Card>
       )}
 
-      {/* Performance Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard title="Total Leads" value={filteredLeads.length} icon={<Users className="w-5 h-5" />} />
         <StatCard title="Won Deals" value={wonLeads.length} icon={<Trophy className="w-5 h-5" />} trend={`${filteredLeads.length ? Math.round((wonLeads.length / filteredLeads.length) * 100) : 0}% conversion`} trendUp />
@@ -130,14 +128,11 @@ const SalesDashboard = () => {
         <StatCard title="Pipeline Value" value={`₹${totalValue >= 1000 ? (totalValue / 1000).toFixed(0) + "K" : totalValue.toLocaleString("en-IN")}`} icon={<TrendingUp className="w-5 h-5" />} />
       </div>
 
-      {/* Quick Date Buttons + Filters */}
       <div className="flex gap-2 flex-wrap items-center">
         <Button size="sm" variant={fromDate === todayStr && toDate === todayStr ? "default" : "outline"} onClick={() => setQuickDate(todayStr, todayStr)}>Today</Button>
         <Button size="sm" variant={fromDate === weekAgo && toDate === todayStr ? "default" : "outline"} onClick={() => setQuickDate(weekAgo, todayStr)}>This Week</Button>
         <Button size="sm" variant={fromDate === monthStart && toDate === todayStr ? "default" : "outline"} onClick={() => setQuickDate(monthStart, todayStr)}>This Month</Button>
-        {(fromDate || toDate) && (
-          <Button size="sm" variant="ghost" onClick={() => { setFromDate(""); setToDate(""); }}>Clear</Button>
-        )}
+        {(fromDate || toDate) && <Button size="sm" variant="ghost" onClick={() => { setFromDate(""); setToDate(""); }}>Clear</Button>}
       </div>
 
       <div className="flex gap-3 flex-wrap items-center">
@@ -163,7 +158,7 @@ const SalesDashboard = () => {
             {Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
           </SelectContent>
         </Select>
-        {user?.role === "admin" && (
+        {isAdmin && (
           <Select value={viewMode} onValueChange={v => setViewMode(v as "my" | "all")}>
             <SelectTrigger className="w-32 h-9"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -197,7 +192,10 @@ const SalesDashboard = () => {
                   {lead.notes && <p className="text-sm text-muted-foreground mt-1">{lead.notes}</p>}
                 </div>
                 <div className="text-right shrink-0 space-y-1">
-                  <p className="text-lg font-bold">₹{Number(lead.value_in_rupees).toLocaleString("en-IN")}</p>
+                  <div className="flex items-center gap-1 justify-end">
+                    <p className="text-lg font-bold">₹{Number(lead.value_in_rupees).toLocaleString("en-IN")}</p>
+                    {isAdmin && <DeleteButton onDelete={() => softDeleteLead(lead.id)} itemName="Lead" />}
+                  </div>
                   <Select value={lead.status} onValueChange={v => handleStatusChange(lead.id, v as LeadStatus)}>
                     <SelectTrigger className="w-28 h-7 text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -209,9 +207,7 @@ const SalesDashboard = () => {
                       <Truck className="w-3 h-3" />Assign Delivery
                     </Button>
                   )}
-                  {lead.delivery_date && (
-                    <p className="text-xs text-success">🚚 Delivery: {lead.delivery_date}</p>
-                  )}
+                  {lead.delivery_date && <p className="text-xs text-success">🚚 Delivery: {lead.delivery_date}</p>}
                 </div>
               </div>
             </CardContent>
@@ -221,6 +217,12 @@ const SalesDashboard = () => {
           <Card className="shadow-card"><CardContent className="p-8 text-center text-muted-foreground">No leads found.</CardContent></Card>
         )}
       </div>
+
+      {hasMoreLeads && (
+        <div className="flex justify-center">
+          <Button variant="outline" onClick={loadMoreLeads}>Load More Leads</Button>
+        </div>
+      )}
 
       {deliveryLead && (
         <DeliveryAssignDialog lead={deliveryLead} open={!!deliveryLead} onOpenChange={open => { if (!open) setDeliveryLead(null); }} />

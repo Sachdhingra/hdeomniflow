@@ -1,6 +1,8 @@
 import { useState, useMemo } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { useData, LEAD_CATEGORIES, LeadCategory } from "@/contexts/DataContext";
 import StatCard from "@/components/StatCard";
+import DeleteButton from "@/components/DeleteButton";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,7 +24,8 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 const ServiceDashboard = () => {
-  const { serviceJobs, addServiceJob, updateServiceJob, getProfilesByRole, profiles } = useData();
+  const { user } = useAuth();
+  const { serviceJobs, addServiceJob, updateServiceJob, softDeleteServiceJob, getProfilesByRole, profiles, hasMoreJobs, loadMoreJobs } = useData();
   const [dateFilter, setDateFilter] = useState("");
   const [tab, setTab] = useState("all");
   const [addOpen, setAddOpen] = useState(false);
@@ -36,6 +39,7 @@ const ServiceDashboard = () => {
   });
 
   const fieldAgents = getProfilesByRole("field_agent");
+  const isAdmin = user?.role === "admin";
 
   const filteredJobs = useMemo(() => {
     let jobs = serviceJobs;
@@ -183,7 +187,10 @@ const ServiceDashboard = () => {
                   )}
                 </div>
                 <div className="text-right shrink-0 space-y-1">
-                  {!job.is_foc && <p className="font-bold">₹{Number(job.value).toLocaleString("en-IN")}</p>}
+                  <div className="flex items-center gap-1 justify-end">
+                    {!job.is_foc && <p className="font-bold">₹{Number(job.value).toLocaleString("en-IN")}</p>}
+                    {isAdmin && <DeleteButton onDelete={() => softDeleteServiceJob(job.id)} itemName="Job" />}
+                  </div>
                   <p className="text-xs text-muted-foreground">Attend: {job.date_to_attend}</p>
                   {job.status === "pending" && (
                     <Button size="sm" className="gap-1 text-xs h-7" onClick={() => setAssignOpen(job.id)}>
@@ -204,6 +211,12 @@ const ServiceDashboard = () => {
           <Card className="shadow-card"><CardContent className="p-8 text-center text-muted-foreground">No jobs found.</CardContent></Card>
         )}
       </div>
+
+      {hasMoreJobs && (
+        <div className="flex justify-center">
+          <Button variant="outline" onClick={loadMoreJobs}>Load More Jobs</Button>
+        </div>
+      )}
 
       <Dialog open={!!assignOpen} onOpenChange={open => { if (!open) setAssignOpen(null); }}>
         <DialogContent className="sm:max-w-sm">
