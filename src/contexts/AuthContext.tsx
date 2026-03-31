@@ -66,27 +66,50 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
+    let mounted = true;
+
+    // Safety timeout: if auth check takes >5s, stop loading
+    const timeout = setTimeout(() => {
+      if (mounted) setLoading(false);
+    }, 5000);
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
+        if (!mounted) return;
         if (session?.user) {
-          const appUser = await buildUser(session.user);
-          setUser(appUser);
+          try {
+            const appUser = await buildUser(session.user);
+            if (mounted) setUser(appUser);
+          } catch (e) {
+            console.error("Failed to build user:", e);
+          }
         } else {
-          setUser(null);
+          if (mounted) setUser(null);
         }
-        setLoading(false);
+        if (mounted) { setLoading(false); clearTimeout(timeout); }
       }
     );
 
     supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!mounted) return;
       if (session?.user) {
-        const appUser = await buildUser(session.user);
-        setUser(appUser);
+        try {
+          const appUser = await buildUser(session.user);
+          if (mounted) setUser(appUser);
+        } catch (e) {
+          console.error("Failed to build user from session:", e);
+        }
       }
-      setLoading(false);
+      if (mounted) { setLoading(false); clearTimeout(timeout); }
+    }).catch(() => {
+      if (mounted) { setLoading(false); clearTimeout(timeout); }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
