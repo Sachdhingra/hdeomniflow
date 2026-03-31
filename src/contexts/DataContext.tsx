@@ -27,7 +27,37 @@ export type SiteVisit = Tables<"site_visits">;
 export type Notification = Tables<"notifications">;
 export type Profile = Tables<"profiles">;
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 20;
+
+// --- Local cache helpers ---
+const CACHE_PREFIX = "furncrm_cache_";
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+function setCache<T>(key: string, data: T) {
+  try {
+    localStorage.setItem(CACHE_PREFIX + key, JSON.stringify({ ts: Date.now(), data }));
+  } catch {}
+}
+
+function getCache<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(CACHE_PREFIX + key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (Date.now() - parsed.ts > CACHE_TTL) return null;
+    return parsed.data as T;
+  } catch {
+    return null;
+  }
+}
+
+// --- Summary types for Stage 1 fast load ---
+interface SummaryData {
+  totalLeads: number;
+  totalPipelineValue: number;
+  pendingJobs: number;
+  overdueLeads: number;
+}
 
 interface DataContextType {
   leads: Lead[];
@@ -36,6 +66,9 @@ interface DataContextType {
   notifications: Notification[];
   profiles: Profile[];
   loading: boolean;
+  summaryLoading: boolean;
+  summary: SummaryData;
+  error: string | null;
   addLead: (lead: TablesInsert<"leads">) => Promise<void>;
   updateLead: (id: string, updates: Partial<Lead>) => Promise<void>;
   softDeleteLead: (id: string) => Promise<void>;
@@ -52,12 +85,11 @@ interface DataContextType {
   markNotificationRead: (id: string) => Promise<void>;
   getProfilesByRole: (role: string) => Profile[];
   refreshAll: () => Promise<void>;
-  // Pagination
+  retryLoad: () => Promise<void>;
   hasMoreLeads: boolean;
   hasMoreJobs: boolean;
   loadMoreLeads: () => Promise<void>;
   loadMoreJobs: () => Promise<void>;
-  // Deleted records (admin)
   deletedLeads: Lead[];
   deletedServiceJobs: ServiceJob[];
   deletedSiteVisits: SiteVisit[];
@@ -68,13 +100,16 @@ const DataContext = createContext<DataContextType | null>(null);
 
 export const DataProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth();
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [serviceJobs, setServiceJobs] = useState<ServiceJob[]>([]);
-  const [siteVisits, setSiteVisits] = useState<SiteVisit[]>([]);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [allRoles, setAllRoles] = useState<{ user_id: string; role: string }[]>([]);
+  const [leads, setLeads] = useState<Lead[]>(() => getCache<Lead[]>("leads") || []);
+  const [serviceJobs, setServiceJobs] = useState<ServiceJob[]>(() => getCache<ServiceJob[]>("serviceJobs") || []);
+  const [siteVisits, setSiteVisits] = useState<SiteVisit[]>(() => getCache<SiteVisit[]>("siteVisits") || []);
+  const [notifications, setNotifications] = useState<Notification[]>(() => getCache<Notification[]>("notifications") || []);
+  const [profiles, setProfiles] = useState<Profile[]>(() => getCache<Profile[]>("profiles") || []);
+  const [allRoles, setAllRoles] = useState<{ user_id: string; role: string }[]>(() => getCache<any[]>("roles") || []);
   const [loading, setLoading] = useState(true);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [summary, setSummary] = useState<SummaryData>(() => getCache<SummaryData>("summary") || { totalLeads: 0, totalPipelineValue: 0, pendingJobs: 0, overdueLeads: 0 });
+  const [error, setError] = useState<string | null>(null);
   const [hasMoreLeads, setHasMoreLeads] = useState(false);
   const [hasMoreJobs, setHasMoreJobs] = useState(false);
   const [deletedLeads, setDeletedLeads] = useState<Lead[]>([]);
@@ -82,74 +117,176 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const [deletedSiteVisits, setDeletedSiteVisits] = useState<SiteVisit[]>([]);
   const leadsPageRef = useRef(0);
   const jobsPageRef = useRef(0);
+  const fetchingRef = useRef(false);
 
-  const fetchLeads = useCallback(async (reset = true) => {
-    const page = reset ? 0 : leadsPageRef.current;
-    const from = page * PAGE_SIZE;
-    const to = from + PAGE_SIZE - 1;
-    const { data, count } = await supabase
-      .from("leads")
-      .select("*", { count: "exact" })
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .range(from, to);
-    if (data) {
-      if (reset) {
-        setLeads(data);
-        leadsPageRef.current = 1;
-      } else {
-        setLeads(prev => [...prev, ...data]);
-        leadsPageRef.current = page + 1;
-      }
-      setHasMoreLeads((count || 0) > (page + 1) * PAGE_SIZE);
+  // --- Stage 1: Fast summary (counts only, no full records) ---
+  const fetchSummary = useCallback(async () => {
+    try {
+      setSummaryLoading(true);
+      const [leadsCount, jobsCount, overdueCount] = await Promise.all([
+        supabase.from("leads").select("*", { count: "exact", head: true }).is("deleted_at", null),
+        supabase.from("service_jobs").select("*", { count: "exact", head: true }).is("deleted_at", null).eq("status", "pending"),
+        supabase.from("leads").select("*", { count: "exact", head: true }).is("deleted_at", null).eq("status", "overdue"),
+      ]);
+
+      // Get pipeline value with a small query
+      const { data: pipelineData } = await supabase
+        .from("leads")
+        .select("value_in_rupees")
+        .is("deleted_at", null)
+        .limit(1000);
+
+      const totalPipelineValue = pipelineData?.reduce((s, l) => s + Number(l.value_in_rupees), 0) || 0;
+
+      const s: SummaryData = {
+        totalLeads: leadsCount.count || 0,
+        totalPipelineValue,
+        pendingJobs: jobsCount.count || 0,
+        overdueLeads: overdueCount.count || 0,
+      };
+      setSummary(s);
+      setCache("summary", s);
+      setError(null);
+    } catch (err: any) {
+      setError("Failed to load summary. Tap retry.");
+    } finally {
+      setSummaryLoading(false);
     }
   }, []);
+
+  // --- Stage 2: Role-based data fetching ---
+  const fetchLeads = useCallback(async (reset = true) => {
+    if (!user) return;
+    try {
+      const page = reset ? 0 : leadsPageRef.current;
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
+      let query = supabase
+        .from("leads")
+        .select("*", { count: "exact" })
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .range(from, to);
+
+      // Role-based filtering is handled by RLS, but we can optimize
+      // by not fetching data we don't need
+      const { data, count, error: fetchError } = await query;
+      if (fetchError) throw fetchError;
+
+      if (data) {
+        if (reset) {
+          setLeads(data);
+          leadsPageRef.current = 1;
+          setCache("leads", data);
+        } else {
+          setLeads(prev => {
+            const updated = [...prev, ...data];
+            setCache("leads", updated);
+            return updated;
+          });
+          leadsPageRef.current = page + 1;
+        }
+        setHasMoreLeads((count || 0) > (page + 1) * PAGE_SIZE);
+      }
+      setError(null);
+    } catch (err: any) {
+      setError("Failed to load leads. Tap retry.");
+    }
+  }, [user]);
 
   const loadMoreLeads = useCallback(async () => {
     await fetchLeads(false);
   }, [fetchLeads]);
 
   const fetchServiceJobs = useCallback(async (reset = true) => {
-    const page = reset ? 0 : jobsPageRef.current;
-    const from = page * PAGE_SIZE;
-    const to = from + PAGE_SIZE - 1;
-    const { data, count } = await supabase
-      .from("service_jobs")
-      .select("*", { count: "exact" })
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .range(from, to);
-    if (data) {
-      if (reset) {
-        setServiceJobs(data);
-        jobsPageRef.current = 1;
-      } else {
-        setServiceJobs(prev => [...prev, ...data]);
-        jobsPageRef.current = page + 1;
+    if (!user) return;
+    try {
+      const page = reset ? 0 : jobsPageRef.current;
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
+      const { data, count, error: fetchError } = await supabase
+        .from("service_jobs")
+        .select("*", { count: "exact" })
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .range(from, to);
+
+      if (fetchError) throw fetchError;
+
+      if (data) {
+        if (reset) {
+          setServiceJobs(data);
+          jobsPageRef.current = 1;
+          setCache("serviceJobs", data);
+        } else {
+          setServiceJobs(prev => {
+            const updated = [...prev, ...data];
+            setCache("serviceJobs", updated);
+            return updated;
+          });
+          jobsPageRef.current = page + 1;
+        }
+        setHasMoreJobs((count || 0) > (page + 1) * PAGE_SIZE);
       }
-      setHasMoreJobs((count || 0) > (page + 1) * PAGE_SIZE);
+      setError(null);
+    } catch (err: any) {
+      setError("Failed to load service jobs. Tap retry.");
     }
-  }, []);
+  }, [user]);
 
   const loadMoreJobs = useCallback(async () => {
     await fetchServiceJobs(false);
   }, [fetchServiceJobs]);
 
   const fetchSiteVisits = useCallback(async () => {
-    const { data } = await supabase.from("site_visits").select("*").is("deleted_at", null).order("created_at", { ascending: false }).limit(PAGE_SIZE);
-    if (data) setSiteVisits(data);
-  }, []);
+    if (!user) return;
+    try {
+      const { data, error: fetchError } = await supabase
+        .from("site_visits")
+        .select("*")
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(PAGE_SIZE);
+      if (fetchError) throw fetchError;
+      if (data) {
+        setSiteVisits(data);
+        setCache("siteVisits", data);
+      }
+    } catch {}
+  }, [user]);
 
   const fetchNotifications = useCallback(async () => {
-    const { data } = await supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(PAGE_SIZE);
-    if (data) setNotifications(data);
-  }, []);
+    if (!user) return;
+    try {
+      const { data } = await supabase
+        .from("notifications")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(PAGE_SIZE);
+      if (data) {
+        setNotifications(data);
+        setCache("notifications", data);
+      }
+    } catch {}
+  }, [user]);
 
   const fetchProfiles = useCallback(async () => {
-    const { data } = await supabase.from("profiles").select("*");
-    if (data) setProfiles(data);
-    const { data: roles } = await supabase.from("user_roles").select("user_id, role");
-    if (roles) setAllRoles(roles);
+    try {
+      const [profilesRes, rolesRes] = await Promise.all([
+        supabase.from("profiles").select("*"),
+        supabase.from("user_roles").select("user_id, role"),
+      ]);
+      if (profilesRes.data) {
+        setProfiles(profilesRes.data);
+        setCache("profiles", profilesRes.data);
+      }
+      if (rolesRes.data) {
+        setAllRoles(rolesRes.data);
+        setCache("roles", rolesRes.data);
+      }
+    } catch {}
   }, []);
 
   const fetchDeletedRecords = useCallback(async () => {
@@ -163,30 +300,64 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     if (visitsRes.data) setDeletedSiteVisits(visitsRes.data);
   }, []);
 
-  // Staggered loading: summary first, then details
+  // 3-stage loading
   const refreshAll = useCallback(async () => {
-    setLoading(true);
-    // Phase 1: profiles (needed for UI) + leads (main data)
-    await Promise.all([fetchProfiles(), fetchLeads()]);
-    setLoading(false);
-    // Phase 2: secondary data (non-blocking)
-    Promise.all([fetchServiceJobs(), fetchSiteVisits(), fetchNotifications()]);
-  }, [fetchLeads, fetchServiceJobs, fetchSiteVisits, fetchNotifications, fetchProfiles]);
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
+    setError(null);
+
+    try {
+      // Stage 1: Summary + profiles (instant)
+      setSummaryLoading(true);
+      await Promise.all([fetchSummary(), fetchProfiles()]);
+      setSummaryLoading(false);
+
+      // Stage 2: Recent data (background, non-blocking for UI)
+      setLoading(true);
+      await fetchLeads();
+      setLoading(false);
+
+      // Stage 3: Secondary data (fully background)
+      fetchServiceJobs();
+      fetchSiteVisits();
+      fetchNotifications();
+    } catch (err: any) {
+      setError("Something went wrong. Tap retry.");
+      setLoading(false);
+      setSummaryLoading(false);
+    } finally {
+      fetchingRef.current = false;
+    }
+  }, [fetchSummary, fetchProfiles, fetchLeads, fetchServiceJobs, fetchSiteVisits, fetchNotifications]);
+
+  const retryLoad = useCallback(async () => {
+    setError(null);
+    await refreshAll();
+  }, [refreshAll]);
 
   useEffect(() => {
     if (user) refreshAll();
   }, [user, refreshAll]);
 
-  // Real-time subscriptions
+  // Real-time subscriptions — debounced to avoid rapid refetches
   useEffect(() => {
     if (!user) return;
 
+    let leadsTimeout: NodeJS.Timeout;
+    let jobsTimeout: NodeJS.Timeout;
+
     const leadsChannel = supabase.channel("leads-changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, () => fetchLeads())
+      .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, () => {
+        clearTimeout(leadsTimeout);
+        leadsTimeout = setTimeout(() => fetchLeads(), 1000);
+      })
       .subscribe();
 
     const jobsChannel = supabase.channel("jobs-changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "service_jobs" }, () => fetchServiceJobs())
+      .on("postgres_changes", { event: "*", schema: "public", table: "service_jobs" }, () => {
+        clearTimeout(jobsTimeout);
+        jobsTimeout = setTimeout(() => fetchServiceJobs(), 1000);
+      })
       .subscribe();
 
     const notifChannel = supabase.channel("notif-changes")
@@ -198,6 +369,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       .subscribe();
 
     return () => {
+      clearTimeout(leadsTimeout);
+      clearTimeout(jobsTimeout);
       supabase.removeChannel(leadsChannel);
       supabase.removeChannel(jobsChannel);
       supabase.removeChannel(notifChannel);
@@ -369,11 +542,12 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   return (
     <DataContext.Provider value={{
       leads, serviceJobs, siteVisits, notifications, profiles, loading,
+      summaryLoading, summary, error,
       addLead, updateLead, softDeleteLead, restoreLead, assignDelivery,
       addServiceJob, updateServiceJob, softDeleteServiceJob, restoreServiceJob,
       addSiteVisit, softDeleteSiteVisit, restoreSiteVisit,
       addNotification, markNotificationRead,
-      getProfilesByRole, refreshAll,
+      getProfilesByRole, refreshAll, retryLoad,
       hasMoreLeads, hasMoreJobs, loadMoreLeads, loadMoreJobs,
       deletedLeads, deletedServiceJobs, deletedSiteVisits, fetchDeletedRecords,
     }}>

@@ -18,9 +18,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Users, Wrench, IndianRupee, TrendingUp, MapPin, BarChart3, UserPlus, Trophy, Truck, KeyRound, Ban, CheckCircle, Trash2, Loader2, Download, Archive } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import LoadingError from "@/components/LoadingError";
+import { DashboardSkeleton } from "@/components/DashboardSkeleton";
 
 const AdminDashboard = () => {
-  const { leads, serviceJobs, siteVisits, profiles, getProfilesByRole, softDeleteLead, softDeleteServiceJob, softDeleteSiteVisit } = useData();
+  const { leads, serviceJobs, siteVisits, profiles, getProfilesByRole, softDeleteLead, softDeleteServiceJob, softDeleteSiteVisit, summaryLoading, summary, error, retryLoad, loading } = useData();
   const { allProfiles, refreshProfiles } = useAuth();
   const [tab, setTab] = useState("overview");
   const [staffOpen, setStaffOpen] = useState(false);
@@ -110,8 +112,12 @@ const AdminDashboard = () => {
     return { ...p, active: profile?.active ?? true };
   });
 
+  if (error && leads.length === 0) return <LoadingError message={error} onRetry={retryLoad} />;
+  if (summaryLoading && leads.length === 0) return <DashboardSkeleton />;
+
   return (
     <div className="space-y-6">
+      {error && <LoadingError message={error} onRetry={retryLoad} />}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">Admin Dashboard</h1>
@@ -157,8 +163,8 @@ const AdminDashboard = () => {
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard title="Sales Leads" value={leads.length} icon={<Users className="w-5 h-5" />} />
-        <StatCard title="Pipeline Value" value={`₹${(totalPipeline / 1000).toFixed(0)}K`} icon={<IndianRupee className="w-5 h-5" />} />
+        <StatCard title="Sales Leads" value={summaryLoading ? "..." : summary.totalLeads} icon={<Users className="w-5 h-5" />} />
+        <StatCard title="Pipeline Value" value={summaryLoading ? "..." : `₹${(summary.totalPipelineValue / 1000).toFixed(0)}K`} icon={<IndianRupee className="w-5 h-5" />} />
         <StatCard title="Won Value" value={`₹${(wonValue / 1000).toFixed(0)}K`} icon={<TrendingUp className="w-5 h-5" />} trendUp trend="Closed" />
         <StatCard title="Service Revenue" value={`₹${serviceRevenue.toLocaleString("en-IN")}`} icon={<Wrench className="w-5 h-5" />} />
       </div>

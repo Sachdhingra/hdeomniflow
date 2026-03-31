@@ -5,6 +5,8 @@ import StatCard from "@/components/StatCard";
 import LeadForm from "@/components/LeadForm";
 import DeliveryAssignDialog from "@/components/DeliveryAssignDialog";
 import DeleteButton from "@/components/DeleteButton";
+import LoadingError from "@/components/LoadingError";
+import { DashboardSkeleton } from "@/components/DashboardSkeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -31,7 +33,7 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
 
 const SalesDashboard = () => {
   const { user } = useAuth();
-  const { leads, updateLead, softDeleteLead, hasMoreLeads, loadMoreLeads } = useData();
+  const { leads, updateLead, softDeleteLead, hasMoreLeads, loadMoreLeads, error, retryLoad, loading } = useData();
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [fromDate, setFromDate] = useState("");
@@ -88,6 +90,9 @@ const SalesDashboard = () => {
   };
 
   const isAdmin = user?.role === "admin";
+
+  if (error && leads.length === 0) return <LoadingError message={error} onRetry={retryLoad} />;
+  if (loading && leads.length === 0) return <DashboardSkeleton />;
 
   return (
     <div className="space-y-6">

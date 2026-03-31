@@ -15,6 +15,8 @@ import { Switch } from "@/components/ui/switch";
 import { Wrench, IndianRupee, Clock, Plus, AlertCircle, MapPin, Phone, Truck, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import LoadingError from "@/components/LoadingError";
+import { DashboardSkeleton } from "@/components/DashboardSkeleton";
 
 const STATUS_BADGE: Record<string, string> = {
   pending: "bg-warning/10 text-warning",
@@ -25,7 +27,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 const ServiceDashboard = () => {
   const { user } = useAuth();
-  const { serviceJobs, addServiceJob, updateServiceJob, softDeleteServiceJob, getProfilesByRole, profiles, hasMoreJobs, loadMoreJobs } = useData();
+  const { serviceJobs, addServiceJob, updateServiceJob, softDeleteServiceJob, getProfilesByRole, profiles, hasMoreJobs, loadMoreJobs, error, retryLoad, loading } = useData();
   const [dateFilter, setDateFilter] = useState("");
   const [tab, setTab] = useState("all");
   const [addOpen, setAddOpen] = useState(false);
@@ -92,6 +94,9 @@ const ServiceDashboard = () => {
     setSelectedAgent("");
     setAssignDate("");
   };
+
+  if (error && serviceJobs.length === 0) return <LoadingError message={error} onRetry={retryLoad} />;
+  if (loading && serviceJobs.length === 0) return <DashboardSkeleton />;
 
   return (
     <div className="space-y-6">

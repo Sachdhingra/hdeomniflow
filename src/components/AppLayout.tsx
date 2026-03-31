@@ -28,13 +28,13 @@ const ROLE_LABELS: Record<UserRole, string> = {
 
 const AppLayout = ({ children }: { children: ReactNode }) => {
   const { user, logout } = useAuth();
-  const { leads, serviceJobs, notifications } = useData();
+  const { notifications, error, summary } = useData();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   if (!user) return null;
 
-  const overdueCount = leads.filter(l => l.status === "overdue").length;
-  const pendingJobCount = serviceJobs.filter(j => j.status === "pending").length;
+  const overdueCount = summary.overdueLeads;
+  const pendingJobCount = summary.pendingJobs;
   const myUnread = notifications.filter(n => (n.user_id === user.id || user.role === "admin") && !n.read).length;
 
   const NAV_ITEMS: Record<UserRole, NavItem[]> = {

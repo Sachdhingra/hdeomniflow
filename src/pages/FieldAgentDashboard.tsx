@@ -11,10 +11,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MapPin, Clock, CheckCircle, Navigation, Phone, Camera, Wrench, Truck } from "lucide-react";
 import { toast } from "sonner";
+import LoadingError from "@/components/LoadingError";
+import { DashboardSkeleton } from "@/components/DashboardSkeleton";
 
 const FieldAgentDashboard = () => {
   const { user } = useAuth();
-  const { serviceJobs, updateServiceJob } = useData();
+  const { serviceJobs, updateServiceJob, error, retryLoad, loading } = useData();
   const [completeDialog, setCompleteDialog] = useState<string | null>(null);
   const [remarks, setRemarks] = useState("");
   const [gpsActive, setGpsActive] = useState(false);
@@ -53,6 +55,9 @@ const FieldAgentDashboard = () => {
     setCompleteDialog(null);
     setRemarks("");
   };
+
+  if (error && myJobs.length === 0) return <LoadingError message={error} onRetry={retryLoad} />;
+  if (loading && myJobs.length === 0) return <DashboardSkeleton />;
 
   return (
     <div className="space-y-6">
