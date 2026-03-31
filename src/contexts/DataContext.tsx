@@ -119,24 +119,33 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const jobsPageRef = useRef(0);
   const fetchingRef = useRef(false);
 
-  // --- Stage 1: Fast summary via server-side RPC (single query) ---
+  // --- Stage 1: Fast summary (counts only, no full records) ---
   const fetchSummary = useCallback(async () => {
     try {
       setSummaryLoading(true);
-      const { data, error: rpcError } = await supabase.rpc("get_dashboard_summary");
-      if (rpcError) throw rpcError;
+      const [leadsCount, jobsCount, overdueCount] = await Promise.all([
+        supabase.from("leads").select("*", { count: "exact", head: true }).is("deleted_at", null),
+        supabase.from("service_jobs").select("*", { count: "exact", head: true }).is("deleted_at", null).eq("status", "pending"),
+        supabase.from("leads").select("*", { count: "exact", head: true }).is("deleted_at", null).eq("status", "overdue"),
+      ]);
 
-      if (data) {
-        const d = data as any;
-        const s: SummaryData = {
-          totalLeads: d.total_leads || 0,
-          totalPipelineValue: d.total_pipeline_value || 0,
-          pendingJobs: d.pending_jobs || 0,
-          overdueLeads: d.overdue_leads || 0,
-        };
-        setSummary(s);
-        setCache("summary", s);
-      }
+      // Get pipeline value with a small query
+      const { data: pipelineData } = await supabase
+        .from("leads")
+        .select("value_in_rupees")
+        .is("deleted_at", null)
+        .limit(1000);
+
+      const totalPipelineValue = pipelineData?.reduce((s, l) => s + Number(l.value_in_rupees), 0) || 0;
+
+      const s: SummaryData = {
+        totalLeads: leadsCount.count || 0,
+        totalPipelineValue,
+        pendingJobs: jobsCount.count || 0,
+        overdueLeads: overdueCount.count || 0,
+      };
+      setSummary(s);
+      setCache("summary", s);
       setError(null);
     } catch (err: any) {
       setError("Failed to load summary. Tap retry.");
