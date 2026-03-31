@@ -15,6 +15,8 @@ import { Switch } from "@/components/ui/switch";
 import { Wrench, IndianRupee, Clock, Plus, AlertCircle, MapPin, Phone, Truck, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import LoadingError from "@/components/LoadingError";
+import { DashboardSkeleton } from "@/components/DashboardSkeleton";
 
 const STATUS_BADGE: Record<string, string> = {
   pending: "bg-warning/10 text-warning",
