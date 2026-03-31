@@ -16,7 +16,7 @@ import { DashboardSkeleton } from "@/components/DashboardSkeleton";
 
 const FieldAgentDashboard = () => {
   const { user } = useAuth();
-  const { serviceJobs, updateServiceJob } = useData();
+  const { serviceJobs, updateServiceJob, error, retryLoad, loading } = useData();
   const [completeDialog, setCompleteDialog] = useState<string | null>(null);
   const [remarks, setRemarks] = useState("");
   const [gpsActive, setGpsActive] = useState(false);
