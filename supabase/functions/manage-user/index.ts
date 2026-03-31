@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
     switch (action) {
       case "reset_password": {
         if (!user_id || !password) throw new Error("user_id and password required");
-        const { error } = await adminClient.auth.admin.updateUser(user_id, { password });
+        const { error } = await adminClient.auth.admin.updateUserById(user_id, { password });
         if (error) throw error;
         return new Response(JSON.stringify({ success: true }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -45,12 +45,10 @@ Deno.serve(async (req) => {
 
       case "disable": {
         if (!user_id) throw new Error("user_id required");
-        // Ban user in auth
-        const { error: banErr } = await adminClient.auth.admin.updateUser(user_id, {
-          ban_duration: "876000h", // ~100 years
+        const { error: banErr } = await adminClient.auth.admin.updateUserById(user_id, {
+          ban_duration: "876000h",
         });
         if (banErr) throw banErr;
-        // Mark inactive in profiles
         await adminClient.from("profiles").update({ active: false }).eq("id", user_id);
         return new Response(JSON.stringify({ success: true }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -59,7 +57,7 @@ Deno.serve(async (req) => {
 
       case "enable": {
         if (!user_id) throw new Error("user_id required");
-        const { error: unbanErr } = await adminClient.auth.admin.updateUser(user_id, {
+        const { error: unbanErr } = await adminClient.auth.admin.updateUserById(user_id, {
           ban_duration: "none",
         });
         if (unbanErr) throw unbanErr;
@@ -78,21 +76,10 @@ Deno.serve(async (req) => {
         });
       }
 
-      case "update_email": {
-        if (!user_id) throw new Error("user_id required");
-        const { email } = await req.json().catch(() => ({}));
-        if (!email) throw new Error("email required");
-        const { error: emailErr } = await adminClient.auth.admin.updateUser(user_id, { email });
-        if (emailErr) throw emailErr;
-        return new Response(JSON.stringify({ success: true }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
       default:
         throw new Error("Invalid action. Use: reset_password, disable, enable, delete");
     }
-  } catch (err) {
+  } catch (err: any) {
     return new Response(
       JSON.stringify({ error: err.message }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }

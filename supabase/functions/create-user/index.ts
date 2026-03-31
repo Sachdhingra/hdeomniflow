@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -36,7 +36,6 @@ Deno.serve(async (req) => {
       throw new Error("Missing required fields: name, password, role");
     }
 
-    // Use username as internal email: username@furncrm.local
     const email = `${name.toLowerCase().replace(/\s+/g, ".")}@furncrm.local`;
 
     // Check if username already exists
@@ -69,7 +68,7 @@ Deno.serve(async (req) => {
       JSON.stringify({ success: true, user_id: newUser.user.id }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (err) {
+  } catch (err: any) {
     return new Response(
       JSON.stringify({ error: err.message }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
