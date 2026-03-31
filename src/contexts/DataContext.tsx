@@ -127,11 +127,12 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       if (rpcError) throw rpcError;
 
       if (data) {
+        const d = data as any;
         const s: SummaryData = {
-          totalLeads: data.total_leads || 0,
-          totalPipelineValue: data.total_pipeline_value || 0,
-          pendingJobs: data.pending_jobs || 0,
-          overdueLeads: data.overdue_leads || 0,
+          totalLeads: d.total_leads || 0,
+          totalPipelineValue: d.total_pipeline_value || 0,
+          pendingJobs: d.pending_jobs || 0,
+          overdueLeads: d.overdue_leads || 0,
         };
         setSummary(s);
         setCache("summary", s);
