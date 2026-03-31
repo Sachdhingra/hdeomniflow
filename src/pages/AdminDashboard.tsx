@@ -3,6 +3,9 @@ import { useData, LEAD_CATEGORIES } from "@/contexts/DataContext";
 import { useAuth, User } from "@/contexts/AuthContext";
 import StatCard from "@/components/StatCard";
 import CsvImport from "@/components/CsvImport";
+import AdminExport from "@/components/AdminExport";
+import AdminDeletedRecords from "@/components/AdminDeletedRecords";
+import DeleteButton from "@/components/DeleteButton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,15 +15,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, Wrench, IndianRupee, TrendingUp, MapPin, BarChart3, UserPlus, Trophy, Truck, KeyRound, Ban, CheckCircle, Trash2, Loader2 } from "lucide-react";
+import { Users, Wrench, IndianRupee, TrendingUp, MapPin, BarChart3, UserPlus, Trophy, Truck, KeyRound, Ban, CheckCircle, Trash2, Loader2, Download, Archive } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
 const AdminDashboard = () => {
-  const { leads, serviceJobs, siteVisits, profiles, getProfilesByRole } = useData();
+  const { leads, serviceJobs, siteVisits, profiles, getProfilesByRole, softDeleteLead, softDeleteServiceJob, softDeleteSiteVisit } = useData();
   const { allProfiles, refreshProfiles } = useAuth();
   const [tab, setTab] = useState("overview");
-  const [dateFilter, setDateFilter] = useState("");
   const [staffOpen, setStaffOpen] = useState(false);
   const [newStaff, setNewStaff] = useState({ name: "", role: "", password: "" });
   const [resetPwOpen, setResetPwOpen] = useState<string | null>(null);
@@ -39,9 +41,7 @@ const AdminDashboard = () => {
     const sLeads = leads.filter(l => l.assigned_to === s.id);
     const won = sLeads.filter(l => l.status === "won");
     return {
-      ...s,
-      totalLeads: sLeads.length,
-      wonLeads: won.length,
+      ...s, totalLeads: sLeads.length, wonLeads: won.length,
       wonValue: won.reduce((sum, l) => sum + Number(l.value_in_rupees), 0),
       conversion: sLeads.length ? Math.round((won.length / sLeads.length) * 100) : 0,
     };
@@ -50,16 +50,14 @@ const AdminDashboard = () => {
   const fieldProfiles = getProfilesByRole("field_agent");
   const fieldPerformance = fieldProfiles.map(s => {
     const jobs = serviceJobs.filter(j => j.assigned_agent === s.id);
-    const completed = jobs.filter(j => j.status === "completed");
-    return { ...s, totalJobs: jobs.length, completedJobs: completed.length };
+    return { ...s, totalJobs: jobs.length, completedJobs: jobs.filter(j => j.status === "completed").length };
   });
 
   const siteProfiles = getProfilesByRole("site_agent");
   const sitePerformance = siteProfiles.map(s => {
     const visits = siteVisits.filter(v => v.agent_id === s.id);
-    const agentLeads = leads.filter(l => l.source === "site_agent" && l.assigned_to === s.id);
     return {
-      ...s, totalVisits: visits.length, totalLeads: agentLeads.length,
+      ...s, totalVisits: visits.length, totalLeads: leads.filter(l => l.source === "site_agent" && l.assigned_to === s.id).length,
       todayVisits: visits.filter(v => v.date === todayStr).length,
     };
   });
@@ -72,9 +70,7 @@ const AdminDashboard = () => {
 
   const handleAddStaff = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newStaff.name || !newStaff.role || !newStaff.password) {
-      toast.error("Fill all fields"); return;
-    }
+    if (!newStaff.name || !newStaff.role || !newStaff.password) { toast.error("Fill all fields"); return; }
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
@@ -109,7 +105,6 @@ const AdminDashboard = () => {
     setActionLoading(null);
   };
 
-  // Get all profiles with active status
   const allUsersWithStatus = allProfiles.map(p => {
     const profile = profiles.find(pr => pr.id === p.id);
     return { ...p, active: profile?.active ?? true };
@@ -175,7 +170,9 @@ const AdminDashboard = () => {
           <TabsTrigger value="service">Service</TabsTrigger>
           <TabsTrigger value="field">Field Agents</TabsTrigger>
           <TabsTrigger value="site">Site Agents</TabsTrigger>
-          <TabsTrigger value="staff">User Management</TabsTrigger>
+          <TabsTrigger value="staff">User Mgmt</TabsTrigger>
+          <TabsTrigger value="export" className="gap-1"><Download className="w-3 h-3" />Export</TabsTrigger>
+          <TabsTrigger value="deleted" className="gap-1"><Archive className="w-3 h-3" />Deleted</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4 mt-4">
@@ -336,24 +333,18 @@ const AdminDashboard = () => {
                                 <DialogHeader><DialogTitle>Reset Password for {u.name}</DialogTitle></DialogHeader>
                                 <div className="space-y-3">
                                   <Input type="password" placeholder="New password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
-                                  <Button
-                                    className="w-full"
-                                    disabled={!newPassword || actionLoading === u.id + "reset_password"}
-                                    onClick={() => handleUserAction("reset_password", u.id, newPassword)}
-                                  >
+                                  <Button className="w-full" disabled={!newPassword || actionLoading === u.id + "reset_password"} onClick={() => handleUserAction("reset_password", u.id, newPassword)}>
                                     {actionLoading === u.id + "reset_password" ? <Loader2 className="w-4 h-4 animate-spin" /> : "Reset Password"}
                                   </Button>
                                 </div>
                               </DialogContent>
                             </Dialog>
                             {u.active ? (
-                              <Button size="sm" variant="outline" className="gap-1 h-7 text-xs text-destructive" onClick={() => handleUserAction("disable", u.id)}
-                                disabled={actionLoading === u.id + "disable"}>
+                              <Button size="sm" variant="outline" className="gap-1 h-7 text-xs text-destructive" onClick={() => handleUserAction("disable", u.id)} disabled={actionLoading === u.id + "disable"}>
                                 <Ban className="w-3 h-3" />Disable
                               </Button>
                             ) : (
-                              <Button size="sm" variant="outline" className="gap-1 h-7 text-xs text-success" onClick={() => handleUserAction("enable", u.id)}
-                                disabled={actionLoading === u.id + "enable"}>
+                              <Button size="sm" variant="outline" className="gap-1 h-7 text-xs text-success" onClick={() => handleUserAction("enable", u.id)} disabled={actionLoading === u.id + "enable"}>
                                 <CheckCircle className="w-3 h-3" />Enable
                               </Button>
                             )}
@@ -374,6 +365,14 @@ const AdminDashboard = () => {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="export" className="mt-4">
+          <AdminExport />
+        </TabsContent>
+
+        <TabsContent value="deleted" className="mt-4">
+          <AdminDeletedRecords />
         </TabsContent>
       </Tabs>
     </div>

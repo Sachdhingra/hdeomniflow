@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Tables, TablesInsert, Enums } from "@/integrations/supabase/types";
@@ -27,6 +27,8 @@ export type SiteVisit = Tables<"site_visits">;
 export type Notification = Tables<"notifications">;
 export type Profile = Tables<"profiles">;
 
+const PAGE_SIZE = 50;
+
 interface DataContextType {
   leads: Lead[];
   serviceJobs: ServiceJob[];
@@ -36,14 +38,30 @@ interface DataContextType {
   loading: boolean;
   addLead: (lead: TablesInsert<"leads">) => Promise<void>;
   updateLead: (id: string, updates: Partial<Lead>) => Promise<void>;
+  softDeleteLead: (id: string) => Promise<void>;
+  restoreLead: (id: string) => Promise<void>;
   assignDelivery: (leadId: string, deliveryDate: string, deliveryNotes: string, assignedTo: string) => Promise<void>;
   addServiceJob: (job: TablesInsert<"service_jobs">) => Promise<void>;
   updateServiceJob: (id: string, updates: Partial<ServiceJob>) => Promise<void>;
+  softDeleteServiceJob: (id: string) => Promise<void>;
+  restoreServiceJob: (id: string) => Promise<void>;
   addSiteVisit: (visit: TablesInsert<"site_visits">) => Promise<void>;
+  softDeleteSiteVisit: (id: string) => Promise<void>;
+  restoreSiteVisit: (id: string) => Promise<void>;
   addNotification: (n: TablesInsert<"notifications">) => Promise<void>;
   markNotificationRead: (id: string) => Promise<void>;
   getProfilesByRole: (role: string) => Profile[];
   refreshAll: () => Promise<void>;
+  // Pagination
+  hasMoreLeads: boolean;
+  hasMoreJobs: boolean;
+  loadMoreLeads: () => Promise<void>;
+  loadMoreJobs: () => Promise<void>;
+  // Deleted records (admin)
+  deletedLeads: Lead[];
+  deletedServiceJobs: ServiceJob[];
+  deletedSiteVisits: SiteVisit[];
+  fetchDeletedRecords: () => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | null>(null);
@@ -57,24 +75,73 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [allRoles, setAllRoles] = useState<{ user_id: string; role: string }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasMoreLeads, setHasMoreLeads] = useState(false);
+  const [hasMoreJobs, setHasMoreJobs] = useState(false);
+  const [deletedLeads, setDeletedLeads] = useState<Lead[]>([]);
+  const [deletedServiceJobs, setDeletedServiceJobs] = useState<ServiceJob[]>([]);
+  const [deletedSiteVisits, setDeletedSiteVisits] = useState<SiteVisit[]>([]);
+  const leadsPageRef = useRef(0);
+  const jobsPageRef = useRef(0);
 
-  const fetchLeads = useCallback(async () => {
-    const { data } = await supabase.from("leads").select("*").order("created_at", { ascending: false });
-    if (data) setLeads(data);
+  const fetchLeads = useCallback(async (reset = true) => {
+    const page = reset ? 0 : leadsPageRef.current;
+    const from = page * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+    const { data, count } = await supabase
+      .from("leads")
+      .select("*", { count: "exact" })
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .range(from, to);
+    if (data) {
+      if (reset) {
+        setLeads(data);
+        leadsPageRef.current = 1;
+      } else {
+        setLeads(prev => [...prev, ...data]);
+        leadsPageRef.current = page + 1;
+      }
+      setHasMoreLeads((count || 0) > (page + 1) * PAGE_SIZE);
+    }
   }, []);
 
-  const fetchServiceJobs = useCallback(async () => {
-    const { data } = await supabase.from("service_jobs").select("*").order("created_at", { ascending: false });
-    if (data) setServiceJobs(data);
+  const loadMoreLeads = useCallback(async () => {
+    await fetchLeads(false);
+  }, [fetchLeads]);
+
+  const fetchServiceJobs = useCallback(async (reset = true) => {
+    const page = reset ? 0 : jobsPageRef.current;
+    const from = page * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+    const { data, count } = await supabase
+      .from("service_jobs")
+      .select("*", { count: "exact" })
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .range(from, to);
+    if (data) {
+      if (reset) {
+        setServiceJobs(data);
+        jobsPageRef.current = 1;
+      } else {
+        setServiceJobs(prev => [...prev, ...data]);
+        jobsPageRef.current = page + 1;
+      }
+      setHasMoreJobs((count || 0) > (page + 1) * PAGE_SIZE);
+    }
   }, []);
+
+  const loadMoreJobs = useCallback(async () => {
+    await fetchServiceJobs(false);
+  }, [fetchServiceJobs]);
 
   const fetchSiteVisits = useCallback(async () => {
-    const { data } = await supabase.from("site_visits").select("*").order("created_at", { ascending: false });
+    const { data } = await supabase.from("site_visits").select("*").is("deleted_at", null).order("created_at", { ascending: false }).limit(PAGE_SIZE);
     if (data) setSiteVisits(data);
   }, []);
 
   const fetchNotifications = useCallback(async () => {
-    const { data } = await supabase.from("notifications").select("*").order("created_at", { ascending: false });
+    const { data } = await supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(PAGE_SIZE);
     if (data) setNotifications(data);
   }, []);
 
@@ -85,10 +152,25 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     if (roles) setAllRoles(roles);
   }, []);
 
+  const fetchDeletedRecords = useCallback(async () => {
+    const [leadsRes, jobsRes, visitsRes] = await Promise.all([
+      supabase.from("leads").select("*").not("deleted_at", "is", null).order("deleted_at", { ascending: false }),
+      supabase.from("service_jobs").select("*").not("deleted_at", "is", null).order("deleted_at", { ascending: false }),
+      supabase.from("site_visits").select("*").not("deleted_at", "is", null).order("deleted_at", { ascending: false }),
+    ]);
+    if (leadsRes.data) setDeletedLeads(leadsRes.data);
+    if (jobsRes.data) setDeletedServiceJobs(jobsRes.data);
+    if (visitsRes.data) setDeletedSiteVisits(visitsRes.data);
+  }, []);
+
+  // Staggered loading: summary first, then details
   const refreshAll = useCallback(async () => {
     setLoading(true);
-    await Promise.all([fetchLeads(), fetchServiceJobs(), fetchSiteVisits(), fetchNotifications(), fetchProfiles()]);
+    // Phase 1: profiles (needed for UI) + leads (main data)
+    await Promise.all([fetchProfiles(), fetchLeads()]);
     setLoading(false);
+    // Phase 2: secondary data (non-blocking)
+    Promise.all([fetchServiceJobs(), fetchSiteVisits(), fetchNotifications()]);
   }, [fetchLeads, fetchServiceJobs, fetchSiteVisits, fetchNotifications, fetchProfiles]);
 
   useEffect(() => {
@@ -126,17 +208,34 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const addLead = async (lead: TablesInsert<"leads">) => {
     const { error } = await supabase.from("leads").insert(lead);
     if (error) throw error;
-    await fetchLeads();
   };
 
   const updateLead = async (id: string, updates: Partial<Lead>) => {
     const { error } = await supabase.from("leads").update({ ...updates, updated_by: user?.id || "" }).eq("id", id);
     if (error) throw error;
+  };
+
+  const softDeleteLead = async (id: string) => {
+    const { error } = await supabase.from("leads").update({
+      deleted_at: new Date().toISOString(),
+      deleted_by: user?.id || "",
+      updated_by: user?.id || "",
+    } as any).eq("id", id);
+    if (error) throw error;
     await fetchLeads();
   };
 
+  const restoreLead = async (id: string) => {
+    const { error } = await supabase.from("leads").update({
+      deleted_at: null,
+      deleted_by: null,
+      updated_by: user?.id || "",
+    } as any).eq("id", id);
+    if (error) throw error;
+    await Promise.all([fetchLeads(), fetchDeletedRecords()]);
+  };
+
   const assignDelivery = async (leadId: string, deliveryDate: string, deliveryNotes: string, assignedTo: string) => {
-    // Update lead
     await supabase.from("leads").update({
       delivery_date: deliveryDate,
       delivery_notes: deliveryNotes,
@@ -144,7 +243,6 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       updated_by: user?.id || "",
     }).eq("id", leadId);
 
-    // Find lead to create delivery job
     const lead = leads.find(l => l.id === leadId);
     if (lead) {
       await supabase.from("service_jobs").insert({
@@ -161,7 +259,6 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         source_lead_id: leadId,
       });
 
-      // Notify service heads
       const serviceHeads = allRoles.filter(r => r.role === "service_head");
       for (const sh of serviceHeads) {
         await supabase.from("notifications").insert({
@@ -171,21 +268,17 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         });
       }
     }
-
-    await Promise.all([fetchLeads(), fetchServiceJobs()]);
   };
 
   const addServiceJob = async (job: TablesInsert<"service_jobs">) => {
     const { error } = await supabase.from("service_jobs").insert(job);
     if (error) throw error;
-    await fetchServiceJobs();
   };
 
   const updateServiceJob = async (id: string, updates: Partial<ServiceJob>) => {
     const { error } = await supabase.from("service_jobs").update(updates).eq("id", id);
     if (error) throw error;
 
-    // Auto-notifications
     const job = serviceJobs.find(j => j.id === id);
     if (job) {
       if (updates.agent_reached_at) {
@@ -216,25 +309,56 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         });
       }
     }
+  };
 
+  const softDeleteServiceJob = async (id: string) => {
+    const { error } = await supabase.from("service_jobs").update({
+      deleted_at: new Date().toISOString(),
+      deleted_by: user?.id || "",
+    } as any).eq("id", id);
+    if (error) throw error;
     await fetchServiceJobs();
+  };
+
+  const restoreServiceJob = async (id: string) => {
+    const { error } = await supabase.from("service_jobs").update({
+      deleted_at: null,
+      deleted_by: null,
+    } as any).eq("id", id);
+    if (error) throw error;
+    await Promise.all([fetchServiceJobs(), fetchDeletedRecords()]);
   };
 
   const addSiteVisit = async (visit: TablesInsert<"site_visits">) => {
     const { error } = await supabase.from("site_visits").insert(visit);
     if (error) throw error;
+  };
+
+  const softDeleteSiteVisit = async (id: string) => {
+    const { error } = await supabase.from("site_visits").update({
+      deleted_at: new Date().toISOString(),
+      deleted_by: user?.id || "",
+    } as any).eq("id", id);
+    if (error) throw error;
     await fetchSiteVisits();
+  };
+
+  const restoreSiteVisit = async (id: string) => {
+    const { error } = await supabase.from("site_visits").update({
+      deleted_at: null,
+      deleted_by: null,
+    } as any).eq("id", id);
+    if (error) throw error;
+    await Promise.all([fetchSiteVisits(), fetchDeletedRecords()]);
   };
 
   const addNotification = async (n: TablesInsert<"notifications">) => {
     const { error } = await supabase.from("notifications").insert(n);
     if (error) throw error;
-    await fetchNotifications();
   };
 
   const markNotificationRead = async (id: string) => {
     await supabase.from("notifications").update({ read: true }).eq("id", id);
-    await fetchNotifications();
   };
 
   const getProfilesByRole = (role: string): Profile[] => {
@@ -245,10 +369,13 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   return (
     <DataContext.Provider value={{
       leads, serviceJobs, siteVisits, notifications, profiles, loading,
-      addLead, updateLead, assignDelivery,
-      addServiceJob, updateServiceJob, addSiteVisit,
+      addLead, updateLead, softDeleteLead, restoreLead, assignDelivery,
+      addServiceJob, updateServiceJob, softDeleteServiceJob, restoreServiceJob,
+      addSiteVisit, softDeleteSiteVisit, restoreSiteVisit,
       addNotification, markNotificationRead,
       getProfilesByRole, refreshAll,
+      hasMoreLeads, hasMoreJobs, loadMoreLeads, loadMoreJobs,
+      deletedLeads, deletedServiceJobs, deletedSiteVisits, fetchDeletedRecords,
     }}>
       {children}
     </DataContext.Provider>
