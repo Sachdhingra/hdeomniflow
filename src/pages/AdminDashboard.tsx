@@ -20,7 +20,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
 const AdminDashboard = () => {
-  const { leads, serviceJobs, siteVisits, profiles, getProfilesByRole, softDeleteLead, softDeleteServiceJob, softDeleteSiteVisit } = useData();
+  const { leads, serviceJobs, siteVisits, profiles, getProfilesByRole, softDeleteLead, softDeleteServiceJob, softDeleteSiteVisit, summaryLoading, summary, error, retryLoad, loading } = useData();
   const { allProfiles, refreshProfiles } = useAuth();
   const [tab, setTab] = useState("overview");
   const [staffOpen, setStaffOpen] = useState(false);
