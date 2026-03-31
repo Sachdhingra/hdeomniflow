@@ -78,6 +78,17 @@ Deno.serve(async (req) => {
         });
       }
 
+      case "update_email": {
+        if (!user_id) throw new Error("user_id required");
+        const { email } = await req.json().catch(() => ({}));
+        if (!email) throw new Error("email required");
+        const { error: emailErr } = await adminClient.auth.admin.updateUser(user_id, { email });
+        if (emailErr) throw emailErr;
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       default:
         throw new Error("Invalid action. Use: reset_password, disable, enable, delete");
     }
