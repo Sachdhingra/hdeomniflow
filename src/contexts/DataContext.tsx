@@ -465,8 +465,9 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const addServiceJob = async (job: TablesInsert<"service_jobs">) => {
-    const { error } = await supabase.from("service_jobs").insert(job);
+    const { data, error } = await supabase.from("service_jobs").insert(job).select().single();
     if (error) throw error;
+    if (data) setServiceJobs(prev => [data, ...prev]);
   };
 
   const updateServiceJob = async (id: string, updates: Partial<ServiceJob>) => {
