@@ -527,8 +527,9 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const addSiteVisit = async (visit: TablesInsert<"site_visits">) => {
-    const { error } = await supabase.from("site_visits").insert(visit);
+    const { data, error } = await supabase.from("site_visits").insert(visit).select().single();
     if (error) throw error;
+    if (data) setSiteVisits(prev => [data, ...prev]);
   };
 
   const softDeleteSiteVisit = async (id: string) => {
