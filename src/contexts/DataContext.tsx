@@ -533,12 +533,13 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const softDeleteSiteVisit = async (id: string) => {
+    setSiteVisits(prev => prev.filter(v => v.id !== id));
     const { error } = await supabase.from("site_visits").update({
       deleted_at: new Date().toISOString(),
       deleted_by: user?.id || "",
     } as any).eq("id", id);
-    if (error) throw error;
-    await fetchSiteVisits();
+    if (error) { await fetchSiteVisits(); throw error; }
+  };
   };
 
   const restoreSiteVisit = async (id: string) => {
