@@ -409,13 +409,14 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const softDeleteLead = async (id: string) => {
+    // Optimistic: remove from view immediately
+    setLeads(prev => prev.filter(l => l.id !== id));
     const { error } = await supabase.from("leads").update({
       deleted_at: new Date().toISOString(),
       deleted_by: user?.id || "",
       updated_by: user?.id || "",
     } as any).eq("id", id);
-    if (error) throw error;
-    await fetchLeads();
+    if (error) { await fetchLeads(); throw error; }
   };
 
   const restoreLead = async (id: string) => {
