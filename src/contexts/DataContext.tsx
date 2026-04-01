@@ -119,30 +119,18 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const jobsPageRef = useRef(0);
   const fetchingRef = useRef(false);
 
-  // --- Stage 1: Fast summary (counts only, no full records) ---
+  // --- Stage 1: Fast summary using RPC ---
   const fetchSummary = useCallback(async () => {
     try {
       setSummaryLoading(true);
-      const [leadsCount, jobsCount, overdueCount] = await Promise.all([
-        supabase.from("leads").select("*", { count: "exact", head: true }).is("deleted_at", null),
-        supabase.from("service_jobs").select("*", { count: "exact", head: true }).is("deleted_at", null).eq("status", "pending"),
-        supabase.from("leads").select("*", { count: "exact", head: true }).is("deleted_at", null).eq("status", "overdue"),
-      ]);
-
-      // Get pipeline value with a small query
-      const { data: pipelineData } = await supabase
-        .from("leads")
-        .select("value_in_rupees")
-        .is("deleted_at", null)
-        .limit(1000);
-
-      const totalPipelineValue = pipelineData?.reduce((s, l) => s + Number(l.value_in_rupees), 0) || 0;
-
+      const { data, error: rpcError } = await supabase.rpc("get_dashboard_summary");
+      if (rpcError) throw rpcError;
+      const d = data as any;
       const s: SummaryData = {
-        totalLeads: leadsCount.count || 0,
-        totalPipelineValue,
-        pendingJobs: jobsCount.count || 0,
-        overdueLeads: overdueCount.count || 0,
+        totalLeads: d?.total_leads || 0,
+        totalPipelineValue: d?.total_pipeline_value || 0,
+        pendingJobs: d?.pending_jobs || 0,
+        overdueLeads: d?.overdue_leads || 0,
       };
       setSummary(s);
       setCache("summary", s);
@@ -339,24 +327,51 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     if (user) refreshAll();
   }, [user, refreshAll]);
 
+  // Auto-refresh on tab visibility change
+  useEffect(() => {
+    if (!user) return;
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") refreshAll();
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [user, refreshAll]);
+
+  // Polling fallback: refresh every 30s as safety net
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") refreshAll();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [user, refreshAll]);
+
   // Real-time subscriptions — debounced to avoid rapid refetches
   useEffect(() => {
     if (!user) return;
 
     let leadsTimeout: NodeJS.Timeout;
     let jobsTimeout: NodeJS.Timeout;
+    let summaryTimeout: NodeJS.Timeout;
+
+    const debouncedSummary = () => {
+      clearTimeout(summaryTimeout);
+      summaryTimeout = setTimeout(() => fetchSummary(), 1500);
+    };
 
     const leadsChannel = supabase.channel("leads-changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, () => {
         clearTimeout(leadsTimeout);
-        leadsTimeout = setTimeout(() => fetchLeads(), 1000);
+        leadsTimeout = setTimeout(() => fetchLeads(), 800);
+        debouncedSummary();
       })
       .subscribe();
 
     const jobsChannel = supabase.channel("jobs-changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "service_jobs" }, () => {
         clearTimeout(jobsTimeout);
-        jobsTimeout = setTimeout(() => fetchServiceJobs(), 1000);
+        jobsTimeout = setTimeout(() => fetchServiceJobs(), 800);
+        debouncedSummary();
       })
       .subscribe();
 
@@ -371,31 +386,37 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       clearTimeout(leadsTimeout);
       clearTimeout(jobsTimeout);
+      clearTimeout(summaryTimeout);
       supabase.removeChannel(leadsChannel);
       supabase.removeChannel(jobsChannel);
       supabase.removeChannel(notifChannel);
       supabase.removeChannel(visitsChannel);
     };
-  }, [user, fetchLeads, fetchServiceJobs, fetchNotifications, fetchSiteVisits]);
+  }, [user, fetchLeads, fetchServiceJobs, fetchNotifications, fetchSiteVisits, fetchSummary]);
 
   const addLead = async (lead: TablesInsert<"leads">) => {
-    const { error } = await supabase.from("leads").insert(lead);
+    const { data, error } = await supabase.from("leads").insert(lead).select().single();
     if (error) throw error;
+    // Optimistic: prepend to local state immediately
+    if (data) setLeads(prev => [data, ...prev]);
   };
 
   const updateLead = async (id: string, updates: Partial<Lead>) => {
+    // Optimistic update
+    setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates, updated_by: user?.id || "" } : l));
     const { error } = await supabase.from("leads").update({ ...updates, updated_by: user?.id || "" }).eq("id", id);
-    if (error) throw error;
+    if (error) { await fetchLeads(); throw error; }
   };
 
   const softDeleteLead = async (id: string) => {
+    // Optimistic: remove from view immediately
+    setLeads(prev => prev.filter(l => l.id !== id));
     const { error } = await supabase.from("leads").update({
       deleted_at: new Date().toISOString(),
       deleted_by: user?.id || "",
       updated_by: user?.id || "",
     } as any).eq("id", id);
-    if (error) throw error;
-    await fetchLeads();
+    if (error) { await fetchLeads(); throw error; }
   };
 
   const restoreLead = async (id: string) => {
@@ -444,13 +465,16 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const addServiceJob = async (job: TablesInsert<"service_jobs">) => {
-    const { error } = await supabase.from("service_jobs").insert(job);
+    const { data, error } = await supabase.from("service_jobs").insert(job).select().single();
     if (error) throw error;
+    if (data) setServiceJobs(prev => [data, ...prev]);
   };
 
   const updateServiceJob = async (id: string, updates: Partial<ServiceJob>) => {
+    // Optimistic update
+    setServiceJobs(prev => prev.map(j => j.id === id ? { ...j, ...updates } : j));
     const { error } = await supabase.from("service_jobs").update(updates).eq("id", id);
-    if (error) throw error;
+    if (error) { await fetchServiceJobs(); throw error; }
 
     const job = serviceJobs.find(j => j.id === id);
     if (job) {
@@ -485,12 +509,12 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const softDeleteServiceJob = async (id: string) => {
+    setServiceJobs(prev => prev.filter(j => j.id !== id));
     const { error } = await supabase.from("service_jobs").update({
       deleted_at: new Date().toISOString(),
       deleted_by: user?.id || "",
     } as any).eq("id", id);
-    if (error) throw error;
-    await fetchServiceJobs();
+    if (error) { await fetchServiceJobs(); throw error; }
   };
 
   const restoreServiceJob = async (id: string) => {
@@ -503,17 +527,18 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const addSiteVisit = async (visit: TablesInsert<"site_visits">) => {
-    const { error } = await supabase.from("site_visits").insert(visit);
+    const { data, error } = await supabase.from("site_visits").insert(visit).select().single();
     if (error) throw error;
+    if (data) setSiteVisits(prev => [data, ...prev]);
   };
 
   const softDeleteSiteVisit = async (id: string) => {
+    setSiteVisits(prev => prev.filter(v => v.id !== id));
     const { error } = await supabase.from("site_visits").update({
       deleted_at: new Date().toISOString(),
       deleted_by: user?.id || "",
     } as any).eq("id", id);
-    if (error) throw error;
-    await fetchSiteVisits();
+    if (error) { await fetchSiteVisits(); throw error; }
   };
 
   const restoreSiteVisit = async (id: string) => {
