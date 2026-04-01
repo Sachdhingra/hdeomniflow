@@ -402,8 +402,10 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updateLead = async (id: string, updates: Partial<Lead>) => {
+    // Optimistic update
+    setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates, updated_by: user?.id || "" } : l));
     const { error } = await supabase.from("leads").update({ ...updates, updated_by: user?.id || "" }).eq("id", id);
-    if (error) throw error;
+    if (error) { await fetchLeads(); throw error; }
   };
 
   const softDeleteLead = async (id: string) => {
