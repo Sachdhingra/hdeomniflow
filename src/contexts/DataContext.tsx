@@ -136,7 +136,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       setCache("summary", s);
       setError(null);
     } catch (err: any) {
-      setError("Failed to load summary. Tap retry.");
+      // Non-fatal: leads/jobs still load independently
+      console.warn("Dashboard summary fetch failed:", err?.message);
     } finally {
       setSummaryLoading(false);
     }
