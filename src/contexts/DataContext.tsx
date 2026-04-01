@@ -509,12 +509,12 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const softDeleteServiceJob = async (id: string) => {
+    setServiceJobs(prev => prev.filter(j => j.id !== id));
     const { error } = await supabase.from("service_jobs").update({
       deleted_at: new Date().toISOString(),
       deleted_by: user?.id || "",
     } as any).eq("id", id);
-    if (error) throw error;
-    await fetchServiceJobs();
+    if (error) { await fetchServiceJobs(); throw error; }
   };
 
   const restoreServiceJob = async (id: string) => {
