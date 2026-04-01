@@ -395,8 +395,10 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   }, [user, fetchLeads, fetchServiceJobs, fetchNotifications, fetchSiteVisits, fetchSummary]);
 
   const addLead = async (lead: TablesInsert<"leads">) => {
-    const { error } = await supabase.from("leads").insert(lead);
+    const { data, error } = await supabase.from("leads").insert(lead).select().single();
     if (error) throw error;
+    // Optimistic: prepend to local state immediately
+    if (data) setLeads(prev => [data, ...prev]);
   };
 
   const updateLead = async (id: string, updates: Partial<Lead>) => {
