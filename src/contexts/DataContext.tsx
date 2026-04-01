@@ -327,24 +327,51 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     if (user) refreshAll();
   }, [user, refreshAll]);
 
+  // Auto-refresh on tab visibility change
+  useEffect(() => {
+    if (!user) return;
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") refreshAll();
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [user, refreshAll]);
+
+  // Polling fallback: refresh every 30s as safety net
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") refreshAll();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [user, refreshAll]);
+
   // Real-time subscriptions — debounced to avoid rapid refetches
   useEffect(() => {
     if (!user) return;
 
     let leadsTimeout: NodeJS.Timeout;
     let jobsTimeout: NodeJS.Timeout;
+    let summaryTimeout: NodeJS.Timeout;
+
+    const debouncedSummary = () => {
+      clearTimeout(summaryTimeout);
+      summaryTimeout = setTimeout(() => fetchSummary(), 1500);
+    };
 
     const leadsChannel = supabase.channel("leads-changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, () => {
         clearTimeout(leadsTimeout);
-        leadsTimeout = setTimeout(() => fetchLeads(), 1000);
+        leadsTimeout = setTimeout(() => fetchLeads(), 800);
+        debouncedSummary();
       })
       .subscribe();
 
     const jobsChannel = supabase.channel("jobs-changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "service_jobs" }, () => {
         clearTimeout(jobsTimeout);
-        jobsTimeout = setTimeout(() => fetchServiceJobs(), 1000);
+        jobsTimeout = setTimeout(() => fetchServiceJobs(), 800);
+        debouncedSummary();
       })
       .subscribe();
 
@@ -359,12 +386,13 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       clearTimeout(leadsTimeout);
       clearTimeout(jobsTimeout);
+      clearTimeout(summaryTimeout);
       supabase.removeChannel(leadsChannel);
       supabase.removeChannel(jobsChannel);
       supabase.removeChannel(notifChannel);
       supabase.removeChannel(visitsChannel);
     };
-  }, [user, fetchLeads, fetchServiceJobs, fetchNotifications, fetchSiteVisits]);
+  }, [user, fetchLeads, fetchServiceJobs, fetchNotifications, fetchSiteVisits, fetchSummary]);
 
   const addLead = async (lead: TablesInsert<"leads">) => {
     const { error } = await supabase.from("leads").insert(lead);
