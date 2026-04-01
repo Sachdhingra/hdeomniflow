@@ -540,7 +540,6 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     } as any).eq("id", id);
     if (error) { await fetchSiteVisits(); throw error; }
   };
-  };
 
   const restoreSiteVisit = async (id: string) => {
     const { error } = await supabase.from("site_visits").update({
