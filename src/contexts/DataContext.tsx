@@ -471,8 +471,10 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updateServiceJob = async (id: string, updates: Partial<ServiceJob>) => {
+    // Optimistic update
+    setServiceJobs(prev => prev.map(j => j.id === id ? { ...j, ...updates } : j));
     const { error } = await supabase.from("service_jobs").update(updates).eq("id", id);
-    if (error) throw error;
+    if (error) { await fetchServiceJobs(); throw error; }
 
     const job = serviceJobs.find(j => j.id === id);
     if (job) {
