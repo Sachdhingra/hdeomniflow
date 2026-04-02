@@ -27,7 +27,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
 };
 
 const AppLayout = ({ children }: { children: ReactNode }) => {
-  const { user, logout } = useAuth();
+  const { user, logout, forceLogout } = useAuth();
   const { notifications, error, summary } = useData();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
