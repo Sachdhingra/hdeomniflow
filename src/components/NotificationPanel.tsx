@@ -1,9 +1,10 @@
+import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useData } from "@/contexts/DataContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Bell, Truck, AlertCircle, CheckCircle, Info } from "lucide-react";
+import { Bell, Truck, AlertCircle, CheckCircle, Info, History } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 const ICON_MAP: Record<string, React.ReactNode> = {
@@ -16,12 +17,16 @@ const ICON_MAP: Record<string, React.ReactNode> = {
 const NotificationPanel = () => {
   const { user } = useAuth();
   const { notifications, markNotificationRead } = useData();
+  const [showHistory, setShowHistory] = useState(false);
 
   const myNotifications = notifications
     .filter(n => n.user_id === user?.id || user?.role === "admin")
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-  const unreadCount = myNotifications.filter(n => !n.read).length;
+  const unreadNotifications = myNotifications.filter(n => !n.read);
+  const readNotifications = myNotifications.filter(n => n.read);
+  const displayList = showHistory ? readNotifications : unreadNotifications;
+  const unreadCount = unreadNotifications.length;
 
   return (
     <Popover>
@@ -36,17 +41,22 @@ const NotificationPanel = () => {
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0" align="end">
-        <div className="p-3 border-b border-border">
-          <h3 className="font-semibold text-sm">Notifications</h3>
+        <div className="p-3 border-b border-border flex items-center justify-between">
+          <h3 className="font-semibold text-sm">{showHistory ? "History" : "Notifications"}</h3>
+          <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={() => setShowHistory(!showHistory)}>
+            <History className="w-3 h-3" />{showHistory ? "Unread" : "History"}
+          </Button>
         </div>
         <ScrollArea className="max-h-80">
-          {myNotifications.length === 0 ? (
-            <p className="text-sm text-muted-foreground p-4 text-center">No notifications</p>
+          {displayList.length === 0 ? (
+            <p className="text-sm text-muted-foreground p-4 text-center">
+              {showHistory ? "No past notifications" : "All caught up! 🎉"}
+            </p>
           ) : (
-            myNotifications.map(n => (
+            displayList.map(n => (
               <div
                 key={n.id}
-                onClick={() => markNotificationRead(n.id)}
+                onClick={() => { if (!n.read) markNotificationRead(n.id); }}
                 className={`p-3 border-b border-border cursor-pointer hover:bg-muted/50 transition-colors flex items-start gap-2 ${!n.read ? "bg-primary/5" : ""}`}
               >
                 {ICON_MAP[n.type] || ICON_MAP.info}
