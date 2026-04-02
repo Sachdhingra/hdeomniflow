@@ -33,7 +33,7 @@ const AdminDashboard = () => {
 
   const totalPipeline = leads.reduce((s, l) => s + Number(l.value_in_rupees), 0);
   const wonValue = leads.filter(l => l.status === "won").reduce((s, l) => s + Number(l.value_in_rupees), 0);
-  const serviceRevenue = serviceJobs.filter(j => !j.is_foc && j.status === "completed").reduce((s, j) => s + Number(j.value), 0);
+  const serviceRevenue = serviceJobs.filter(j => !j.is_foc && j.status === "completed" && j.type === "service").reduce((s, j) => s + Number(j.value), 0);
   const todayStr = new Date().toISOString().split("T")[0];
   const overdueLeads = leads.filter(l => l.status === "overdue");
   const deliveryJobs = serviceJobs.filter(j => j.type === "delivery");
