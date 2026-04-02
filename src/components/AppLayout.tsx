@@ -27,7 +27,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
 };
 
 const AppLayout = ({ children }: { children: ReactNode }) => {
-  const { user, logout } = useAuth();
+  const { user, logout, forceLogout } = useAuth();
   const { notifications, error, summary } = useData();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -119,9 +119,14 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
               <p className="text-sm font-medium text-sidebar-foreground truncate">{user.name}</p>
               <p className="text-xs text-sidebar-foreground/50">{ROLE_LABELS[user.role]}</p>
             </div>
-            <button onClick={logout} className="text-sidebar-foreground/50 hover:text-sidebar-foreground">
-              <LogOut className="w-4 h-4" />
-            </button>
+            <div className="flex flex-col gap-1">
+              <button onClick={logout} className="text-sidebar-foreground/50 hover:text-sidebar-foreground" title="Logout">
+                <LogOut className="w-4 h-4" />
+              </button>
+              <button onClick={forceLogout} className="text-destructive/50 hover:text-destructive" title="Force Logout (clears all data)">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </div>
       </aside>

@@ -12,17 +12,26 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Wrench, IndianRupee, Clock, Plus, AlertCircle, MapPin, Phone, Truck, UserPlus } from "lucide-react";
+import { Wrench, IndianRupee, Clock, Plus, AlertCircle, MapPin, Phone, Truck, UserPlus, CalendarClock, Image } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import LoadingError from "@/components/LoadingError";
 import { DashboardSkeleton } from "@/components/DashboardSkeleton";
+import { supabase } from "@/integrations/supabase/client";
 
 const STATUS_BADGE: Record<string, string> = {
   pending: "bg-warning/10 text-warning",
   assigned: "bg-primary/10 text-primary",
-  in_progress: "bg-accent/10 text-accent",
+  in_progress: "bg-accent/10 text-accent-foreground",
+  on_route: "bg-primary/10 text-primary",
+  on_site: "bg-accent/10 text-accent-foreground",
   completed: "bg-success/10 text-success",
+  rescheduled: "bg-warning/10 text-warning",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  pending: "Pending", assigned: "Assigned", in_progress: "In Progress",
+  on_route: "On Route", on_site: "On Site", completed: "Completed", rescheduled: "Rescheduled",
 };
 
 const ServiceDashboard = () => {
@@ -34,6 +43,10 @@ const ServiceDashboard = () => {
   const [assignOpen, setAssignOpen] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState("");
   const [assignDate, setAssignDate] = useState("");
+  const [rescheduleOpen, setRescheduleOpen] = useState<string | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState("");
+  const [rescheduleReason, setRescheduleReason] = useState("");
+  const [photoViewJob, setPhotoViewJob] = useState<string | null>(null);
   const [form, setForm] = useState({
     customerName: "", customerPhone: "", address: "", category: "" as LeadCategory | "",
     description: "", dateToAttend: "", value: "", isFOC: false,
@@ -57,7 +70,10 @@ const ServiceDashboard = () => {
 
   const todayStr = new Date().toISOString().split("T")[0];
   const todayJobs = serviceJobs.filter(j => j.date_to_attend === todayStr);
-  const totalRevenue = serviceJobs.filter(j => !j.is_foc && j.status === "completed").reduce((s, j) => s + Number(j.value), 0);
+  // Service revenue = paid service jobs only, EXCLUDE delivery jobs from sales
+  const serviceRevenue = serviceJobs
+    .filter(j => !j.is_foc && j.status === "completed" && j.type === "service")
+    .reduce((s, j) => s + Number(j.value), 0);
   const pendingJobs = serviceJobs.filter(j => j.status === "pending");
   const deliveryJobs = serviceJobs.filter(j => j.type === "delivery");
 
@@ -95,6 +111,49 @@ const ServiceDashboard = () => {
     setAssignOpen(null);
     setSelectedAgent("");
     setAssignDate("");
+  };
+
+  const handleReschedule = async () => {
+    if (!rescheduleOpen) return;
+    if (!rescheduleDate) { toast.error("Select a new date"); return; }
+    if (!rescheduleReason) { toast.error("Select a reason"); return; }
+
+    const job = serviceJobs.find(j => j.id === rescheduleOpen);
+    try {
+      // Save history
+      await supabase.from("reschedule_history" as any).insert({
+        job_id: rescheduleOpen,
+        original_date: job?.date_to_attend || null,
+        new_date: rescheduleDate,
+        reason: rescheduleReason,
+        rescheduled_by: user?.id,
+      });
+
+      await updateServiceJob(rescheduleOpen, {
+        status: "rescheduled" as any,
+        date_to_attend: rescheduleDate,
+      });
+
+      // Notify assigned agent
+      if (job?.assigned_agent) {
+        await supabase.from("notifications").insert({
+          user_id: job.assigned_agent,
+          message: `Job rescheduled: ${job.customer_name} → ${rescheduleDate} (${rescheduleReason})`,
+          type: "warning",
+        });
+      }
+
+      toast.success("Job rescheduled!");
+      setRescheduleOpen(null);
+      setRescheduleDate("");
+      setRescheduleReason("");
+    } catch (err: any) {
+      toast.error("Failed to reschedule");
+    }
+  };
+
+  const getJobPhotos = (job: typeof serviceJobs[0]) => {
+    return (job.photos || []).filter(p => p.startsWith("http"));
   };
 
   if (error && serviceJobs.length === 0) return <LoadingError message={error} onRetry={retryLoad} />;
@@ -154,7 +213,7 @@ const ServiceDashboard = () => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard title="Today's Jobs" value={todayJobs.length} icon={<Clock className="w-5 h-5" />} />
         <StatCard title="Pending" value={pendingJobs.length} icon={<AlertCircle className="w-5 h-5" />} />
-        <StatCard title="Revenue" value={`₹${totalRevenue.toLocaleString("en-IN")}`} icon={<IndianRupee className="w-5 h-5" />} />
+        <StatCard title="Service Revenue" value={`₹${serviceRevenue.toLocaleString("en-IN")}`} icon={<IndianRupee className="w-5 h-5" />} />
         <StatCard title="Deliveries" value={deliveryJobs.length} icon={<Truck className="w-5 h-5" />} />
       </div>
 
@@ -172,48 +231,73 @@ const ServiceDashboard = () => {
       </div>
 
       <div className="space-y-3">
-        {filteredJobs.map(job => (
-          <Card key={job.id} className={`shadow-card ${job.status === "pending" ? "border-warning/30" : job.status === "completed" ? "border-success/30" : ""}`}>
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-semibold">{job.customer_name}</h3>
-                    <Badge className={STATUS_BADGE[job.status] || ""}>{job.status.replace("_", " ")}</Badge>
-                    {job.type === "delivery" && <Badge variant="outline" className="text-xs gap-1"><Truck className="w-3 h-3" />Delivery</Badge>}
-                    {job.is_foc && <Badge variant="outline" className="text-xs">FOC</Badge>}
-                    {job.claim_part_no && <Badge variant="outline" className="text-xs border-destructive/30 text-destructive">Claim</Badge>}
+        {filteredJobs.map(job => {
+          const photos = getJobPhotos(job);
+          return (
+            <Card key={job.id} className={`shadow-card ${job.status === "pending" ? "border-warning/30" : job.status === "completed" ? "border-success/30" : ""}`}>
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-semibold">{job.customer_name}</h3>
+                      <Badge className={STATUS_BADGE[job.status] || ""}>{STATUS_LABEL[job.status] || job.status}</Badge>
+                      {job.type === "delivery" && <Badge variant="outline" className="text-xs gap-1"><Truck className="w-3 h-3" />Delivery</Badge>}
+                      {job.is_foc && <Badge variant="outline" className="text-xs">FOC</Badge>}
+                      {job.claim_part_no && <Badge variant="outline" className="text-xs border-destructive/30 text-destructive">Claim</Badge>}
+                    </div>
+                    <p className="text-sm mt-1">{job.description}</p>
+                    <div className="flex items-center gap-4 mt-1.5 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{job.customer_phone}</span>
+                      {job.address && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{job.address}</span>}
+                    </div>
+                    {job.claim_part_no && (
+                      <p className="text-xs text-destructive mt-1">Part: {job.claim_part_no} | {job.claim_reason} | Due: {job.claim_due_date}</p>
+                    )}
+                    {/* Photo thumbnails */}
+                    {photos.length > 0 && (
+                      <div className="flex gap-1.5 mt-2 flex-wrap">
+                        {photos.slice(0, 3).map((url, i) => (
+                          <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                            <img src={url} alt="" className="w-12 h-12 rounded object-cover border border-border" />
+                          </a>
+                        ))}
+                        {photos.length > 3 && (
+                          <button
+                            onClick={() => setPhotoViewJob(job.id)}
+                            className="w-12 h-12 rounded border border-border bg-muted flex items-center justify-center text-xs text-muted-foreground"
+                          >+{photos.length - 3}</button>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <p className="text-sm mt-1">{job.description}</p>
-                  <div className="flex items-center gap-4 mt-1.5 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{job.customer_phone}</span>
-                    {job.address && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{job.address}</span>}
+                  <div className="text-right shrink-0 space-y-1">
+                    <div className="flex items-center gap-1 justify-end">
+                      {!job.is_foc && <p className="font-bold">₹{Number(job.value).toLocaleString("en-IN")}</p>}
+                      {isAdmin && <DeleteButton onDelete={() => softDeleteServiceJob(job.id)} itemName="Job" />}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Attend: {job.date_to_attend}</p>
+                    {job.status === "pending" && canAssign && (
+                      <Button size="sm" className="gap-1 text-xs h-7" onClick={() => setAssignOpen(job.id)}>
+                        <UserPlus className="w-3 h-3" />Assign Agent
+                      </Button>
+                    )}
+                    {/* Reschedule button for service head & admin */}
+                    {canAssign && !["completed"].includes(job.status) && (
+                      <Button size="sm" variant="outline" className="gap-1 text-xs h-7" onClick={() => setRescheduleOpen(job.id)}>
+                        <CalendarClock className="w-3 h-3" />Reschedule
+                      </Button>
+                    )}
+                    {job.assigned_agent && (
+                      <p className="text-xs text-muted-foreground">
+                        Agent: {profiles.find(p => p.id === job.assigned_agent)?.name || "—"}
+                      </p>
+                    )}
                   </div>
-                  {job.claim_part_no && (
-                    <p className="text-xs text-destructive mt-1">Part: {job.claim_part_no} | {job.claim_reason} | Due: {job.claim_due_date}</p>
-                  )}
                 </div>
-                <div className="text-right shrink-0 space-y-1">
-                  <div className="flex items-center gap-1 justify-end">
-                    {!job.is_foc && <p className="font-bold">₹{Number(job.value).toLocaleString("en-IN")}</p>}
-                    {isAdmin && <DeleteButton onDelete={() => softDeleteServiceJob(job.id)} itemName="Job" />}
-                  </div>
-                  <p className="text-xs text-muted-foreground">Attend: {job.date_to_attend}</p>
-                  {job.status === "pending" && (
-                    <Button size="sm" className="gap-1 text-xs h-7" onClick={() => setAssignOpen(job.id)}>
-                      <UserPlus className="w-3 h-3" />Assign Agent
-                    </Button>
-                  )}
-                  {job.assigned_agent && (
-                    <p className="text-xs text-muted-foreground">
-                      Agent: {profiles.find(p => p.id === job.assigned_agent)?.name || "—"}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          );
+        })}
         {filteredJobs.length === 0 && (
           <Card className="shadow-card"><CardContent className="p-8 text-center text-muted-foreground">No jobs found.</CardContent></Card>
         )}
@@ -225,6 +309,7 @@ const ServiceDashboard = () => {
         </div>
       )}
 
+      {/* Assign dialog */}
       <Dialog open={!!assignOpen} onOpenChange={open => { if (!open) setAssignOpen(null); }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>Assign Field Agent</DialogTitle></DialogHeader>
@@ -243,6 +328,47 @@ const ServiceDashboard = () => {
               <Input type="date" value={assignDate} onChange={e => setAssignDate(e.target.value)} />
             </div>
             <Button className="w-full gradient-primary" onClick={() => assignOpen && handleAssignAgent(assignOpen)}>Assign Job</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reschedule dialog */}
+      <Dialog open={!!rescheduleOpen} onOpenChange={open => { if (!open) setRescheduleOpen(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader><DialogTitle>Reschedule Job</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>New Date *</Label>
+              <Input type="date" value={rescheduleDate} onChange={e => setRescheduleDate(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Reason *</Label>
+              <Select value={rescheduleReason} onValueChange={setRescheduleReason}>
+                <SelectTrigger><SelectValue placeholder="Select reason" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Client not available">Client not available</SelectItem>
+                  <SelectItem value="Manpower issue">Manpower issue</SelectItem>
+                  <SelectItem value="Part not available">Part not available</SelectItem>
+                  <SelectItem value="Weather/Transport issue">Weather/Transport issue</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button className="w-full gradient-primary" onClick={handleReschedule}>Reschedule Job</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Photo viewer dialog */}
+      <Dialog open={!!photoViewJob} onOpenChange={open => { if (!open) setPhotoViewJob(null); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader><DialogTitle>Job Photos</DialogTitle></DialogHeader>
+          <div className="grid grid-cols-2 gap-3">
+            {photoViewJob && getJobPhotos(serviceJobs.find(j => j.id === photoViewJob)!).map((url, i) => (
+              <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                <img src={url} alt={`Photo ${i + 1}`} className="w-full rounded-lg object-cover border border-border" />
+              </a>
+            ))}
           </div>
         </DialogContent>
       </Dialog>

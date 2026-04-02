@@ -5,7 +5,6 @@ import StatCard from "@/components/StatCard";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -13,6 +12,7 @@ import { MapPin, Clock, CheckCircle, Navigation, Phone, Camera, Wrench, Truck } 
 import { toast } from "sonner";
 import LoadingError from "@/components/LoadingError";
 import { DashboardSkeleton } from "@/components/DashboardSkeleton";
+import { supabase } from "@/integrations/supabase/client";
 
 const FieldAgentDashboard = () => {
   const { user } = useAuth();
@@ -20,40 +20,88 @@ const FieldAgentDashboard = () => {
   const [completeDialog, setCompleteDialog] = useState<string | null>(null);
   const [remarks, setRemarks] = useState("");
   const [gpsActive, setGpsActive] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
   const myJobs = serviceJobs.filter(j => j.assigned_agent === user?.id);
   const todayStr = new Date().toISOString().split("T")[0];
   const todayJobs = myJobs.filter(j => j.date_to_attend === todayStr);
   const completedJobs = myJobs.filter(j => j.status === "completed");
-  const activeJobs = myJobs.filter(j => j.status === "in_progress");
+  const activeJobs = myJobs.filter(j => ["in_progress", "on_route", "on_site"].includes(j.status));
 
   const handleAccept = async (id: string) => {
     await updateServiceJob(id, {
-      status: "in_progress",
+      status: "on_route" as any,
       accepted_at: new Date().toISOString(),
       travel_started_at: new Date().toISOString(),
     });
     setGpsActive(true);
-    toast.success("Job accepted! GPS tracking started. 📍");
+    toast.success("Job accepted! On route. 🚗");
   };
 
   const handleReached = async (id: string) => {
-    await updateServiceJob(id, { agent_reached_at: new Date().toISOString() });
-    toast.success("Location reached! Service head notified. ✅");
+    await updateServiceJob(id, {
+      status: "on_site" as any,
+      agent_reached_at: new Date().toISOString(),
+    });
+    toast.success("Marked as on site! Service head notified. ✅");
+  };
+
+  const uploadPhotos = async (jobId: string, files: File[]): Promise<string[]> => {
+    const urls: string[] = [];
+    for (const file of files) {
+      const ext = file.name.split(".").pop() || "jpg";
+      const path = `jobs/${jobId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+      const { error } = await supabase.storage.from("job-photos").upload(path, file);
+      if (!error) {
+        const { data: urlData } = supabase.storage.from("job-photos").getPublicUrl(path);
+        urls.push(urlData.publicUrl);
+      }
+    }
+    return urls;
   };
 
   const handleComplete = async () => {
     if (!completeDialog) return;
     if (!remarks.trim()) { toast.error("Please add remarks before completing"); return; }
-    await updateServiceJob(completeDialog, {
-      status: "completed",
-      completed_at: new Date().toISOString(),
-      remarks,
-      photos: ["photo_placeholder.jpg"],
-    });
-    toast.success("Job completed! 🎉");
-    setCompleteDialog(null);
-    setRemarks("");
+    if (selectedFiles.length === 0) { toast.error("Please upload at least one photo"); return; }
+
+    setUploading(true);
+    try {
+      const photoUrls = await uploadPhotos(completeDialog, selectedFiles);
+      await updateServiceJob(completeDialog, {
+        status: "completed",
+        completed_at: new Date().toISOString(),
+        remarks,
+        photos: photoUrls,
+      });
+      toast.success("Job completed! 🎉");
+      setCompleteDialog(null);
+      setRemarks("");
+      setSelectedFiles([]);
+    } catch (err: any) {
+      toast.error("Failed to complete job");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const statusLabel = (status: string) => {
+    const map: Record<string, string> = {
+      assigned: "Assigned", on_route: "On Route", on_site: "On Site",
+      in_progress: "In Progress", completed: "Completed", pending: "Pending",
+      rescheduled: "Rescheduled",
+    };
+    return map[status] || status;
+  };
+
+  const statusColor = (status: string) => {
+    if (status === "completed") return "bg-success/10 text-success";
+    if (status === "on_route") return "bg-primary/10 text-primary";
+    if (status === "on_site") return "bg-accent/10 text-accent-foreground";
+    if (status === "in_progress") return "bg-primary/10 text-primary";
+    if (status === "rescheduled") return "bg-warning/10 text-warning";
+    return "bg-warning/10 text-warning";
   };
 
   if (error && myJobs.length === 0) return <LoadingError message={error} onRetry={retryLoad} />;
@@ -83,7 +131,7 @@ const FieldAgentDashboard = () => {
       ) : (
         <div className="space-y-3">
           {myJobs.map(job => (
-            <Card key={job.id} className={`shadow-card ${job.status === "completed" ? "border-success/30 bg-success/5" : job.status === "in_progress" ? "border-primary/30" : ""}`}>
+            <Card key={job.id} className={`shadow-card ${job.status === "completed" ? "border-success/30 bg-success/5" : ["on_route", "on_site", "in_progress"].includes(job.status) ? "border-primary/30" : ""}`}>
               <CardContent className="p-4 space-y-3">
                 <div className="flex items-start justify-between">
                   <div>
@@ -99,32 +147,39 @@ const FieldAgentDashboard = () => {
                       <MapPin className="w-3.5 h-3.5" />{job.address}
                     </div>
                   </div>
-                  <Badge className={
-                    job.status === "completed" ? "bg-success/10 text-success" :
-                    job.status === "in_progress" ? "bg-primary/10 text-primary" :
-                    "bg-warning/10 text-warning"
-                  }>{job.status.replace("_", " ")}</Badge>
+                  <Badge className={statusColor(job.status)}>{statusLabel(job.status)}</Badge>
                 </div>
 
                 <div className="text-xs space-y-0.5 text-muted-foreground">
                   {job.accepted_at && <p>✅ Accepted: {new Date(job.accepted_at).toLocaleTimeString("en-IN")}</p>}
-                  {job.travel_started_at && <p>🚗 Travel started: {new Date(job.travel_started_at).toLocaleTimeString("en-IN")}</p>}
-                  {job.agent_reached_at && <p className="text-success">📍 Reached: {new Date(job.agent_reached_at).toLocaleTimeString("en-IN")}</p>}
+                  {job.travel_started_at && <p>🚗 On Route: {new Date(job.travel_started_at).toLocaleTimeString("en-IN")}</p>}
+                  {job.agent_reached_at && <p className="text-success">📍 On Site: {new Date(job.agent_reached_at).toLocaleTimeString("en-IN")}</p>}
                   {job.completed_at && <p className="text-success">🎉 Completed: {new Date(job.completed_at).toLocaleTimeString("en-IN")}</p>}
                 </div>
+
+                {/* Show uploaded photos */}
+                {job.photos && job.photos.length > 0 && job.photos[0] !== "" && (
+                  <div className="flex gap-2 flex-wrap">
+                    {job.photos.filter(p => p.startsWith("http")).map((url, i) => (
+                      <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                        <img src={url} alt={`Photo ${i + 1}`} className="w-16 h-16 rounded-lg object-cover border border-border" />
+                      </a>
+                    ))}
+                  </div>
+                )}
 
                 <div className="flex gap-2 flex-wrap">
                   {job.status === "assigned" && (
                     <Button size="lg" className="gradient-primary gap-2 flex-1 min-h-[48px] text-base" onClick={() => handleAccept(job.id)}>
-                      <Navigation className="w-5 h-5" />Accept & Start GPS
+                      <Navigation className="w-5 h-5" />Accept & Start
                     </Button>
                   )}
-                  {job.status === "in_progress" && !job.agent_reached_at && (
+                  {["on_route", "in_progress"].includes(job.status) && !job.agent_reached_at && (
                     <Button size="lg" variant="outline" className="gap-2 flex-1 min-h-[48px] text-base" onClick={() => handleReached(job.id)}>
                       <MapPin className="w-5 h-5" />I've Reached
                     </Button>
                   )}
-                  {job.status === "in_progress" && job.agent_reached_at && !job.completed_at && (
+                  {["on_site", "in_progress"].includes(job.status) && job.agent_reached_at && !job.completed_at && (
                     <Button size="lg" className="bg-success text-success-foreground gap-2 flex-1 min-h-[48px] text-base" onClick={() => setCompleteDialog(job.id)}>
                       <CheckCircle className="w-5 h-5" />Complete Job
                     </Button>
@@ -139,7 +194,7 @@ const FieldAgentDashboard = () => {
         </div>
       )}
 
-      <Dialog open={!!completeDialog} onOpenChange={open => { if (!open) setCompleteDialog(null); }}>
+      <Dialog open={!!completeDialog} onOpenChange={open => { if (!open) { setCompleteDialog(null); setSelectedFiles([]); } }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Complete Job</DialogTitle></DialogHeader>
           <div className="space-y-4">
@@ -148,14 +203,30 @@ const FieldAgentDashboard = () => {
               <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
                 <Camera className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
                 <p className="text-sm text-muted-foreground">Tap to capture or upload photos</p>
-                <Input type="file" accept="image/*" multiple className="mt-2" capture="environment" />
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  capture="environment"
+                  className="mt-2 w-full text-sm"
+                  onChange={e => setSelectedFiles(Array.from(e.target.files || []))}
+                />
+                {selectedFiles.length > 0 && (
+                  <p className="text-xs text-success mt-2">{selectedFiles.length} photo(s) selected</p>
+                )}
               </div>
             </div>
             <div className="space-y-1.5">
               <Label>Remarks *</Label>
               <Textarea value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Job details, issues faced, etc." rows={3} />
             </div>
-            <Button className="w-full gradient-primary min-h-[48px] text-base" onClick={handleComplete}>✅ Mark as Completed</Button>
+            <Button
+              className="w-full gradient-primary min-h-[48px] text-base"
+              onClick={handleComplete}
+              disabled={uploading}
+            >
+              {uploading ? "Uploading..." : "✅ Mark as Completed"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

@@ -557,6 +557,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const markNotificationRead = async (id: string) => {
+    // Optimistic update: mark as read immediately
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
     await supabase.from("notifications").update({ read: true }).eq("id", id);
   };
 

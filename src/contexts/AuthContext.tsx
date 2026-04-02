@@ -16,6 +16,7 @@ interface AuthContextType {
   loading: boolean;
   login: (username: string, password: string) => Promise<string | null>;
   logout: () => Promise<void>;
+  forceLogout: () => Promise<void>;
   allProfiles: User[];
   refreshProfiles: () => Promise<void>;
 }
@@ -112,10 +113,37 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = async () => {
     await supabase.auth.signOut();
     setUser(null);
+    // Clear all app-related storage
+    try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key) keysToRemove.push(key);
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+      sessionStorage.clear();
+    } catch {}
+  };
+
+  const forceLogout = async () => {
+    try {
+      await supabase.auth.signOut({ scope: "local" });
+    } catch {}
+    setUser(null);
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+      // Clear caches
+      if ('caches' in window) {
+        const names = await caches.keys();
+        await Promise.all(names.map(n => caches.delete(n)));
+      }
+    } catch {}
+    window.location.href = "/";
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, allProfiles, refreshProfiles }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, forceLogout, allProfiles, refreshProfiles }}>
       {children}
     </AuthContext.Provider>
   );
