@@ -274,22 +274,36 @@ const AdminDashboard = () => {
         </TabsContent>
 
         <TabsContent value="field" className="space-y-4 mt-4">
-          <div className="space-y-3">
-            {fieldPerformance.map(fp => (
-              <Card key={fp.id} className="shadow-card">
-                <CardContent className="p-4 flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">{fp.name}</p>
-                    <div className="flex gap-4 text-xs text-muted-foreground mt-0.5">
-                      <span>Total: {fp.totalJobs}</span><span>Done: {fp.completedJobs}</span>
+          <Card className="shadow-card">
+            <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Wrench className="w-4 h-4 text-primary" />Field Agent Performance</CardTitle></CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {fieldPerformance.map(fp => (
+                  <div key={fp.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                    <div className="w-9 h-9 rounded-full gradient-primary flex items-center justify-center text-primary-foreground text-sm font-bold">
+                      {fp.name.charAt(0)}
                     </div>
+                    <div className="flex-1">
+                      <p className="font-medium">{fp.name}</p>
+                      <div className="flex gap-4 text-xs text-muted-foreground mt-0.5">
+                        <span>Total: {fp.totalJobs}</span>
+                        <span>Done: {fp.completedJobs}</span>
+                        <span>Pending: {fp.pendingJobs}</span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-bold">{fp.completionRate}%</p>
+                      <p className="text-xs text-muted-foreground">Completion</p>
+                    </div>
+                    <Badge className={fp.completionRate >= 80 ? "bg-success/10 text-success" : fp.completionRate >= 50 ? "bg-warning/10 text-warning" : "bg-destructive/10 text-destructive"}>
+                      {fp.completedJobs}/{fp.totalJobs}
+                    </Badge>
                   </div>
-                  <Badge className="bg-success/10 text-success">{fp.completedJobs}/{fp.totalJobs}</Badge>
-                </CardContent>
-              </Card>
-            ))}
-            {fieldPerformance.length === 0 && <p className="text-muted-foreground text-sm">No field agents yet.</p>}
-          </div>
+                ))}
+                {fieldPerformance.length === 0 && <p className="text-muted-foreground text-sm text-center py-4">No field agents yet.</p>}
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="site" className="space-y-4 mt-4">
