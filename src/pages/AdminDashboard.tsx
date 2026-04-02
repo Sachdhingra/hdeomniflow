@@ -52,7 +52,15 @@ const AdminDashboard = () => {
   const fieldProfiles = getProfilesByRole("field_agent");
   const fieldPerformance = fieldProfiles.map(s => {
     const jobs = serviceJobs.filter(j => j.assigned_agent === s.id);
-    return { ...s, totalJobs: jobs.length, completedJobs: jobs.filter(j => j.status === "completed").length };
+    const completed = jobs.filter(j => j.status === "completed").length;
+    const pending = jobs.filter(j => !["completed"].includes(j.status)).length;
+    return {
+      ...s,
+      totalJobs: jobs.length,
+      completedJobs: completed,
+      pendingJobs: pending,
+      completionRate: jobs.length ? Math.round((completed / jobs.length) * 100) : 0,
+    };
   });
 
   const siteProfiles = getProfilesByRole("site_agent");
