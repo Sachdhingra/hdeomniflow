@@ -16,6 +16,7 @@ interface AuthContextType {
   loading: boolean;
   login: (username: string, password: string) => Promise<string | null>;
   logout: () => Promise<void>;
+  forceLogout: () => Promise<void>;
   allProfiles: User[];
   refreshProfiles: () => Promise<void>;
 }
