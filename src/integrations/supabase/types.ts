@@ -146,6 +146,44 @@ export type Database = {
         }
         Relationships: []
       }
+      reschedule_history: {
+        Row: {
+          created_at: string
+          id: string
+          job_id: string
+          new_date: string
+          original_date: string | null
+          reason: string
+          rescheduled_by: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          job_id: string
+          new_date: string
+          original_date?: string | null
+          reason: string
+          rescheduled_by: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          job_id?: string
+          new_date?: string
+          original_date?: string | null
+          reason?: string
+          rescheduled_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reschedule_history_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "service_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       service_jobs: {
         Row: {
           accepted_at: string | null
@@ -372,7 +410,14 @@ export type Database = {
         | "won"
         | "lost"
         | "overdue"
-      service_job_status: "pending" | "assigned" | "in_progress" | "completed"
+      service_job_status:
+        | "pending"
+        | "assigned"
+        | "in_progress"
+        | "completed"
+        | "on_route"
+        | "on_site"
+        | "rescheduled"
       service_job_type: "service" | "delivery"
     }
     CompositeTypes: {
@@ -523,7 +568,15 @@ export const Constants = {
         "lost",
         "overdue",
       ],
-      service_job_status: ["pending", "assigned", "in_progress", "completed"],
+      service_job_status: [
+        "pending",
+        "assigned",
+        "in_progress",
+        "completed",
+        "on_route",
+        "on_site",
+        "rescheduled",
+      ],
       service_job_type: ["service", "delivery"],
     },
   },
