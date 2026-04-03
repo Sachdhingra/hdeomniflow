@@ -5,6 +5,7 @@ import StatCard from "@/components/StatCard";
 import LeadForm from "@/components/LeadForm";
 import DeliveryAssignDialog from "@/components/DeliveryAssignDialog";
 import DeleteButton from "@/components/DeleteButton";
+import EditLeadDialog from "@/components/EditLeadDialog";
 import LoadingError from "@/components/LoadingError";
 import { DashboardSkeleton } from "@/components/DashboardSkeleton";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Users, IndianRupee, TrendingUp, AlertCircle, Phone, Calendar, Truck, Clock, Trophy } from "lucide-react";
+import { Users, IndianRupee, TrendingUp, AlertCircle, Phone, Calendar, Truck, Clock, Trophy, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import type { Lead } from "@/contexts/DataContext";
 
@@ -40,6 +41,7 @@ const SalesDashboard = () => {
   const [toDate, setToDate] = useState("");
   const [viewMode, setViewMode] = useState<"my" | "all">(user?.role === "admin" ? "all" : "my");
   const [deliveryLead, setDeliveryLead] = useState<Lead | null>(null);
+  const [editLead, setEditLead] = useState<Lead | null>(null);
 
   const todayStr = new Date().toISOString().split("T")[0];
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
@@ -176,7 +178,7 @@ const SalesDashboard = () => {
 
       <div className="space-y-3">
         {filteredLeads.map(lead => (
-          <Card key={lead.id} className={`shadow-card hover:shadow-card-hover transition-shadow ${lead.status === "overdue" ? "border-destructive/50 bg-destructive/5" : ""}`}>
+          <Card key={lead.id} className={`shadow-card hover:shadow-card-hover transition-shadow cursor-pointer ${lead.status === "overdue" ? "border-destructive/50 bg-destructive/5" : ""}`} onClick={() => setEditLead(lead)}>
             <CardContent className="p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
@@ -184,6 +186,7 @@ const SalesDashboard = () => {
                     <h3 className="font-semibold">{lead.customer_name}</h3>
                     <Badge variant="outline" className={STATUS_COLORS[lead.status]}>{STATUS_LABELS[lead.status]}</Badge>
                     <Badge variant="outline" className="text-xs">{LEAD_CATEGORIES.find(c => c.value === lead.category)?.label}</Badge>
+                    <Pencil className="w-3 h-3 text-muted-foreground" />
                   </div>
                   <div className="flex items-center gap-4 mt-1.5 text-sm text-muted-foreground">
                     <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" />{lead.customer_phone}</span>
@@ -196,7 +199,7 @@ const SalesDashboard = () => {
                   )}
                   {lead.notes && <p className="text-sm text-muted-foreground mt-1">{lead.notes}</p>}
                 </div>
-                <div className="text-right shrink-0 space-y-1">
+                <div className="text-right shrink-0 space-y-1" onClick={e => e.stopPropagation()}>
                   <div className="flex items-center gap-1 justify-end">
                     <p className="text-lg font-bold">₹{Number(lead.value_in_rupees).toLocaleString("en-IN")}</p>
                     {isAdmin && <DeleteButton onDelete={() => softDeleteLead(lead.id)} itemName="Lead" />}
@@ -232,6 +235,8 @@ const SalesDashboard = () => {
       {deliveryLead && (
         <DeliveryAssignDialog lead={deliveryLead} open={!!deliveryLead} onOpenChange={open => { if (!open) setDeliveryLead(null); }} />
       )}
+
+      <EditLeadDialog lead={editLead} open={!!editLead} onOpenChange={open => { if (!open) setEditLead(null); }} />
     </div>
   );
 };

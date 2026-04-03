@@ -6,6 +6,7 @@ import CsvImport from "@/components/CsvImport";
 import AdminExport from "@/components/AdminExport";
 import AdminDeletedRecords from "@/components/AdminDeletedRecords";
 import DeleteButton from "@/components/DeleteButton";
+import AgentTrackingTimeline from "@/components/AgentTrackingTimeline";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, Wrench, IndianRupee, TrendingUp, MapPin, BarChart3, UserPlus, Trophy, Truck, KeyRound, Ban, CheckCircle, Trash2, Loader2, Download, Archive } from "lucide-react";
+import { Users, Wrench, IndianRupee, TrendingUp, MapPin, BarChart3, UserPlus, Trophy, Truck, KeyRound, Ban, CheckCircle, Trash2, Loader2, Download, Archive, Locate } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import LoadingError from "@/components/LoadingError";
@@ -30,6 +31,7 @@ const AdminDashboard = () => {
   const [resetPwOpen, setResetPwOpen] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [trackingAgent, setTrackingAgent] = useState<string | null>(null);
 
   const totalPipeline = leads.reduce((s, l) => s + Number(l.value_in_rupees), 0);
   const wonValue = leads.filter(l => l.status === "won").reduce((s, l) => s + Number(l.value_in_rupees), 0);
@@ -298,6 +300,9 @@ const AdminDashboard = () => {
                     <Badge className={fp.completionRate >= 80 ? "bg-success/10 text-success" : fp.completionRate >= 50 ? "bg-warning/10 text-warning" : "bg-destructive/10 text-destructive"}>
                       {fp.completedJobs}/{fp.totalJobs}
                     </Badge>
+                    <Button size="sm" variant="outline" className="gap-1 h-7 text-xs" onClick={() => setTrackingAgent(fp.id)}>
+                      <Locate className="w-3 h-3" />Track
+                    </Button>
                   </div>
                 ))}
                 {fieldPerformance.length === 0 && <p className="text-muted-foreground text-sm text-center py-4">No field agents yet.</p>}
@@ -403,6 +408,8 @@ const AdminDashboard = () => {
           <AdminDeletedRecords />
         </TabsContent>
       </Tabs>
+
+      <AgentTrackingTimeline agentId={trackingAgent} open={!!trackingAgent} onOpenChange={open => { if (!open) setTrackingAgent(null); }} />
     </div>
   );
 };
