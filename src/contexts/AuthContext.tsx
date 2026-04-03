@@ -67,11 +67,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
+    // Auto-clear stale cache on startup
+    try {
+      const CACHE_PREFIX = "furncrm_cache_";
+      const CACHE_TTL = 5 * 60 * 1000;
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key?.startsWith(CACHE_PREFIX)) {
+          try {
+            const parsed = JSON.parse(localStorage.getItem(key) || "");
+            if (Date.now() - parsed.ts > CACHE_TTL) localStorage.removeItem(key);
+          } catch { localStorage.removeItem(key!); }
+        }
+      }
+    } catch {}
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
         if (session?.user) {
           const appUser = await buildUser(session.user);
-          setUser(appUser);
+          if (appUser) {
+            setUser(appUser);
+          } else {
+            // Profile/role missing — force logout
+            await supabase.auth.signOut({ scope: "local" });
+            setUser(null);
+          }
         } else {
           setUser(null);
         }
@@ -81,8 +102,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
+        // Validate session is still valid
         const appUser = await buildUser(session.user);
-        setUser(appUser);
+        if (appUser) {
+          setUser(appUser);
+        } else {
+          // Invalid session — clear everything
+          await supabase.auth.signOut({ scope: "local" });
+          setUser(null);
+        }
       }
       setLoading(false);
     });
