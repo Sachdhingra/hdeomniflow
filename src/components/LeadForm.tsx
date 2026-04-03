@@ -25,6 +25,10 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
       toast.error("Please fill all required fields including follow-up date & time");
       return;
     }
+    if (!/^\d{10}$/.test(form.customerPhone)) {
+      toast.error("Phone must be exactly 10 digits");
+      return;
+    }
     try {
       await addLead({
         customer_name: form.customerName,
