@@ -408,6 +408,8 @@ const AdminDashboard = () => {
           <AdminDeletedRecords />
         </TabsContent>
       </Tabs>
+
+      <AgentTrackingTimeline agentId={trackingAgent} open={!!trackingAgent} onOpenChange={open => { if (!open) setTrackingAgent(null); }} />
     </div>
   );
 };
