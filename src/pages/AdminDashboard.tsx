@@ -31,6 +31,7 @@ const AdminDashboard = () => {
   const [resetPwOpen, setResetPwOpen] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [trackingAgent, setTrackingAgent] = useState<string | null>(null);
 
   const totalPipeline = leads.reduce((s, l) => s + Number(l.value_in_rupees), 0);
   const wonValue = leads.filter(l => l.status === "won").reduce((s, l) => s + Number(l.value_in_rupees), 0);
