@@ -62,7 +62,7 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5"><Label>Customer Name *</Label><Input value={form.customerName} onChange={e => setForm(f => ({ ...f, customerName: e.target.value }))} placeholder="Full name" /></div>
-            <div className="space-y-1.5"><Label>Phone *</Label><Input value={form.customerPhone} onChange={e => setForm(f => ({ ...f, customerPhone: e.target.value }))} placeholder="98765 43210" /></div>
+            <div className="space-y-1.5"><Label>Phone * (10 digits)</Label><Input value={form.customerPhone} onChange={e => { const v = e.target.value.replace(/\D/g, "").slice(0, 10); setForm(f => ({ ...f, customerPhone: v })); }} maxLength={10} placeholder="9876543210" /></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
