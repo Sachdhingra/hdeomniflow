@@ -300,6 +300,9 @@ const AdminDashboard = () => {
                     <Badge className={fp.completionRate >= 80 ? "bg-success/10 text-success" : fp.completionRate >= 50 ? "bg-warning/10 text-warning" : "bg-destructive/10 text-destructive"}>
                       {fp.completedJobs}/{fp.totalJobs}
                     </Badge>
+                    <Button size="sm" variant="outline" className="gap-1 h-7 text-xs" onClick={() => setTrackingAgent(fp.id)}>
+                      <Locate className="w-3 h-3" />Track
+                    </Button>
                   </div>
                 ))}
                 {fieldPerformance.length === 0 && <p className="text-muted-foreground text-sm text-center py-4">No field agents yet.</p>}
