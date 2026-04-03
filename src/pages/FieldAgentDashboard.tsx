@@ -2,13 +2,15 @@ import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useData } from "@/contexts/DataContext";
 import StatCard from "@/components/StatCard";
+import ImageCompressor from "@/components/ImageCompressor";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { MapPin, Clock, CheckCircle, Navigation, Phone, Camera, Wrench, Truck } from "lucide-react";
+import { MapPin, Clock, CheckCircle, Navigation, Phone, Wrench, Truck } from "lucide-react";
 import { toast } from "sonner";
 import LoadingError from "@/components/LoadingError";
 import { DashboardSkeleton } from "@/components/DashboardSkeleton";
@@ -21,6 +23,7 @@ const FieldAgentDashboard = () => {
   const [remarks, setRemarks] = useState("");
   const [gpsActive, setGpsActive] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
   const myJobs = serviceJobs.filter(j => j.assigned_agent === user?.id);
@@ -44,19 +47,21 @@ const FieldAgentDashboard = () => {
       status: "on_site" as any,
       agent_reached_at: new Date().toISOString(),
     });
-    toast.success("Marked as on site! Service head notified. ✅");
+    toast.success("Marked as on site! ✅");
   };
 
   const uploadPhotos = async (jobId: string, files: File[]): Promise<string[]> => {
     const urls: string[] = [];
-    for (const file of files) {
-      const ext = file.name.split(".").pop() || "jpg";
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const ext = "jpg";
       const path = `jobs/${jobId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
       const { error } = await supabase.storage.from("job-photos").upload(path, file);
       if (!error) {
         const { data: urlData } = supabase.storage.from("job-photos").getPublicUrl(path);
         urls.push(urlData.publicUrl);
       }
+      setUploadProgress(Math.round(((i + 1) / files.length) * 100));
     }
     return urls;
   };
@@ -67,6 +72,7 @@ const FieldAgentDashboard = () => {
     if (selectedFiles.length === 0) { toast.error("Please upload at least one photo"); return; }
 
     setUploading(true);
+    setUploadProgress(0);
     try {
       const photoUrls = await uploadPhotos(completeDialog, selectedFiles);
       await updateServiceJob(completeDialog, {
@@ -83,6 +89,7 @@ const FieldAgentDashboard = () => {
       toast.error("Failed to complete job");
     } finally {
       setUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -157,7 +164,6 @@ const FieldAgentDashboard = () => {
                   {job.completed_at && <p className="text-success">🎉 Completed: {new Date(job.completed_at).toLocaleTimeString("en-IN")}</p>}
                 </div>
 
-                {/* Show uploaded photos */}
                 {job.photos && job.photos.length > 0 && job.photos[0] !== "" && (
                   <div className="flex gap-2 flex-wrap">
                     {job.photos.filter(p => p.startsWith("http")).map((url, i) => (
@@ -194,38 +200,33 @@ const FieldAgentDashboard = () => {
         </div>
       )}
 
-      <Dialog open={!!completeDialog} onOpenChange={open => { if (!open) { setCompleteDialog(null); setSelectedFiles([]); } }}>
+      <Dialog open={!!completeDialog} onOpenChange={open => { if (!open) { setCompleteDialog(null); setSelectedFiles([]); setUploadProgress(0); } }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Complete Job</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label>Upload Site Photos (mandatory)</Label>
-              <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
-                <Camera className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
-                <p className="text-sm text-muted-foreground">Tap to capture or upload photos</p>
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  capture="environment"
-                  className="mt-2 w-full text-sm"
-                  onChange={e => setSelectedFiles(Array.from(e.target.files || []))}
-                />
-                {selectedFiles.length > 0 && (
-                  <p className="text-xs text-success mt-2">{selectedFiles.length} photo(s) selected</p>
-                )}
-              </div>
+              <Label>Upload Site Photos (mandatory, auto-compressed)</Label>
+              <ImageCompressor
+                selectedFiles={selectedFiles}
+                onFilesReady={files => setSelectedFiles(prev => [...prev, ...files].slice(0, 5))}
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Remarks *</Label>
               <Textarea value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Job details, issues faced, etc." rows={3} />
             </div>
+            {uploading && (
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Uploading photos...</p>
+                <Progress value={uploadProgress} className="h-2" />
+              </div>
+            )}
             <Button
               className="w-full gradient-primary min-h-[48px] text-base"
               onClick={handleComplete}
               disabled={uploading}
             >
-              {uploading ? "Uploading..." : "✅ Mark as Completed"}
+              {uploading ? `Uploading... ${uploadProgress}%` : "✅ Mark as Completed"}
             </Button>
           </div>
         </DialogContent>
