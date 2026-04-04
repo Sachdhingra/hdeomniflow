@@ -599,9 +599,9 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     <DataContext.Provider value={{
       leads, serviceJobs, siteVisits, notifications, profiles, loading,
       summaryLoading, summary, error,
-      addLead, updateLead, softDeleteLead, restoreLead, assignDelivery,
-      addServiceJob, updateServiceJob, softDeleteServiceJob, restoreServiceJob,
-      addSiteVisit, softDeleteSiteVisit, restoreSiteVisit,
+      addLead, updateLead, softDeleteLead, restoreLead, permanentDeleteLead, assignDelivery,
+      addServiceJob, updateServiceJob, softDeleteServiceJob, restoreServiceJob, permanentDeleteServiceJob,
+      addSiteVisit, updateSiteVisit, softDeleteSiteVisit, restoreSiteVisit, permanentDeleteSiteVisit,
       addNotification, markNotificationRead,
       getProfilesByRole, refreshAll, retryLoad,
       hasMoreLeads, hasMoreJobs, loadMoreLeads, loadMoreJobs,
