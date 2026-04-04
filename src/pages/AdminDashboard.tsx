@@ -258,7 +258,77 @@ const AdminDashboard = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="sales" className="space-y-4 mt-4">
+        <TabsContent value="leads" className="space-y-4 mt-4">
+          <Card className="shadow-card">
+            <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Search className="w-4 h-4 text-primary" />Search & Filter Leads ({filteredLeads.length})</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input placeholder="Search by customer name..." value={nameSearch} onChange={e => setNameSearch(e.target.value)} className="pl-9" />
+                </div>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    {(["new", "contacted", "follow_up", "negotiation", "won", "lost", "overdue"] as const).map(s => (
+                      <SelectItem key={s} value={s} className="capitalize">{s.replace("_", " ")}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                  <SelectTrigger><SelectValue placeholder="Category" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Categories</SelectItem>
+                    {LEAD_CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Select value={assignedFilter} onValueChange={setAssignedFilter}>
+                  <SelectTrigger><SelectValue placeholder="Assigned To" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Staff</SelectItem>
+                    {allProfiles.filter(p => p.role === "sales" || p.role === "site_agent").map(p => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Value</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Assigned</TableHead>
+                      <TableHead>Follow-up</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredLeads.slice(0, 50).map(l => (
+                      <TableRow key={l.id}>
+                        <TableCell className="font-medium">{l.customer_name}</TableCell>
+                        <TableCell>{LEAD_CATEGORIES.find(c => c.value === l.category)?.label}</TableCell>
+                        <TableCell>₹{Number(l.value_in_rupees).toLocaleString("en-IN")}</TableCell>
+                        <TableCell><Badge variant="outline" className="capitalize">{l.status.replace("_", " ")}</Badge></TableCell>
+                        <TableCell>{profiles.find(p => p.id === l.assigned_to)?.name || "—"}</TableCell>
+                        <TableCell className="text-xs">{l.next_follow_up_date || "—"}</TableCell>
+                      </TableRow>
+                    ))}
+                    {filteredLeads.length === 0 && (
+                      <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-6">No leads match your filters.</TableCell></TableRow>
+                    )}
+                    {filteredLeads.length > 50 && (
+                      <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-2 text-xs">Showing first 50 of {filteredLeads.length} results</TableCell></TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
           <Card className="shadow-card">
             <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Trophy className="w-4 h-4 text-warning" />Sales Leaderboard</CardTitle></CardHeader>
             <CardContent>
