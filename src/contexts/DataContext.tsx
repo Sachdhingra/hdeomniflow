@@ -537,6 +537,12 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     if (data) setSiteVisits(prev => [data, ...prev]);
   };
 
+  const updateSiteVisit = async (id: string, updates: Partial<SiteVisit>) => {
+    setSiteVisits(prev => prev.map(v => v.id === id ? { ...v, ...updates } : v));
+    const { error } = await supabase.from("site_visits").update(updates).eq("id", id);
+    if (error) { await fetchSiteVisits(); throw error; }
+  };
+
   const softDeleteSiteVisit = async (id: string) => {
     setSiteVisits(prev => prev.filter(v => v.id !== id));
     const { error } = await supabase.from("site_visits").update({
@@ -553,6 +559,24 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     } as any).eq("id", id);
     if (error) throw error;
     await Promise.all([fetchSiteVisits(), fetchDeletedRecords()]);
+  };
+
+  const permanentDeleteLead = async (id: string) => {
+    const { error } = await supabase.from("leads").delete().eq("id", id);
+    if (error) throw error;
+    setDeletedLeads(prev => prev.filter(l => l.id !== id));
+  };
+
+  const permanentDeleteServiceJob = async (id: string) => {
+    const { error } = await supabase.from("service_jobs").delete().eq("id", id);
+    if (error) throw error;
+    setDeletedServiceJobs(prev => prev.filter(j => j.id !== id));
+  };
+
+  const permanentDeleteSiteVisit = async (id: string) => {
+    const { error } = await supabase.from("site_visits").delete().eq("id", id);
+    if (error) throw error;
+    setDeletedSiteVisits(prev => prev.filter(v => v.id !== id));
   };
 
   const addNotification = async (n: TablesInsert<"notifications">) => {
