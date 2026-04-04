@@ -11,15 +11,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, Camera, Navigation, Home, Users, Play, Square, Route } from "lucide-react";
+import { MapPin, Camera, Navigation, Home, Users, Play, Square, Route, ArrowRightCircle } from "lucide-react";
 import { toast } from "sonner";
 
 const SiteAgentDashboard = () => {
   const { user } = useAuth();
-  const { siteVisits, addSiteVisit, leads } = useData();
+  const { siteVisits, addSiteVisit, addLead, updateSiteVisit, leads } = useData();
   const [visitOpen, setVisitOpen] = useState(false);
   const [tripStarted, setTripStarted] = useState(false);
   const [tripStartTime, setTripStartTime] = useState<Date | null>(null);
+  const [convertingId, setConvertingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     location: "", society: "", notes: "",
     customerName: "", customerPhone: "",
@@ -69,6 +70,42 @@ const SiteAgentDashboard = () => {
       setVisitOpen(false);
     } catch (err: any) {
       toast.error(err.message || "Failed to log visit");
+    }
+  };
+
+  const handleConvertToLead = async (visitId: string) => {
+    const visit = myVisits.find(v => v.id === visitId);
+    if (!visit) return;
+    if (!visit.customer_name || !visit.customer_phone) {
+      toast.error("Customer name and phone are required to convert to lead");
+      return;
+    }
+    if (!/^\d{10}$/.test(visit.customer_phone)) {
+      toast.error("Phone must be exactly 10 digits to convert");
+      return;
+    }
+    setConvertingId(visitId);
+    try {
+      await addLead({
+        customer_name: visit.customer_name,
+        customer_phone: visit.customer_phone,
+        category: (visit.category as LeadCategory) || "others",
+        value_in_rupees: visit.budget ? Number(visit.budget) : 0,
+        status: "new",
+        assigned_to: user?.id || "",
+        notes: `Converted from site visit at ${visit.location}${visit.society ? ` (${visit.society})` : ""}. ${visit.notes || ""}`.trim(),
+        source: "site_agent",
+        next_follow_up_date: visit.follow_up_date || null,
+        next_follow_up_time: null,
+        created_by: user?.id || "",
+        updated_by: user?.id || "",
+      });
+      await updateSiteVisit(visitId, { status: "converted" } as any);
+      toast.success("Site visit converted to lead! 🎉");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to convert");
+    } finally {
+      setConvertingId(null);
     }
   };
 
@@ -201,12 +238,26 @@ const SiteAgentDashboard = () => {
                       {visit.budget && <span className="text-xs text-muted-foreground ml-2">Budget: ₹{Number(visit.budget).toLocaleString("en-IN")}</span>}
                       {visit.notes && <p className="text-sm text-muted-foreground mt-1">{visit.notes}</p>}
                     </div>
-                    <div className="text-right text-sm text-muted-foreground shrink-0">
+                    <div className="text-right text-sm text-muted-foreground shrink-0 space-y-1">
                       <p>{visit.date}</p>
-                      {visit.status && <Badge variant="outline" className="text-xs mt-1">{visit.status}</Badge>}
-                      <Button size="sm" variant="ghost" className="mt-1 gap-1" onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(visit.location)}`, "_blank")}>
-                        <Navigation className="w-3 h-3" />Map
-                      </Button>
+                      {visit.status && <Badge variant="outline" className="text-xs mt-1">{visit.status === "converted" ? "Converted ✅" : visit.status}</Badge>}
+                      <div className="flex gap-1 justify-end">
+                        <Button size="sm" variant="ghost" className="gap-1 h-7" onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(visit.location)}`, "_blank")}>
+                          <Navigation className="w-3 h-3" />Map
+                        </Button>
+                        {visit.customer_name && visit.customer_phone && visit.status !== "converted" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1 h-7 text-xs text-primary"
+                            disabled={convertingId === visit.id}
+                            onClick={() => handleConvertToLead(visit.id)}
+                          >
+                            <ArrowRightCircle className="w-3 h-3" />
+                            {convertingId === visit.id ? "Converting..." : "Convert to Lead"}
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </CardContent>
