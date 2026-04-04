@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useData, LEAD_CATEGORIES } from "@/contexts/DataContext";
 import { useAuth, User } from "@/contexts/AuthContext";
 import StatCard from "@/components/StatCard";
