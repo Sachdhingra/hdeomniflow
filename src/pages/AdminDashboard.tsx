@@ -329,6 +329,7 @@ const AdminDashboard = () => {
           </Card>
         </TabsContent>
 
+        <TabsContent value="sales" className="space-y-4 mt-4">
           <Card className="shadow-card">
             <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Trophy className="w-4 h-4 text-warning" />Sales Leaderboard</CardTitle></CardHeader>
             <CardContent>
