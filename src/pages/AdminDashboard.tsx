@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, Wrench, IndianRupee, TrendingUp, MapPin, BarChart3, UserPlus, Trophy, Truck, KeyRound, Ban, CheckCircle, Trash2, Loader2, Download, Archive, Locate } from "lucide-react";
+import { Users, Wrench, IndianRupee, TrendingUp, MapPin, BarChart3, UserPlus, Trophy, Truck, KeyRound, Ban, CheckCircle, Trash2, Loader2, Download, Archive, Locate, Search } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import LoadingError from "@/components/LoadingError";
