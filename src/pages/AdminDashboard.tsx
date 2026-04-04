@@ -198,6 +198,7 @@ const AdminDashboard = () => {
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="flex-wrap">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="leads" className="gap-1"><Search className="w-3 h-3" />Leads</TabsTrigger>
           <TabsTrigger value="sales">Sales Team</TabsTrigger>
           <TabsTrigger value="service">Service</TabsTrigger>
           <TabsTrigger value="field">Field Agents</TabsTrigger>
