@@ -32,6 +32,22 @@ const AdminDashboard = () => {
   const [newPassword, setNewPassword] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [trackingAgent, setTrackingAgent] = useState<string | null>(null);
+  const [nameSearch, setNameSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [assignedFilter, setAssignedFilter] = useState("all");
+
+  const filteredLeads = useMemo(() => {
+    let result = leads;
+    if (nameSearch.trim()) {
+      const q = nameSearch.toLowerCase();
+      result = result.filter(l => l.customer_name.toLowerCase().includes(q));
+    }
+    if (statusFilter !== "all") result = result.filter(l => l.status === statusFilter);
+    if (categoryFilter !== "all") result = result.filter(l => l.category === categoryFilter);
+    if (assignedFilter !== "all") result = result.filter(l => l.assigned_to === assignedFilter);
+    return result;
+  }, [leads, nameSearch, statusFilter, categoryFilter, assignedFilter]);
 
   const totalPipeline = leads.reduce((s, l) => s + Number(l.value_in_rupees), 0);
   const wonValue = leads.filter(l => l.status === "won").reduce((s, l) => s + Number(l.value_in_rupees), 0);
