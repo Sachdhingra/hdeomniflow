@@ -8,10 +8,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { RotateCcw, Trash2, Archive } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
 
 const AdminDeletedRecords = () => {
-  const { deletedLeads, deletedServiceJobs, deletedSiteVisits, fetchDeletedRecords, restoreLead, restoreServiceJob, restoreSiteVisit, profiles } = useData();
+  const { deletedLeads, deletedServiceJobs, deletedSiteVisits, fetchDeletedRecords, restoreLead, restoreServiceJob, restoreSiteVisit, permanentDeleteLead, permanentDeleteServiceJob, permanentDeleteSiteVisit, profiles } = useData();
   const [tab, setTab] = useState("leads");
 
   useEffect(() => {
@@ -20,9 +19,15 @@ const AdminDeletedRecords = () => {
 
   const getName = (id: string | null) => profiles.find(p => p.id === id)?.name || "—";
 
-  const handlePermanentDelete = async (table: string, id: string) => {
-    // Use edge function or direct delete - for now soft-deleted records stay, we just confirm
-    toast.info("Record marked for permanent removal.");
+  const handlePermanentDelete = async (type: string, id: string) => {
+    try {
+      if (type === "lead") await permanentDeleteLead(id);
+      else if (type === "job") await permanentDeleteServiceJob(id);
+      else if (type === "visit") await permanentDeleteSiteVisit(id);
+      toast.success("Record permanently deleted.");
+    } catch (err: any) {
+      toast.error(err.message || "Delete failed");
+    }
   };
 
   const handleRestore = async (type: string, id: string) => {
@@ -48,6 +53,28 @@ const AdminDeletedRecords = () => {
       </Card>
     );
   }
+
+  const DeleteConfirm = ({ type, id }: { type: string; id: string }) => (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button size="sm" variant="outline" className="gap-1 h-7 text-xs text-destructive">
+          <Trash2 className="w-3 h-3" />Delete
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Permanently Delete?</AlertDialogTitle>
+          <AlertDialogDescription>This action cannot be undone. The record will be removed completely from the database.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction className="bg-destructive text-destructive-foreground" onClick={() => handlePermanentDelete(type, id)}>
+            Delete Permanently
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
 
   return (
     <Card className="shadow-card">
@@ -83,10 +110,11 @@ const AdminDeletedRecords = () => {
                       <TableCell>{LEAD_CATEGORIES.find(c => c.value === l.category)?.label}</TableCell>
                       <TableCell>₹{Number(l.value_in_rupees).toLocaleString("en-IN")}</TableCell>
                       <TableCell>{getName((l as any).deleted_by)}</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right space-x-1">
                         <Button size="sm" variant="outline" className="gap-1 h-7 text-xs text-success" onClick={() => handleRestore("lead", l.id)}>
                           <RotateCcw className="w-3 h-3" />Restore
                         </Button>
+                        <DeleteConfirm type="lead" id={l.id} />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -114,10 +142,11 @@ const AdminDeletedRecords = () => {
                       <TableCell className="capitalize">{j.type}</TableCell>
                       <TableCell className="capitalize">{j.status}</TableCell>
                       <TableCell>{getName((j as any).deleted_by)}</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right space-x-1">
                         <Button size="sm" variant="outline" className="gap-1 h-7 text-xs text-success" onClick={() => handleRestore("job", j.id)}>
                           <RotateCcw className="w-3 h-3" />Restore
                         </Button>
+                        <DeleteConfirm type="job" id={j.id} />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -145,10 +174,11 @@ const AdminDeletedRecords = () => {
                       <TableCell>{v.location}</TableCell>
                       <TableCell>{v.date}</TableCell>
                       <TableCell>{getName((v as any).deleted_by)}</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right space-x-1">
                         <Button size="sm" variant="outline" className="gap-1 h-7 text-xs text-success" onClick={() => handleRestore("visit", v.id)}>
                           <RotateCcw className="w-3 h-3" />Restore
                         </Button>
+                        <DeleteConfirm type="visit" id={v.id} />
                       </TableCell>
                     </TableRow>
                   ))}

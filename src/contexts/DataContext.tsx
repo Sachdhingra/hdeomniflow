@@ -73,14 +73,18 @@ interface DataContextType {
   updateLead: (id: string, updates: Partial<Lead>) => Promise<void>;
   softDeleteLead: (id: string) => Promise<void>;
   restoreLead: (id: string) => Promise<void>;
+  permanentDeleteLead: (id: string) => Promise<void>;
   assignDelivery: (leadId: string, deliveryDate: string, deliveryNotes: string, assignedTo: string) => Promise<void>;
   addServiceJob: (job: TablesInsert<"service_jobs">) => Promise<void>;
   updateServiceJob: (id: string, updates: Partial<ServiceJob>) => Promise<void>;
   softDeleteServiceJob: (id: string) => Promise<void>;
   restoreServiceJob: (id: string) => Promise<void>;
+  permanentDeleteServiceJob: (id: string) => Promise<void>;
   addSiteVisit: (visit: TablesInsert<"site_visits">) => Promise<void>;
+  updateSiteVisit: (id: string, updates: Partial<SiteVisit>) => Promise<void>;
   softDeleteSiteVisit: (id: string) => Promise<void>;
   restoreSiteVisit: (id: string) => Promise<void>;
+  permanentDeleteSiteVisit: (id: string) => Promise<void>;
   addNotification: (n: TablesInsert<"notifications">) => Promise<void>;
   markNotificationRead: (id: string) => Promise<void>;
   getProfilesByRole: (role: string) => Profile[];
@@ -533,6 +537,12 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     if (data) setSiteVisits(prev => [data, ...prev]);
   };
 
+  const updateSiteVisit = async (id: string, updates: Partial<SiteVisit>) => {
+    setSiteVisits(prev => prev.map(v => v.id === id ? { ...v, ...updates } : v));
+    const { error } = await supabase.from("site_visits").update(updates).eq("id", id);
+    if (error) { await fetchSiteVisits(); throw error; }
+  };
+
   const softDeleteSiteVisit = async (id: string) => {
     setSiteVisits(prev => prev.filter(v => v.id !== id));
     const { error } = await supabase.from("site_visits").update({
@@ -549,6 +559,24 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     } as any).eq("id", id);
     if (error) throw error;
     await Promise.all([fetchSiteVisits(), fetchDeletedRecords()]);
+  };
+
+  const permanentDeleteLead = async (id: string) => {
+    const { error } = await supabase.from("leads").delete().eq("id", id);
+    if (error) throw error;
+    setDeletedLeads(prev => prev.filter(l => l.id !== id));
+  };
+
+  const permanentDeleteServiceJob = async (id: string) => {
+    const { error } = await supabase.from("service_jobs").delete().eq("id", id);
+    if (error) throw error;
+    setDeletedServiceJobs(prev => prev.filter(j => j.id !== id));
+  };
+
+  const permanentDeleteSiteVisit = async (id: string) => {
+    const { error } = await supabase.from("site_visits").delete().eq("id", id);
+    if (error) throw error;
+    setDeletedSiteVisits(prev => prev.filter(v => v.id !== id));
   };
 
   const addNotification = async (n: TablesInsert<"notifications">) => {
@@ -571,9 +599,9 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     <DataContext.Provider value={{
       leads, serviceJobs, siteVisits, notifications, profiles, loading,
       summaryLoading, summary, error,
-      addLead, updateLead, softDeleteLead, restoreLead, assignDelivery,
-      addServiceJob, updateServiceJob, softDeleteServiceJob, restoreServiceJob,
-      addSiteVisit, softDeleteSiteVisit, restoreSiteVisit,
+      addLead, updateLead, softDeleteLead, restoreLead, permanentDeleteLead, assignDelivery,
+      addServiceJob, updateServiceJob, softDeleteServiceJob, restoreServiceJob, permanentDeleteServiceJob,
+      addSiteVisit, updateSiteVisit, softDeleteSiteVisit, restoreSiteVisit, permanentDeleteSiteVisit,
       addNotification, markNotificationRead,
       getProfilesByRole, refreshAll, retryLoad,
       hasMoreLeads, hasMoreJobs, loadMoreLeads, loadMoreJobs,

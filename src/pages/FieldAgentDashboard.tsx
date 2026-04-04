@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useData } from "@/contexts/DataContext";
 import StatCard from "@/components/StatCard";
 import ImageCompressor from "@/components/ImageCompressor";
+import LeadForm from "@/components/LeadForm";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ const FieldAgentDashboard = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const uploadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const myJobs = serviceJobs.filter(j => j.assigned_agent === user?.id);
   const todayStr = new Date().toISOString().split("T")[0];
@@ -71,22 +73,63 @@ const FieldAgentDashboard = () => {
     if (!remarks.trim()) { toast.error("Please add remarks before completing"); return; }
     if (selectedFiles.length === 0) { toast.error("Please upload at least one photo"); return; }
 
-    setUploading(true);
-    setUploadProgress(0);
+    // Mark job completed immediately
+    const jobId = completeDialog;
+    setCompleteDialog(null);
+
     try {
-      const photoUrls = await uploadPhotos(completeDialog, selectedFiles);
-      await updateServiceJob(completeDialog, {
+      await updateServiceJob(jobId, {
         status: "completed",
         completed_at: new Date().toISOString(),
         remarks,
-        photos: photoUrls,
       });
-      toast.success("Job completed! 🎉");
-      setCompleteDialog(null);
-      setRemarks("");
-      setSelectedFiles([]);
-    } catch (err: any) {
+      toast.success("Job completed! 🎉 Uploading photos in background...");
+    } catch {
       toast.error("Failed to complete job");
+      return;
+    }
+
+    // Upload photos in background with timeout
+    const filesToUpload = [...selectedFiles];
+    setRemarks("");
+    setSelectedFiles([]);
+
+    const uploadWithTimeout = async () => {
+      const timeout = new Promise<string[]>((_, reject) => {
+        uploadTimeoutRef.current = setTimeout(() => reject(new Error("timeout")), 10000);
+      });
+      const upload = uploadPhotos(jobId, filesToUpload);
+      return Promise.race([upload, timeout]);
+    };
+
+    setUploading(true);
+    setUploadProgress(0);
+    try {
+      const photoUrls = await uploadWithTimeout();
+      if (uploadTimeoutRef.current) clearTimeout(uploadTimeoutRef.current);
+      if (photoUrls.length > 0) {
+        await updateServiceJob(jobId, { photos: photoUrls });
+      }
+      toast.success("Photos uploaded successfully!");
+    } catch {
+      toast.error("Photo upload timed out. You can retry from the job card.", { action: { label: "Retry", onClick: () => retryPhotoUpload(jobId, filesToUpload) } });
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
+    }
+  };
+
+  const retryPhotoUpload = async (jobId: string, files: File[]) => {
+    setUploading(true);
+    setUploadProgress(0);
+    try {
+      const photoUrls = await uploadPhotos(jobId, files);
+      if (photoUrls.length > 0) {
+        await updateServiceJob(jobId, { photos: photoUrls });
+        toast.success("Photos uploaded on retry!");
+      }
+    } catch {
+      toast.error("Retry failed. Please try again later.");
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -121,10 +164,22 @@ const FieldAgentDashboard = () => {
           <h1 className="text-2xl font-bold">My Jobs</h1>
           <p className="text-sm text-muted-foreground">Today's assigned service & delivery visits</p>
         </div>
-        {gpsActive && (
-          <Badge className="bg-success/10 text-success gap-1 animate-pulse"><MapPin className="w-3 h-3" />GPS Active</Badge>
-        )}
+        <div className="flex items-center gap-2">
+          <LeadForm source="field_agent" />
+          {gpsActive && (
+            <Badge className="bg-success/10 text-success gap-1 animate-pulse"><MapPin className="w-3 h-3" />GPS Active</Badge>
+          )}
+        </div>
       </div>
+
+      {uploading && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="p-3 space-y-1">
+            <p className="text-xs text-muted-foreground">Uploading photos in background...</p>
+            <Progress value={uploadProgress} className="h-2" />
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard title="Today's Jobs" value={todayJobs.length} icon={<Clock className="w-5 h-5" />} />
@@ -215,18 +270,12 @@ const FieldAgentDashboard = () => {
               <Label>Remarks *</Label>
               <Textarea value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Job details, issues faced, etc." rows={3} />
             </div>
-            {uploading && (
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">Uploading photos...</p>
-                <Progress value={uploadProgress} className="h-2" />
-              </div>
-            )}
             <Button
               className="w-full gradient-primary min-h-[48px] text-base"
               onClick={handleComplete}
               disabled={uploading}
             >
-              {uploading ? `Uploading... ${uploadProgress}%` : "✅ Mark as Completed"}
+              ✅ Mark as Completed
             </Button>
           </div>
         </DialogContent>
