@@ -16,11 +16,91 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, Wrench, IndianRupee, TrendingUp, MapPin, BarChart3, UserPlus, Trophy, Truck, KeyRound, Ban, CheckCircle, Trash2, Loader2, Download, Archive, Locate, Search } from "lucide-react";
+import { Users, Wrench, IndianRupee, TrendingUp, MapPin, BarChart3, UserPlus, Trophy, Truck, KeyRound, Ban, CheckCircle, Trash2, Loader2, Download, Archive, Locate, Search, MessageSquare, Send } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import LoadingError from "@/components/LoadingError";
 import { DashboardSkeleton } from "@/components/DashboardSkeleton";
+
+const MessageLogsPanel = () => {
+  const [logs, setLogs] = useState<any[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [triggerLoading, setTriggerLoading] = useState(false);
+
+  const fetchLogs = async () => {
+    setLogsLoading(true);
+    const { data } = await supabase.from("message_logs").select("*").order("created_at", { ascending: false }).limit(50);
+    setLogs(data || []);
+    setLogsLoading(false);
+  };
+
+  const triggerSummary = async () => {
+    setTriggerLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("daily-summary");
+      if (error) throw error;
+      toast.success(`Summary sent to ${data?.sent || 0} users`);
+      fetchLogs();
+    } catch (e: any) {
+      toast.error("Failed: " + (e.message || "Unknown error"));
+    }
+    setTriggerLoading(false);
+  };
+
+  useState(() => { fetchLogs(); });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="text-lg">WhatsApp Message Logs</CardTitle>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={fetchLogs} disabled={logsLoading}>
+            {logsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Refresh"}
+          </Button>
+          <Button size="sm" onClick={triggerSummary} disabled={triggerLoading} className="gap-1">
+            {triggerLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            Send Now
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <p className="text-sm text-muted-foreground mb-3">
+          Auto-scheduled daily at 7:45 PM. Mode: <Badge variant="outline">{logs[0]?.provider || "web"}</Badge>
+        </p>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Recipient</TableHead>
+              <TableHead>Phone</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Provider</TableHead>
+              <TableHead>Time</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {logs.length === 0 && (
+              <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">No messages yet</TableCell></TableRow>
+            )}
+            {logs.map(log => (
+              <TableRow key={log.id}>
+                <TableCell className="font-medium">{log.recipient_name || "—"}</TableCell>
+                <TableCell>{log.phone || "—"}</TableCell>
+                <TableCell>
+                  <Badge variant={log.status === "sent" ? "default" : log.status === "failed" ? "destructive" : "secondary"}>
+                    {log.status}
+                  </Badge>
+                  {log.retry_count > 0 && <span className="text-xs text-muted-foreground ml-1">(retry: {log.retry_count})</span>}
+                </TableCell>
+                <TableCell>{log.provider}</TableCell>
+                <TableCell className="text-xs">{new Date(log.created_at).toLocaleString("en-IN")}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+};
 
 const AdminDashboard = () => {
   const { leads, serviceJobs, siteVisits, profiles, getProfilesByRole, softDeleteLead, softDeleteServiceJob, softDeleteSiteVisit, summaryLoading, summary, error, retryLoad, loading } = useData();
@@ -206,6 +286,7 @@ const AdminDashboard = () => {
           <TabsTrigger value="staff">User Mgmt</TabsTrigger>
           <TabsTrigger value="export" className="gap-1"><Download className="w-3 h-3" />Export</TabsTrigger>
           <TabsTrigger value="deleted" className="gap-1"><Archive className="w-3 h-3" />Deleted</TabsTrigger>
+          <TabsTrigger value="messages" className="gap-1"><MessageSquare className="w-3 h-3" />Messages</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4 mt-4">
@@ -494,6 +575,10 @@ const AdminDashboard = () => {
 
         <TabsContent value="deleted" className="mt-4">
           <AdminDeletedRecords />
+        </TabsContent>
+
+        <TabsContent value="messages" className="mt-4">
+          <MessageLogsPanel />
         </TabsContent>
       </Tabs>
 

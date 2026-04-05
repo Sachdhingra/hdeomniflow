@@ -86,6 +86,48 @@ export type Database = {
         }
         Relationships: []
       }
+      message_logs: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          message: string
+          phone: string
+          provider: string
+          recipient_name: string | null
+          recipient_user_id: string | null
+          retry_count: number
+          sent_at: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message: string
+          phone: string
+          provider?: string
+          recipient_name?: string | null
+          recipient_user_id?: string | null
+          retry_count?: number
+          sent_at?: string | null
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message?: string
+          phone?: string
+          provider?: string
+          recipient_name?: string | null
+          recipient_user_id?: string | null
+          retry_count?: number
+          sent_at?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           created_at: string
