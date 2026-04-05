@@ -1,5 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
-import { corsHeaders } from "https://esm.sh/@supabase/supabase-js@2.100.1/cors";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+};
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -34,14 +39,12 @@ Deno.serve(async (req) => {
     const todayLeads = allLeads.filter((l: any) => l.created_at?.startsWith(today));
     const todayJobs = allJobs.filter((j: any) => j.created_at?.startsWith(today));
 
-    const messages: { phone: string; name: string; text: string }[] = [];
+    const messages: { phone: string; name: string; text: string; status: string }[] = [];
 
     for (const role of roles) {
       const profile = profiles.find((p: any) => p.id === role.user_id);
       if (!profile) continue;
 
-      // Extract phone from email pattern (username@furncrm.local) - we don't have phone on profiles
-      // For now, generate the message and store as notification + log
       let text = "";
 
       if (role.role === "sales" || role.role === "site_agent") {
@@ -93,9 +96,30 @@ Deno.serve(async (req) => {
           type: "summary",
         });
 
-        // Log for WhatsApp integration (placeholder)
-        console.log(`[WhatsApp Placeholder] To: ${profile.name} | Message: ${text}`);
-        messages.push({ phone: "", name: profile.name, text });
+        // Extract phone from email (username@furncrm.local → username is the phone or identifier)
+        const phone = profile.email?.split("@")[0] || "";
+
+        // Call send-whatsapp function for actual delivery
+        try {
+          const waRes = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${serviceRoleKey}`,
+            },
+            body: JSON.stringify({
+              phone,
+              message: text,
+              user_id: role.user_id,
+              user_name: profile.name,
+            }),
+          });
+          const waData = await waRes.json();
+          messages.push({ phone, name: profile.name, text, status: waData.success ? "sent" : "failed" });
+        } catch (waErr: any) {
+          console.error(`WhatsApp send failed for ${profile.name}:`, waErr);
+          messages.push({ phone, name: profile.name, text, status: "failed" });
+        }
       }
     }
 
