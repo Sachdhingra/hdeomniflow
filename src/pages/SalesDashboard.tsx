@@ -6,6 +6,7 @@ import LeadForm from "@/components/LeadForm";
 import DeliveryAssignDialog from "@/components/DeliveryAssignDialog";
 import DeleteButton from "@/components/DeleteButton";
 import EditLeadDialog from "@/components/EditLeadDialog";
+import LeadPhotoGallery from "@/components/LeadPhotoGallery";
 import LoadingError from "@/components/LoadingError";
 import { DashboardSkeleton } from "@/components/DashboardSkeleton";
 import { Card, CardContent } from "@/components/ui/card";
@@ -198,6 +199,9 @@ const SalesDashboard = () => {
                     </p>
                   )}
                   {lead.notes && <p className="text-sm text-muted-foreground mt-1">{lead.notes}</p>}
+                  {lead.status === "won" && lead.delivery_date && (
+                    <LeadPhotoGallery leadId={lead.id} />
+                  )}
                 </div>
                 <div className="text-right shrink-0 space-y-1" onClick={e => e.stopPropagation()}>
                   <div className="flex items-center gap-1 justify-end">
