@@ -1,13 +1,14 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useData, LEAD_CATEGORIES, LeadCategory } from "@/contexts/DataContext";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus } from "lucide-react";
+import { Plus, AlertTriangle, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 
 const LeadForm = ({ source = "sales" }: { source?: string }) => {
@@ -18,6 +19,47 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
     customerName: "", customerPhone: "", category: "" as LeadCategory | "",
     valueInRupees: "", notes: "", nextFollowUpDate: "", nextFollowUpTime: "",
   });
+  const [duplicateCheck, setDuplicateCheck] = useState<{
+    checking: boolean;
+    exists: boolean;
+    existingName?: string;
+  }>({ checking: false, exists: false });
+
+  const checkDuplicate = useCallback(async (phone: string) => {
+    if (phone.length !== 10) {
+      setDuplicateCheck({ checking: false, exists: false });
+      return;
+    }
+    setDuplicateCheck({ checking: true, exists: false });
+    try {
+      const { data } = await supabase
+        .from("leads")
+        .select("customer_name, customer_phone")
+        .eq("customer_phone", phone)
+        .is("deleted_at", null)
+        .limit(1);
+
+      if (data && data.length > 0) {
+        setDuplicateCheck({ checking: false, exists: true, existingName: data[0].customer_name });
+        // Auto-fill customer name
+        setForm(f => ({ ...f, customerName: data[0].customer_name }));
+      } else {
+        setDuplicateCheck({ checking: false, exists: false });
+      }
+    } catch {
+      setDuplicateCheck({ checking: false, exists: false });
+    }
+  }, []);
+
+  const handlePhoneChange = (value: string) => {
+    const v = value.replace(/\D/g, "").slice(0, 10);
+    setForm(f => ({ ...f, customerPhone: v }));
+    if (v.length === 10) {
+      checkDuplicate(v);
+    } else {
+      setDuplicateCheck({ checking: false, exists: false });
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,6 +69,10 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
     }
     if (!/^\d{10}$/.test(form.customerPhone)) {
       toast.error("Phone must be exactly 10 digits");
+      return;
+    }
+    if (duplicateCheck.exists) {
+      toast.error("Lead already exists for this number. Use Service module for repeat customers.");
       return;
     }
     try {
@@ -46,6 +92,7 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
       });
       toast.success("Lead added successfully!");
       setForm({ customerName: "", customerPhone: "", category: "", valueInRupees: "", notes: "", nextFollowUpDate: "", nextFollowUpTime: "" });
+      setDuplicateCheck({ checking: false, exists: false });
       setOpen(false);
     } catch (err: any) {
       toast.error(err.message || "Failed to add lead");
@@ -53,7 +100,7 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setDuplicateCheck({ checking: false, exists: false }); }}>
       <DialogTrigger asChild>
         <Button className="gradient-primary gap-2"><Plus className="w-4 h-4" /> Add Lead</Button>
       </DialogTrigger>
@@ -61,8 +108,39 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
         <DialogHeader><DialogTitle>New Lead</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5"><Label>Customer Name *</Label><Input value={form.customerName} onChange={e => setForm(f => ({ ...f, customerName: e.target.value }))} placeholder="Full name" /></div>
-            <div className="space-y-1.5"><Label>Phone * (10 digits)</Label><Input value={form.customerPhone} onChange={e => { const v = e.target.value.replace(/\D/g, "").slice(0, 10); setForm(f => ({ ...f, customerPhone: v })); }} maxLength={10} placeholder="9876543210" /></div>
+            <div className="space-y-1.5">
+              <Label>Phone * (10 digits)</Label>
+              <Input
+                value={form.customerPhone}
+                onChange={e => handlePhoneChange(e.target.value)}
+                maxLength={10}
+                placeholder="9876543210"
+              />
+              {duplicateCheck.checking && (
+                <p className="text-xs text-muted-foreground">Checking...</p>
+              )}
+              {duplicateCheck.exists && (
+                <div className="flex items-center gap-1 text-xs text-destructive">
+                  <AlertTriangle className="w-3 h-3" />
+                  <span>Lead exists for this number</span>
+                </div>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label>Customer Name *</Label>
+              <Input
+                value={form.customerName}
+                onChange={e => setForm(f => ({ ...f, customerName: e.target.value }))}
+                placeholder="Full name"
+                disabled={duplicateCheck.exists}
+              />
+              {duplicateCheck.exists && duplicateCheck.existingName && (
+                <div className="flex items-center gap-1 text-xs text-primary">
+                  <UserCheck className="w-3 h-3" />
+                  <span>Existing: {duplicateCheck.existingName}</span>
+                </div>
+              )}
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -79,7 +157,9 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
             <div className="space-y-1.5"><Label>Next Follow-up Time *</Label><Input type="time" value={form.nextFollowUpTime} onChange={e => setForm(f => ({ ...f, nextFollowUpTime: e.target.value }))} /></div>
           </div>
           <div className="space-y-1.5"><Label>Notes</Label><Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Additional details..." rows={2} /></div>
-          <Button type="submit" className="w-full gradient-primary">Save Lead</Button>
+          <Button type="submit" className="w-full gradient-primary" disabled={duplicateCheck.exists || duplicateCheck.checking}>
+            {duplicateCheck.exists ? "Duplicate — Cannot Save" : "Save Lead"}
+          </Button>
         </form>
       </DialogContent>
     </Dialog>
