@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
     // Fetch all roles and profiles
     const [rolesRes, profilesRes] = await Promise.all([
       supabase.from("user_roles").select("user_id, role"),
-      supabase.from("profiles").select("id, name, email").eq("active", true),
+      supabase.from("profiles").select("id, name, email, phone_number").eq("active", true),
     ]);
 
     const roles = rolesRes.data || [];
@@ -96,8 +96,13 @@ Deno.serve(async (req) => {
           type: "summary",
         });
 
-        // Extract phone from email (username@furncrm.local → username is the phone or identifier)
-        const phone = profile.email?.split("@")[0] || "";
+        // Use phone_number from profile (mandatory for messaging)
+        const phone = (profile as any).phone_number || "";
+        if (!phone) {
+          console.warn(`Skipping WhatsApp for ${profile.name}: no phone_number`);
+          messages.push({ phone: "", name: profile.name, text, status: "skipped_no_phone" });
+          continue;
+        }
 
         // Call send-whatsapp function for actual delivery
         try {

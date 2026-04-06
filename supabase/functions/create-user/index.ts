@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
     });
     if (!isAdmin) throw new Error("Only admins can create users");
 
-    const { name, password, role } = await req.json();
+    const { name, password, role, phone_number } = await req.json();
     if (!name || !password || !role) {
       throw new Error("Missing required fields: name, password, role");
     }
@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
 
     await adminClient
       .from("profiles")
-      .update({ name, email })
+      .update({ name, email, phone_number: phone_number || null })
       .eq("id", newUser.user.id);
 
     return new Response(
