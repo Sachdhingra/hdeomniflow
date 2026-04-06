@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useData } from "@/contexts/DataContext";
 import StatCard from "@/components/StatCard";
@@ -26,7 +26,7 @@ const FieldAgentDashboard = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const uploadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
 
   const myJobs = serviceJobs.filter(j => j.assigned_agent === user?.id);
   const todayStr = new Date().toISOString().split("T")[0];
