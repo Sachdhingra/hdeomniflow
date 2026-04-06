@@ -250,12 +250,18 @@ const FieldAgentDashboard = () => {
               <Label>Remarks *</Label>
               <Textarea value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Job details, issues faced, etc." rows={3} />
             </div>
+            {uploading && (
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Uploading photos… please wait</p>
+                <Progress value={uploadProgress} className="h-2" />
+              </div>
+            )}
             <Button
               className="w-full gradient-primary min-h-[48px] text-base"
               onClick={handleComplete}
-              disabled={uploading}
+              disabled={uploading || selectedFiles.length === 0}
             >
-              ✅ Mark as Completed
+              {uploading ? "⏳ Uploading Photos…" : "✅ Mark as Completed"}
             </Button>
           </div>
         </DialogContent>
