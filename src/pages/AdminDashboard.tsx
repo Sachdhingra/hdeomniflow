@@ -257,8 +257,8 @@ const AdminDashboard = () => {
                 <div className="space-y-1.5"><Label>Phone (91XXXXXXXXXX)</Label><Input placeholder="91XXXXXXXXXX" value={newStaff.phone_number} onChange={e => setNewStaff(f => ({ ...f, phone_number: e.target.value.replace(/\D/g, "").slice(0, 12) }))} /></div>
                 <Button type="submit" className="w-full gradient-primary">Add Staff Member</Button>
               </form>
+            </DialogContent>
           </Dialog>
-        </div>
       </div>
 
       {overdueLeads.length > 0 && (
