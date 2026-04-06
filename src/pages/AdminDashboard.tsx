@@ -254,9 +254,9 @@ const AdminDashboard = () => {
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-1.5"><Label>Phone (91XXXXXXXXXX)</Label><Input placeholder="91XXXXXXXXXX" value={newStaff.phone_number} onChange={e => setNewStaff(f => ({ ...f, phone_number: e.target.value.replace(/\D/g, "").slice(0, 12) }))} /></div>
                 <Button type="submit" className="w-full gradient-primary">Add Staff Member</Button>
               </form>
-            </DialogContent>
           </Dialog>
         </div>
       </div>
@@ -288,6 +288,7 @@ const AdminDashboard = () => {
           <TabsTrigger value="export" className="gap-1"><Download className="w-3 h-3" />Export</TabsTrigger>
           <TabsTrigger value="deleted" className="gap-1"><Archive className="w-3 h-3" />Deleted</TabsTrigger>
           <TabsTrigger value="messages" className="gap-1"><MessageSquare className="w-3 h-3" />Messages</TabsTrigger>
+          <TabsTrigger value="audit" className="gap-1"><ShieldAlert className="w-3 h-3" />Audit</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4 mt-4">
@@ -580,6 +581,10 @@ const AdminDashboard = () => {
 
         <TabsContent value="messages" className="mt-4">
           <MessageLogsPanel />
+        </TabsContent>
+
+        <TabsContent value="audit" className="mt-4">
+          <AuditDashboard />
         </TabsContent>
       </Tabs>
 
