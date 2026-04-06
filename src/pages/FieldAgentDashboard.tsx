@@ -56,13 +56,17 @@ const FieldAgentDashboard = () => {
     const urls: string[] = [];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      const ext = "jpg";
-      const path = `jobs/${jobId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-      const { error } = await supabase.storage.from("job-photos").upload(path, file);
-      if (!error) {
-        const { data: urlData } = supabase.storage.from("job-photos").getPublicUrl(path);
-        urls.push(urlData.publicUrl);
+      const path = `jobs/${jobId}/${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
+      const { error } = await supabase.storage.from("job-photos").upload(path, file, {
+        contentType: "image/jpeg",
+        cacheControl: "3600",
+      });
+      if (error) {
+        console.error("Upload error:", error.message);
+        throw new Error(`Failed to upload photo ${i + 1}: ${error.message}`);
       }
+      const { data: urlData } = supabase.storage.from("job-photos").getPublicUrl(path);
+      urls.push(urlData.publicUrl);
       setUploadProgress(Math.round(((i + 1) / files.length) * 100));
     }
     return urls;
@@ -70,66 +74,42 @@ const FieldAgentDashboard = () => {
 
   const handleComplete = async () => {
     if (!completeDialog) return;
+    if (selectedFiles.length === 0) { toast.error("Upload at least 1 photo before completing job"); return; }
     if (!remarks.trim()) { toast.error("Please add remarks before completing"); return; }
-    if (selectedFiles.length === 0) { toast.error("Please upload at least one photo"); return; }
 
-    // Mark job completed immediately
     const jobId = completeDialog;
-    setCompleteDialog(null);
+    setUploading(true);
+    setUploadProgress(0);
 
+    // Step 1: Upload photos FIRST — do NOT complete job until success
+    let photoUrls: string[] = [];
+    try {
+      const uploadPromise = uploadPhotos(jobId, selectedFiles);
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Upload timed out. Please check your network and retry.")), 30000)
+      );
+      photoUrls = await Promise.race([uploadPromise, timeoutPromise]);
+    } catch (err: any) {
+      setUploading(false);
+      setUploadProgress(0);
+      toast.error(err?.message || "Upload failed. Please retry.");
+      return; // Do NOT complete job if upload fails
+    }
+
+    // Step 2: Only mark complete AFTER photos are uploaded
     try {
       await updateServiceJob(jobId, {
         status: "completed",
         completed_at: new Date().toISOString(),
         remarks,
+        photos: photoUrls,
       });
-      toast.success("Job completed! 🎉 Uploading photos in background...");
+      toast.success("Job completed with photos! 🎉");
+      setCompleteDialog(null);
+      setRemarks("");
+      setSelectedFiles([]);
     } catch {
-      toast.error("Failed to complete job");
-      return;
-    }
-
-    // Upload photos in background with timeout
-    const filesToUpload = [...selectedFiles];
-    setRemarks("");
-    setSelectedFiles([]);
-
-    const uploadWithTimeout = async () => {
-      const timeout = new Promise<string[]>((_, reject) => {
-        uploadTimeoutRef.current = setTimeout(() => reject(new Error("timeout")), 10000);
-      });
-      const upload = uploadPhotos(jobId, filesToUpload);
-      return Promise.race([upload, timeout]);
-    };
-
-    setUploading(true);
-    setUploadProgress(0);
-    try {
-      const photoUrls = await uploadWithTimeout();
-      if (uploadTimeoutRef.current) clearTimeout(uploadTimeoutRef.current);
-      if (photoUrls.length > 0) {
-        await updateServiceJob(jobId, { photos: photoUrls });
-      }
-      toast.success("Photos uploaded successfully!");
-    } catch {
-      toast.error("Photo upload timed out. You can retry from the job card.", { action: { label: "Retry", onClick: () => retryPhotoUpload(jobId, filesToUpload) } });
-    } finally {
-      setUploading(false);
-      setUploadProgress(0);
-    }
-  };
-
-  const retryPhotoUpload = async (jobId: string, files: File[]) => {
-    setUploading(true);
-    setUploadProgress(0);
-    try {
-      const photoUrls = await uploadPhotos(jobId, files);
-      if (photoUrls.length > 0) {
-        await updateServiceJob(jobId, { photos: photoUrls });
-        toast.success("Photos uploaded on retry!");
-      }
-    } catch {
-      toast.error("Retry failed. Please try again later.");
+      toast.error("Photos uploaded but failed to save job. Please try again.");
     } finally {
       setUploading(false);
       setUploadProgress(0);
