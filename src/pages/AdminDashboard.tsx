@@ -259,6 +259,7 @@ const AdminDashboard = () => {
               </form>
             </DialogContent>
           </Dialog>
+        </div>
       </div>
 
       {overdueLeads.length > 0 && (
