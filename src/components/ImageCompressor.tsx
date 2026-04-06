@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { Camera } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 
-const MAX_SIZE_KB = 400;
+const MAX_SIZE_KB = 350;
 const MAX_FILES = 5;
 
 async function compressImage(file: File, maxSizeKB: number): Promise<File> {
