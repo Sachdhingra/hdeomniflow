@@ -14,6 +14,83 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_scores: {
+        Row: {
+          agent_id: string
+          calculated_at: string
+          flags_count: number
+          id: string
+          jobs_completed: number
+          on_time_pct: number
+          period: string
+          reschedule_count: number
+          score: number
+        }
+        Insert: {
+          agent_id: string
+          calculated_at?: string
+          flags_count?: number
+          id?: string
+          jobs_completed?: number
+          on_time_pct?: number
+          period?: string
+          reschedule_count?: number
+          score?: number
+        }
+        Update: {
+          agent_id?: string
+          calculated_at?: string
+          flags_count?: number
+          id?: string
+          jobs_completed?: number
+          on_time_pct?: number
+          period?: string
+          reschedule_count?: number
+          score?: number
+        }
+        Relationships: []
+      }
+      audit_flags: {
+        Row: {
+          agent_id: string
+          created_at: string
+          description: string
+          flag_type: string
+          id: string
+          job_id: string | null
+          resolved: boolean
+          severity: string
+        }
+        Insert: {
+          agent_id: string
+          created_at?: string
+          description: string
+          flag_type: string
+          id?: string
+          job_id?: string | null
+          resolved?: boolean
+          severity?: string
+        }
+        Update: {
+          agent_id?: string
+          created_at?: string
+          description?: string
+          flag_type?: string
+          id?: string
+          job_id?: string | null
+          resolved?: boolean
+          severity?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_flags_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "service_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
           assigned_to: string | null
@@ -166,6 +243,7 @@ export type Database = {
           email: string
           id: string
           name: string
+          phone_number: string | null
           updated_at: string
         }
         Insert: {
@@ -175,6 +253,7 @@ export type Database = {
           email: string
           id: string
           name: string
+          phone_number?: string | null
           updated_at?: string
         }
         Update: {
@@ -184,6 +263,7 @@ export type Database = {
           email?: string
           id?: string
           name?: string
+          phone_number?: string | null
           updated_at?: string
         }
         Relationships: []
