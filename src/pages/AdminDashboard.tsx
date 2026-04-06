@@ -7,6 +7,7 @@ import AdminExport from "@/components/AdminExport";
 import AdminDeletedRecords from "@/components/AdminDeletedRecords";
 import DeleteButton from "@/components/DeleteButton";
 import AgentTrackingTimeline from "@/components/AgentTrackingTimeline";
+import AuditDashboard from "@/components/AuditDashboard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, Wrench, IndianRupee, TrendingUp, MapPin, BarChart3, UserPlus, Trophy, Truck, KeyRound, Ban, CheckCircle, Trash2, Loader2, Download, Archive, Locate, Search, MessageSquare, Send } from "lucide-react";
+import { Users, Wrench, IndianRupee, TrendingUp, MapPin, BarChart3, UserPlus, Trophy, Truck, KeyRound, Ban, CheckCircle, Trash2, Loader2, Download, Archive, Locate, Search, MessageSquare, Send, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import LoadingError from "@/components/LoadingError";
@@ -107,7 +108,7 @@ const AdminDashboard = () => {
   const { allProfiles, refreshProfiles } = useAuth();
   const [tab, setTab] = useState("overview");
   const [staffOpen, setStaffOpen] = useState(false);
-  const [newStaff, setNewStaff] = useState({ name: "", role: "", password: "" });
+  const [newStaff, setNewStaff] = useState({ name: "", role: "", password: "", phone_number: "" });
   const [resetPwOpen, setResetPwOpen] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -183,12 +184,12 @@ const AdminDashboard = () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
       const res = await supabase.functions.invoke("create-user", {
-        body: { name: newStaff.name, password: newStaff.password, role: newStaff.role },
+        body: { name: newStaff.name, password: newStaff.password, role: newStaff.role, phone_number: newStaff.phone_number },
       });
       if (res.error) throw new Error(res.error.message || "Failed to create user");
       if (res.data?.error) throw new Error(res.data.error);
       toast.success(`${newStaff.name} added as ${newStaff.role}!`);
-      setNewStaff({ name: "", role: "", password: "" });
+      setNewStaff({ name: "", role: "", password: "", phone_number: "" });
       setStaffOpen(false);
       await refreshProfiles();
     } catch (err: any) {
