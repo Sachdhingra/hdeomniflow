@@ -1,9 +1,10 @@
 import { useState, useRef } from "react";
-import { Camera } from "lucide-react";
+import { Camera, X } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 
-const MAX_SIZE_KB = 350;
+const MAX_SIZE_KB = 300;
 const MAX_FILES = 5;
+const MAX_DIMENSION = 1280;
 
 async function compressImage(file: File, maxSizeKB: number): Promise<File> {
   return new Promise((resolve) => {
@@ -12,11 +13,11 @@ async function compressImage(file: File, maxSizeKB: number): Promise<File> {
     img.onload = () => {
       URL.revokeObjectURL(url);
       const canvas = document.createElement("canvas");
-      // Scale down if too large
       let { width, height } = img;
-      const maxDim = 1200;
-      if (width > maxDim || height > maxDim) {
-        const ratio = Math.min(maxDim / width, maxDim / height);
+
+      // Scale down to max dimension
+      if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+        const ratio = Math.min(MAX_DIMENSION / width, MAX_DIMENSION / height);
         width = Math.round(width * ratio);
         height = Math.round(height * ratio);
       }
@@ -25,13 +26,13 @@ async function compressImage(file: File, maxSizeKB: number): Promise<File> {
       const ctx = canvas.getContext("2d")!;
       ctx.drawImage(img, 0, 0, width, height);
 
-      // Try progressively lower quality
-      let quality = 0.8;
+      // Progressive quality reduction
+      let quality = 0.7;
       const tryCompress = () => {
         canvas.toBlob(
           (blob) => {
             if (!blob) { resolve(file); return; }
-            if (blob.size / 1024 <= maxSizeKB || quality <= 0.3) {
+            if (blob.size / 1024 <= maxSizeKB || quality <= 0.2) {
               resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }));
             } else {
               quality -= 0.1;
@@ -52,15 +53,18 @@ async function compressImage(file: File, maxSizeKB: number): Promise<File> {
 interface Props {
   onFilesReady: (files: File[]) => void;
   selectedFiles: File[];
+  onRemoveFile?: (index: number) => void;
 }
 
-const ImageCompressor = ({ onFilesReady, selectedFiles }: Props) => {
+const ImageCompressor = ({ onFilesReady, selectedFiles, onRemoveFile }: Props) => {
   const [compressing, setCompressing] = useState(false);
   const [progress, setProgress] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const rawFiles = Array.from(e.target.files || []).slice(0, MAX_FILES);
+    const remaining = MAX_FILES - selectedFiles.length;
+    if (remaining <= 0) return;
+    const rawFiles = Array.from(e.target.files || []).slice(0, remaining);
     if (rawFiles.length === 0) return;
 
     setCompressing(true);
@@ -89,7 +93,7 @@ const ImageCompressor = ({ onFilesReady, selectedFiles }: Props) => {
           capture="environment"
           className="mt-2 w-full text-sm"
           onChange={handleChange}
-          disabled={compressing}
+          disabled={compressing || selectedFiles.length >= MAX_FILES}
         />
       </div>
       {compressing && (
@@ -101,8 +105,13 @@ const ImageCompressor = ({ onFilesReady, selectedFiles }: Props) => {
       {selectedFiles.length > 0 && !compressing && (
         <div className="flex gap-2 flex-wrap">
           {selectedFiles.map((f, i) => (
-            <div key={i} className="text-xs bg-muted px-2 py-1 rounded">
+            <div key={i} className="text-xs bg-muted px-2 py-1 rounded flex items-center gap-1">
               {f.name} ({(f.size / 1024).toFixed(0)} KB)
+              {onRemoveFile && (
+                <button type="button" onClick={() => onRemoveFile(i)} className="ml-1 text-destructive hover:text-destructive/80">
+                  <X className="w-3 h-3" />
+                </button>
+              )}
             </div>
           ))}
         </div>

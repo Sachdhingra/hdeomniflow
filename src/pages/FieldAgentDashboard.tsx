@@ -11,11 +11,15 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { MapPin, Clock, CheckCircle, Navigation, Phone, Wrench, Truck } from "lucide-react";
+import { MapPin, Clock, CheckCircle, Navigation, Phone, Wrench, Truck, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import LoadingError from "@/components/LoadingError";
 import { DashboardSkeleton } from "@/components/DashboardSkeleton";
 import { supabase } from "@/integrations/supabase/client";
+
+type UploadStatus = "idle" | "uploading" | "success" | "failed";
+
+const UPLOAD_TIMEOUT_MS = 15000; // 15s per file
 
 const FieldAgentDashboard = () => {
   const { user } = useAuth();
@@ -23,10 +27,11 @@ const FieldAgentDashboard = () => {
   const [completeDialog, setCompleteDialog] = useState<string | null>(null);
   const [remarks, setRemarks] = useState("");
   const [gpsActive, setGpsActive] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  
+  const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadedUrls, setUploadedUrls] = useState<string[]>([]);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const myJobs = serviceJobs.filter(j => j.assigned_agent === user?.id);
   const todayStr = new Date().toISOString().split("T")[0];
@@ -52,68 +57,103 @@ const FieldAgentDashboard = () => {
     toast.success("Marked as on site! ✅");
   };
 
-  const uploadPhotos = async (jobId: string, files: File[]): Promise<string[]> => {
-    const urls: string[] = [];
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const path = `jobs/${jobId}/${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
+  const uploadSingleFile = async (file: File, jobId: string): Promise<string> => {
+    const path = `jobs/${jobId}/${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+
+    try {
       const { error } = await supabase.storage.from("job-photos").upload(path, file, {
         contentType: "image/jpeg",
         cacheControl: "3600",
       });
-      if (error) {
-        console.error("Upload error:", error.message);
-        throw new Error(`Failed to upload photo ${i + 1}: ${error.message}`);
-      }
+      clearTimeout(timeoutId);
+      if (error) throw new Error(error.message);
+
       const { data: urlData } = supabase.storage.from("job-photos").getPublicUrl(path);
-      urls.push(urlData.publicUrl);
-      setUploadProgress(Math.round(((i + 1) / files.length) * 100));
+      return urlData.publicUrl;
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err.name === "AbortError") throw new Error("Upload timed out");
+      throw err;
     }
-    return urls;
+  };
+
+  const handleUploadPhotos = async (jobId: string) => {
+    if (selectedFiles.length === 0) return;
+
+    setUploadStatus("uploading");
+    setUploadProgress(0);
+    setUploadError(null);
+    setUploadedUrls([]);
+
+    const urls: string[] = [];
+    for (let i = 0; i < selectedFiles.length; i++) {
+      let retries = 2;
+      let uploaded = false;
+      while (retries > 0 && !uploaded) {
+        try {
+          const url = await uploadSingleFile(selectedFiles[i], jobId);
+          urls.push(url);
+          uploaded = true;
+        } catch (err: any) {
+          retries--;
+          if (retries === 0) {
+            setUploadStatus("failed");
+            setUploadError(`Photo ${i + 1} failed: ${err.message}. Tap Retry.`);
+            return;
+          }
+          // brief pause before retry
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+      setUploadProgress(Math.round(((i + 1) / selectedFiles.length) * 100));
+    }
+
+    setUploadedUrls(urls);
+    setUploadStatus("success");
+    toast.success("All photos uploaded! ✅");
+  };
+
+  const handleRetryUpload = () => {
+    if (!completeDialog) return;
+    handleUploadPhotos(completeDialog);
   };
 
   const handleComplete = async () => {
     if (!completeDialog) return;
-    if (selectedFiles.length === 0) { toast.error("Upload at least 1 photo before completing job"); return; }
-    if (!remarks.trim()) { toast.error("Please add remarks before completing"); return; }
-
-    const jobId = completeDialog;
-    setUploading(true);
-    setUploadProgress(0);
-
-    // Step 1: Upload photos FIRST — do NOT complete job until success
-    let photoUrls: string[] = [];
-    try {
-      const uploadPromise = uploadPhotos(jobId, selectedFiles);
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Upload timed out. Please check your network and retry.")), 30000)
-      );
-      photoUrls = await Promise.race([uploadPromise, timeoutPromise]);
-    } catch (err: any) {
-      setUploading(false);
-      setUploadProgress(0);
-      toast.error(err?.message || "Upload failed. Please retry.");
-      return; // Do NOT complete job if upload fails
+    if (uploadStatus !== "success" || uploadedUrls.length === 0) {
+      toast.error("Upload photos first");
+      return;
+    }
+    if (!remarks.trim()) {
+      toast.error("Please add remarks before completing");
+      return;
     }
 
-    // Step 2: Only mark complete AFTER photos are uploaded
     try {
-      await updateServiceJob(jobId, {
+      await updateServiceJob(completeDialog, {
         status: "completed",
         completed_at: new Date().toISOString(),
         remarks,
-        photos: photoUrls,
+        photos: uploadedUrls,
       });
       toast.success("Job completed with photos! 🎉");
-      setCompleteDialog(null);
-      setRemarks("");
-      setSelectedFiles([]);
+      resetDialog();
     } catch {
-      toast.error("Photos uploaded but failed to save job. Please try again.");
-    } finally {
-      setUploading(false);
-      setUploadProgress(0);
+      toast.error("Failed to save job. Photos are uploaded — please try again.");
     }
+  };
+
+  const resetDialog = () => {
+    setCompleteDialog(null);
+    setRemarks("");
+    setSelectedFiles([]);
+    setUploadStatus("idle");
+    setUploadProgress(0);
+    setUploadedUrls([]);
+    setUploadError(null);
   };
 
   const statusLabel = (status: string) => {
@@ -151,15 +191,6 @@ const FieldAgentDashboard = () => {
           )}
         </div>
       </div>
-
-      {uploading && (
-        <Card className="border-primary/30 bg-primary/5">
-          <CardContent className="p-3 space-y-1">
-            <p className="text-xs text-muted-foreground">Uploading photos in background...</p>
-            <Progress value={uploadProgress} className="h-2" />
-          </CardContent>
-        </Card>
-      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard title="Today's Jobs" value={todayJobs.length} icon={<Clock className="w-5 h-5" />} />
@@ -203,7 +234,7 @@ const FieldAgentDashboard = () => {
                   <div className="flex gap-2 flex-wrap">
                     {job.photos.filter(p => p.startsWith("http")).map((url, i) => (
                       <a key={i} href={url} target="_blank" rel="noopener noreferrer">
-                        <img src={url} alt={`Photo ${i + 1}`} className="w-16 h-16 rounded-lg object-cover border border-border" />
+                        <img src={url} alt={`Photo ${i + 1}`} className="w-16 h-16 rounded-lg object-cover border border-border" loading="lazy" />
                       </a>
                     ))}
                   </div>
@@ -235,33 +266,73 @@ const FieldAgentDashboard = () => {
         </div>
       )}
 
-      <Dialog open={!!completeDialog} onOpenChange={open => { if (!open) { setCompleteDialog(null); setSelectedFiles([]); setUploadProgress(0); } }}>
+      <Dialog open={!!completeDialog} onOpenChange={open => { if (!open) resetDialog(); }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Complete Job</DialogTitle></DialogHeader>
           <div className="space-y-4">
+            {/* Step 1: Select photos */}
             <div className="space-y-1.5">
               <Label>Upload Site Photos (mandatory, auto-compressed)</Label>
               <ImageCompressor
                 selectedFiles={selectedFiles}
                 onFilesReady={files => setSelectedFiles(prev => [...prev, ...files].slice(0, 5))}
+                onRemoveFile={(idx) => {
+                  setSelectedFiles(prev => prev.filter((_, i) => i !== idx));
+                  // Reset upload if files changed
+                  if (uploadStatus === "success") {
+                    setUploadStatus("idle");
+                    setUploadedUrls([]);
+                  }
+                }}
               />
             </div>
+
+            {/* Step 2: Upload button */}
+            {selectedFiles.length > 0 && uploadStatus !== "success" && (
+              <Button
+                variant="outline"
+                className="w-full gap-2"
+                onClick={() => completeDialog && handleUploadPhotos(completeDialog)}
+                disabled={uploadStatus === "uploading"}
+              >
+                {uploadStatus === "uploading" ? (
+                  <>⏳ Uploading… {uploadProgress}%</>
+                ) : uploadStatus === "failed" ? (
+                  <><RefreshCw className="w-4 h-4" />Retry Upload</>
+                ) : (
+                  <>📤 Upload Photos ({selectedFiles.length})</>
+                )}
+              </Button>
+            )}
+
+            {/* Upload progress */}
+            {uploadStatus === "uploading" && (
+              <Progress value={uploadProgress} className="h-2" />
+            )}
+
+            {/* Upload error */}
+            {uploadStatus === "failed" && uploadError && (
+              <p className="text-xs text-destructive">{uploadError}</p>
+            )}
+
+            {/* Upload success */}
+            {uploadStatus === "success" && (
+              <p className="text-xs text-success font-medium">✅ {uploadedUrls.length} photo(s) uploaded successfully</p>
+            )}
+
+            {/* Step 3: Remarks */}
             <div className="space-y-1.5">
               <Label>Remarks *</Label>
               <Textarea value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Job details, issues faced, etc." rows={3} />
             </div>
-            {uploading && (
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">Uploading photos… please wait</p>
-                <Progress value={uploadProgress} className="h-2" />
-              </div>
-            )}
+
+            {/* Step 4: Complete — only after upload success */}
             <Button
               className="w-full gradient-primary min-h-[48px] text-base"
               onClick={handleComplete}
-              disabled={uploading || selectedFiles.length === 0}
+              disabled={uploadStatus !== "success" || !remarks.trim()}
             >
-              {uploading ? "⏳ Uploading Photos…" : "✅ Mark as Completed"}
+              ✅ Mark as Completed
             </Button>
           </div>
         </DialogContent>
