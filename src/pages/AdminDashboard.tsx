@@ -556,6 +556,7 @@ const AdminDashboard = () => {
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>Role</TableHead>
+                      <TableHead>Phone</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
@@ -565,6 +566,29 @@ const AdminDashboard = () => {
                       <TableRow key={u.id}>
                         <TableCell className="font-medium">{u.name}</TableCell>
                         <TableCell><Badge variant="outline" className="capitalize">{u.role.replace("_", " ")}</Badge></TableCell>
+                        <TableCell>
+                          {editPhoneUser === u.id ? (
+                            <div className="flex items-center gap-1">
+                              <Input
+                                className="w-32 h-7 text-xs"
+                                placeholder="91XXXXXXXXXX"
+                                value={editPhoneValue}
+                                onChange={e => setEditPhoneValue(e.target.value.replace(/\D/g, "").slice(0, 12))}
+                                onKeyDown={e => { if (e.key === "Enter") handleUpdatePhone(u.id); if (e.key === "Escape") setEditPhoneUser(null); }}
+                              />
+                              <Button size="sm" className="h-7 text-xs px-2" onClick={() => handleUpdatePhone(u.id)} disabled={actionLoading === u.id + "phone"}>
+                                {actionLoading === u.id + "phone" ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
+                              </Button>
+                            </div>
+                          ) : (
+                            <button
+                              className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+                              onClick={() => { setEditPhoneUser(u.id); setEditPhoneValue(u.phone_number || ""); }}
+                            >
+                              {u.phone_number || "Add phone"}
+                            </button>
+                          )}
+                        </TableCell>
                         <TableCell>
                           <Badge className={u.active ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}>
                             {u.active ? "Active" : "Disabled"}
