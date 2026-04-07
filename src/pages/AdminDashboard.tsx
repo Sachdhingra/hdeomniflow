@@ -214,10 +214,54 @@ const AdminDashboard = () => {
     setActionLoading(null);
   };
 
+  const [editPhoneUser, setEditPhoneUser] = useState<string | null>(null);
+  const [editPhoneValue, setEditPhoneValue] = useState("");
+
   const allUsersWithStatus = allProfiles.map(p => {
     const profile = profiles.find(pr => pr.id === p.id);
-    return { ...p, active: profile?.active ?? true };
+    return { ...p, active: profile?.active ?? true, phone_number: profile?.phone_number || "" };
   });
+
+  const handleUpdatePhone = async (userId: string) => {
+    const digits = editPhoneValue.replace(/\D/g, "");
+    if (digits.length === 10) {
+      // Auto-prepend 91
+      const phone = "91" + digits;
+      setActionLoading(userId + "phone");
+      try {
+        const res = await supabase.functions.invoke("manage-user", {
+          body: { action: "update_phone", user_id: userId, phone_number: phone },
+        });
+        if (res.error) throw new Error(res.error.message);
+        if (res.data?.error) throw new Error(res.data.error);
+        toast.success("Phone number updated!");
+        setEditPhoneUser(null);
+        setEditPhoneValue("");
+        await refreshProfiles();
+      } catch (err: any) {
+        toast.error(err.message || "Failed to update phone");
+      }
+      setActionLoading(null);
+    } else if (digits.length === 12 && digits.startsWith("91")) {
+      setActionLoading(userId + "phone");
+      try {
+        const res = await supabase.functions.invoke("manage-user", {
+          body: { action: "update_phone", user_id: userId, phone_number: digits },
+        });
+        if (res.error) throw new Error(res.error.message);
+        if (res.data?.error) throw new Error(res.data.error);
+        toast.success("Phone number updated!");
+        setEditPhoneUser(null);
+        setEditPhoneValue("");
+        await refreshProfiles();
+      } catch (err: any) {
+        toast.error(err.message || "Failed to update phone");
+      }
+      setActionLoading(null);
+    } else {
+      toast.error("Enter 10-digit number (or 91XXXXXXXXXX)");
+    }
+  };
 
   if (error && leads.length === 0) return <LoadingError message={error} onRetry={retryLoad} />;
   if (summaryLoading && leads.length === 0) return <DashboardSkeleton />;
@@ -512,6 +556,7 @@ const AdminDashboard = () => {
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>Role</TableHead>
+                      <TableHead>Phone</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
@@ -521,6 +566,29 @@ const AdminDashboard = () => {
                       <TableRow key={u.id}>
                         <TableCell className="font-medium">{u.name}</TableCell>
                         <TableCell><Badge variant="outline" className="capitalize">{u.role.replace("_", " ")}</Badge></TableCell>
+                        <TableCell>
+                          {editPhoneUser === u.id ? (
+                            <div className="flex items-center gap-1">
+                              <Input
+                                className="w-32 h-7 text-xs"
+                                placeholder="91XXXXXXXXXX"
+                                value={editPhoneValue}
+                                onChange={e => setEditPhoneValue(e.target.value.replace(/\D/g, "").slice(0, 12))}
+                                onKeyDown={e => { if (e.key === "Enter") handleUpdatePhone(u.id); if (e.key === "Escape") setEditPhoneUser(null); }}
+                              />
+                              <Button size="sm" className="h-7 text-xs px-2" onClick={() => handleUpdatePhone(u.id)} disabled={actionLoading === u.id + "phone"}>
+                                {actionLoading === u.id + "phone" ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
+                              </Button>
+                            </div>
+                          ) : (
+                            <button
+                              className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+                              onClick={() => { setEditPhoneUser(u.id); setEditPhoneValue(u.phone_number || ""); }}
+                            >
+                              {u.phone_number || "Add phone"}
+                            </button>
+                          )}
+                        </TableCell>
                         <TableCell>
                           <Badge className={u.active ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}>
                             {u.active ? "Active" : "Disabled"}
@@ -563,7 +631,7 @@ const AdminDashboard = () => {
                       </TableRow>
                     ))}
                     {allUsersWithStatus.length === 0 && (
-                      <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-6">No staff members yet.</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6">No staff members yet.</TableCell></TableRow>
                     )}
                   </TableBody>
                 </Table>
