@@ -631,7 +631,7 @@ const AdminDashboard = () => {
                       </TableRow>
                     ))}
                     {allUsersWithStatus.length === 0 && (
-                      <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-6">No staff members yet.</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6">No staff members yet.</TableCell></TableRow>
                     )}
                   </TableBody>
                 </Table>
