@@ -332,6 +332,28 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     if (user) refreshAll();
   }, [user, refreshAll]);
 
+  // Auto-mark overdue leads (client-side, runs after leads load)
+  useEffect(() => {
+    if (!user || leads.length === 0) return;
+    const todayStr = new Date().toISOString().split("T")[0];
+    const overdueLeads = leads.filter(l =>
+      l.next_follow_up_date &&
+      l.next_follow_up_date < todayStr &&
+      !["won", "lost", "overdue"].includes(l.status)
+    );
+    if (overdueLeads.length > 0) {
+      // Batch update overdue leads
+      overdueLeads.forEach(l => {
+        supabase.from("leads").update({ status: "overdue" as any, updated_by: user.id }).eq("id", l.id)
+          .then(() => {});
+      });
+      // Optimistic local update
+      setLeads(prev => prev.map(l =>
+        overdueLeads.some(o => o.id === l.id) ? { ...l, status: "overdue" as any } : l
+      ));
+    }
+  }, [leads, user]);
+
   // Auto-refresh on tab visibility change
   useEffect(() => {
     if (!user) return;

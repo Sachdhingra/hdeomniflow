@@ -214,10 +214,54 @@ const AdminDashboard = () => {
     setActionLoading(null);
   };
 
+  const [editPhoneUser, setEditPhoneUser] = useState<string | null>(null);
+  const [editPhoneValue, setEditPhoneValue] = useState("");
+
   const allUsersWithStatus = allProfiles.map(p => {
     const profile = profiles.find(pr => pr.id === p.id);
-    return { ...p, active: profile?.active ?? true };
+    return { ...p, active: profile?.active ?? true, phone_number: profile?.phone_number || "" };
   });
+
+  const handleUpdatePhone = async (userId: string) => {
+    const digits = editPhoneValue.replace(/\D/g, "");
+    if (digits.length === 10) {
+      // Auto-prepend 91
+      const phone = "91" + digits;
+      setActionLoading(userId + "phone");
+      try {
+        const res = await supabase.functions.invoke("manage-user", {
+          body: { action: "update_phone", user_id: userId, phone_number: phone },
+        });
+        if (res.error) throw new Error(res.error.message);
+        if (res.data?.error) throw new Error(res.data.error);
+        toast.success("Phone number updated!");
+        setEditPhoneUser(null);
+        setEditPhoneValue("");
+        await refreshProfiles();
+      } catch (err: any) {
+        toast.error(err.message || "Failed to update phone");
+      }
+      setActionLoading(null);
+    } else if (digits.length === 12 && digits.startsWith("91")) {
+      setActionLoading(userId + "phone");
+      try {
+        const res = await supabase.functions.invoke("manage-user", {
+          body: { action: "update_phone", user_id: userId, phone_number: digits },
+        });
+        if (res.error) throw new Error(res.error.message);
+        if (res.data?.error) throw new Error(res.data.error);
+        toast.success("Phone number updated!");
+        setEditPhoneUser(null);
+        setEditPhoneValue("");
+        await refreshProfiles();
+      } catch (err: any) {
+        toast.error(err.message || "Failed to update phone");
+      }
+      setActionLoading(null);
+    } else {
+      toast.error("Enter 10-digit number (or 91XXXXXXXXXX)");
+    }
+  };
 
   if (error && leads.length === 0) return <LoadingError message={error} onRetry={retryLoad} />;
   if (summaryLoading && leads.length === 0) return <DashboardSkeleton />;
