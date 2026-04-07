@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useData, LEAD_CATEGORIES, LeadCategory, ServiceJob } from "@/contexts/DataContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +22,7 @@ interface Props {
 
 const EditJobDialog = ({ job, open, onOpenChange }: Props) => {
   const { updateServiceJob, getProfilesByRole } = useData();
+  const { user } = useAuth();
   const [form, setForm] = useState({
     category: "" as LeadCategory,
     value: 0,
@@ -55,7 +57,15 @@ const EditJobDialog = ({ job, open, onOpenChange }: Props) => {
 
   if (!job) return null;
 
+  const isCompleted = job.status === "completed";
+  const isAdmin = user?.role === "admin";
+  const isLocked = isCompleted && !isAdmin;
+
   const handleSave = async () => {
+    if (isLocked) {
+      toast.error("Completed jobs cannot be edited");
+      return;
+    }
     setSaving(true);
     try {
       await updateServiceJob(job.id, {
@@ -82,36 +92,46 @@ const EditJobDialog = ({ job, open, onOpenChange }: Props) => {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>Edit Job</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>
+            {isLocked ? "View Job (Completed — Locked)" : isCompleted ? "Edit Job (Admin Override)" : "Edit Job"}
+          </DialogTitle>
+        </DialogHeader>
+        {isLocked && (
+          <div className="p-3 bg-muted rounded-lg text-sm text-muted-foreground">
+            🔒 This job is completed and locked. Only Admin can edit completed jobs.
+          </div>
+        )}
         <div className="space-y-4">
           <div className="p-3 bg-muted rounded-lg space-y-1">
             <p className="text-xs text-muted-foreground font-medium">🔒 Read-only</p>
             <p className="text-sm"><span className="font-medium">Customer:</span> {job.customer_name}</p>
             <p className="text-sm"><span className="font-medium">Phone:</span> {job.customer_phone}</p>
+            <p className="text-sm"><span className="font-medium">Status:</span> {STATUS_LABELS[job.status] || job.status}</p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Category</Label>
-              <Select value={form.category} onValueChange={v => setForm(f => ({ ...f, category: v as LeadCategory }))}>
+              <Select value={form.category} onValueChange={v => setForm(f => ({ ...f, category: v as LeadCategory }))} disabled={isLocked}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>{LEAD_CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
               <Label>Value (₹)</Label>
-              <Input type="number" value={form.value} onChange={e => setForm(f => ({ ...f, value: Number(e.target.value) }))} />
+              <Input type="number" value={form.value} onChange={e => setForm(f => ({ ...f, value: Number(e.target.value) }))} disabled={isLocked} />
             </div>
           </div>
 
-          <div className="space-y-1.5"><Label>Address</Label><Input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} /></div>
-          <div className="space-y-1.5"><Label>Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} /></div>
+          <div className="space-y-1.5"><Label>Address</Label><Input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} disabled={isLocked} /></div>
+          <div className="space-y-1.5"><Label>Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} disabled={isLocked} /></div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5"><Label>Date to Attend</Label><Input type="date" value={form.date_to_attend} onChange={e => setForm(f => ({ ...f, date_to_attend: e.target.value }))} /></div>
+            <div className="space-y-1.5"><Label>Date to Attend</Label><Input type="date" value={form.date_to_attend} onChange={e => setForm(f => ({ ...f, date_to_attend: e.target.value }))} disabled={isLocked} /></div>
             <div className="space-y-1.5">
               <Label>Assigned Agent</Label>
-              <Select value={form.assigned_agent} onValueChange={v => setForm(f => ({ ...f, assigned_agent: v }))}>
+              <Select value={form.assigned_agent} onValueChange={v => setForm(f => ({ ...f, assigned_agent: v }))} disabled={isLocked}>
                 <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">Unassigned</SelectItem>
@@ -121,20 +141,22 @@ const EditJobDialog = ({ job, open, onOpenChange }: Props) => {
             </div>
           </div>
 
-          <div className="space-y-1.5"><Label>Remarks</Label><Textarea value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} rows={2} /></div>
+          <div className="space-y-1.5"><Label>Remarks</Label><Textarea value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} rows={2} disabled={isLocked} /></div>
 
           <div className="border-t pt-3 space-y-3">
             <p className="text-sm font-semibold text-muted-foreground">Claim Details</p>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5"><Label>Part No.</Label><Input value={form.claim_part_no} onChange={e => setForm(f => ({ ...f, claim_part_no: e.target.value }))} /></div>
-              <div className="space-y-1.5"><Label>Due Date</Label><Input type="date" value={form.claim_due_date} onChange={e => setForm(f => ({ ...f, claim_due_date: e.target.value }))} /></div>
+              <div className="space-y-1.5"><Label>Part No.</Label><Input value={form.claim_part_no} onChange={e => setForm(f => ({ ...f, claim_part_no: e.target.value }))} disabled={isLocked} /></div>
+              <div className="space-y-1.5"><Label>Due Date</Label><Input type="date" value={form.claim_due_date} onChange={e => setForm(f => ({ ...f, claim_due_date: e.target.value }))} disabled={isLocked} /></div>
             </div>
-            <div className="space-y-1.5"><Label>Reason</Label><Input value={form.claim_reason} onChange={e => setForm(f => ({ ...f, claim_reason: e.target.value }))} /></div>
+            <div className="space-y-1.5"><Label>Reason</Label><Input value={form.claim_reason} onChange={e => setForm(f => ({ ...f, claim_reason: e.target.value }))} disabled={isLocked} /></div>
           </div>
 
-          <Button className="w-full gradient-primary" onClick={handleSave} disabled={saving}>
-            {saving ? "Saving..." : "Save Changes"}
-          </Button>
+          {!isLocked && (
+            <Button className="w-full gradient-primary" onClick={handleSave} disabled={saving}>
+              {saving ? "Saving..." : "Save Changes"}
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

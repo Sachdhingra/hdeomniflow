@@ -31,12 +31,32 @@ Deno.serve(async (req) => {
     });
     if (!isAdmin) throw new Error("Only admins can manage users");
 
-    const { action, user_id, password } = await req.json();
+    const { action, user_id, password, phone_number } = await req.json();
 
     switch (action) {
       case "reset_password": {
         if (!user_id || !password) throw new Error("user_id and password required");
         const { error } = await adminClient.auth.admin.updateUserById(user_id, { password });
+        if (error) throw error;
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      case "update_phone": {
+        if (!user_id) throw new Error("user_id required");
+        // Validate: must be 12 digits starting with 91, or empty to clear
+        const cleanPhone = (phone_number || "").replace(/\D/g, "");
+        if (cleanPhone && cleanPhone.length !== 12) {
+          throw new Error("Phone must be 12 digits (91XXXXXXXXXX)");
+        }
+        if (cleanPhone && !cleanPhone.startsWith("91")) {
+          throw new Error("Phone must start with 91");
+        }
+        const { error } = await adminClient
+          .from("profiles")
+          .update({ phone_number: cleanPhone || null })
+          .eq("id", user_id);
         if (error) throw error;
         return new Response(JSON.stringify({ success: true }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -69,6 +89,18 @@ Deno.serve(async (req) => {
 
       case "delete": {
         if (!user_id) throw new Error("user_id required");
+        // Clean up references before deleting auth user
+        // Nullify assigned leads/jobs so no FK issues
+        await Promise.all([
+          adminClient.from("leads").update({ assigned_to: null } as any).eq("assigned_to", user_id),
+          adminClient.from("leads").update({ delivery_assigned_to: null } as any).eq("delivery_assigned_to", user_id),
+          adminClient.from("service_jobs").update({ assigned_agent: null } as any).eq("assigned_agent", user_id),
+          adminClient.from("user_roles").delete().eq("user_id", user_id),
+          adminClient.from("notifications").delete().eq("user_id", user_id),
+        ]);
+        // Delete profile (cascade from auth.users won't work since no FK)
+        await adminClient.from("profiles").delete().eq("id", user_id);
+        // Finally delete auth user
         const { error: delErr } = await adminClient.auth.admin.deleteUser(user_id);
         if (delErr) throw delErr;
         return new Response(JSON.stringify({ success: true }), {
@@ -77,9 +109,10 @@ Deno.serve(async (req) => {
       }
 
       default:
-        throw new Error("Invalid action. Use: reset_password, disable, enable, delete");
+        throw new Error("Invalid action. Use: reset_password, update_phone, disable, enable, delete");
     }
   } catch (err: any) {
+    console.error("manage-user error:", err.message);
     return new Response(
       JSON.stringify({ error: err.message }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
