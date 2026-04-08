@@ -67,6 +67,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
+    // App version cache busting — clears stale data on new deploys
+    const APP_VERSION = "1.0.8";
+    const storedVersion = localStorage.getItem("furncrm_app_version");
+    if (storedVersion !== APP_VERSION) {
+      // New version: clear all cached data but keep auth token
+      const authKey = Object.keys(localStorage).find(k => k.startsWith("sb-"));
+      const authVal = authKey ? localStorage.getItem(authKey) : null;
+      localStorage.clear();
+      if (authKey && authVal) localStorage.setItem(authKey, authVal);
+      localStorage.setItem("furncrm_app_version", APP_VERSION);
+    }
+
     // Auto-clear stale cache on startup
     try {
       const CACHE_PREFIX = "furncrm_cache_";
