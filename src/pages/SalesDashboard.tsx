@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Users, IndianRupee, TrendingUp, AlertCircle, Phone, Calendar, Truck, Clock, Trophy, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import type { Lead } from "@/contexts/DataContext";
+import SalesTargetCard from "@/components/SalesTargetCard";
 
 const STATUS_COLORS: Record<LeadStatus, string> = {
   new: "bg-primary/10 text-primary",
@@ -43,6 +44,7 @@ const SalesDashboard = () => {
   const [viewMode, setViewMode] = useState<"my" | "all">(user?.role === "admin" ? "all" : "my");
   const [deliveryLead, setDeliveryLead] = useState<Lead | null>(null);
   const [editLead, setEditLead] = useState<Lead | null>(null);
+  const [phoneSearch, setPhoneSearch] = useState("");
 
   const todayStr = new Date().toISOString().split("T")[0];
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
@@ -67,13 +69,14 @@ const SalesDashboard = () => {
       if (viewMode === "my" && user?.role !== "admin") {
         if (l.assigned_to !== user?.id) return false;
       }
+      if (phoneSearch.trim() && !l.customer_phone.includes(phoneSearch.trim())) return false;
       if (categoryFilter !== "all" && l.category !== categoryFilter) return false;
       if (statusFilter !== "all" && l.status !== statusFilter) return false;
       if (fromDate && l.created_at.split("T")[0] < fromDate) return false;
       if (toDate && l.created_at.split("T")[0] > toDate) return false;
       return true;
     });
-  }, [leads, categoryFilter, statusFilter, fromDate, toDate, viewMode, user]);
+  }, [leads, categoryFilter, statusFilter, fromDate, toDate, viewMode, user, phoneSearch]);
 
   const totalValue = filteredLeads.reduce((s, l) => s + Number(l.value_in_rupees), 0);
   const wonLeads = filteredLeads.filter(l => l.status === "won");
@@ -129,6 +132,8 @@ const SalesDashboard = () => {
         </Card>
       )}
 
+      <SalesTargetCard />
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard title="Total Leads" value={filteredLeads.length} icon={<Users className="w-5 h-5" />} />
         <StatCard title="Won Deals" value={wonLeads.length} icon={<Trophy className="w-5 h-5" />} trend={`${filteredLeads.length ? Math.round((wonLeads.length / filteredLeads.length) * 100) : 0}% conversion`} trendUp />
@@ -144,6 +149,10 @@ const SalesDashboard = () => {
       </div>
 
       <div className="flex gap-3 flex-wrap items-center">
+        <div className="relative">
+          <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input placeholder="Search by phone..." value={phoneSearch} onChange={e => setPhoneSearch(e.target.value)} className="pl-9 w-44 h-9" />
+        </div>
         <div className="flex items-center gap-1">
           <span className="text-xs text-muted-foreground">From</span>
           <Input type="date" className="w-36 h-9" value={fromDate} onChange={e => setFromDate(e.target.value)} />

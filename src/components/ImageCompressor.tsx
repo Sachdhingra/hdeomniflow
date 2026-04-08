@@ -15,7 +15,6 @@ async function compressImage(file: File, maxSizeKB: number): Promise<File> {
       const canvas = document.createElement("canvas");
       let { width, height } = img;
 
-      // Scale down to max dimension
       if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
         const ratio = Math.min(MAX_DIMENSION / width, MAX_DIMENSION / height);
         width = Math.round(width * ratio);
@@ -26,16 +25,15 @@ async function compressImage(file: File, maxSizeKB: number): Promise<File> {
       const ctx = canvas.getContext("2d")!;
       ctx.drawImage(img, 0, 0, width, height);
 
-      // Progressive quality reduction
-      let quality = 0.7;
+      let quality = 0.6;
       const tryCompress = () => {
         canvas.toBlob(
           (blob) => {
             if (!blob) { resolve(file); return; }
-            if (blob.size / 1024 <= maxSizeKB || quality <= 0.2) {
+            if (blob.size / 1024 <= maxSizeKB || quality <= 0.15) {
               resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }));
             } else {
-              quality -= 0.1;
+              quality -= 0.08;
               tryCompress();
             }
           },
@@ -98,7 +96,7 @@ const ImageCompressor = ({ onFilesReady, selectedFiles, onRemoveFile }: Props) =
       </div>
       {compressing && (
         <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">Compressing images...</p>
+          <p className="text-xs text-muted-foreground">Compressing images…</p>
           <Progress value={progress} className="h-2" />
         </div>
       )}

@@ -7,6 +7,7 @@ import AdminExport from "@/components/AdminExport";
 import AdminDeletedRecords from "@/components/AdminDeletedRecords";
 import DeleteButton from "@/components/DeleteButton";
 import AgentTrackingTimeline from "@/components/AgentTrackingTimeline";
+import AdminSalesTargets from "@/components/AdminSalesTargets";
 import AuditDashboard from "@/components/AuditDashboard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, Wrench, IndianRupee, TrendingUp, MapPin, BarChart3, UserPlus, Trophy, Truck, KeyRound, Ban, CheckCircle, Trash2, Loader2, Download, Archive, Locate, Search, MessageSquare, Send, ShieldAlert } from "lucide-react";
+import { Users, Wrench, IndianRupee, TrendingUp, MapPin, BarChart3, UserPlus, Trophy, Truck, KeyRound, Ban, CheckCircle, Trash2, Loader2, Download, Archive, Locate, Search, MessageSquare, Send, ShieldAlert, Target } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import LoadingError from "@/components/LoadingError";
@@ -114,6 +115,7 @@ const AdminDashboard = () => {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [trackingAgent, setTrackingAgent] = useState<string | null>(null);
   const [nameSearch, setNameSearch] = useState("");
+  const [phoneSearch, setPhoneSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [assignedFilter, setAssignedFilter] = useState("all");
@@ -124,11 +126,14 @@ const AdminDashboard = () => {
       const q = nameSearch.toLowerCase();
       result = result.filter(l => l.customer_name.toLowerCase().includes(q));
     }
+    if (phoneSearch.trim()) {
+      result = result.filter(l => l.customer_phone.includes(phoneSearch.trim()));
+    }
     if (statusFilter !== "all") result = result.filter(l => l.status === statusFilter);
     if (categoryFilter !== "all") result = result.filter(l => l.category === categoryFilter);
     if (assignedFilter !== "all") result = result.filter(l => l.assigned_to === assignedFilter);
     return result;
-  }, [leads, nameSearch, statusFilter, categoryFilter, assignedFilter]);
+  }, [leads, nameSearch, phoneSearch, statusFilter, categoryFilter, assignedFilter]);
 
   const totalPipeline = leads.reduce((s, l) => s + Number(l.value_in_rupees), 0);
   const wonValue = leads.filter(l => l.status === "won").reduce((s, l) => s + Number(l.value_in_rupees), 0);
@@ -329,6 +334,7 @@ const AdminDashboard = () => {
           <TabsTrigger value="service">Service</TabsTrigger>
           <TabsTrigger value="field">Field Agents</TabsTrigger>
           <TabsTrigger value="site">Site Agents</TabsTrigger>
+          <TabsTrigger value="targets" className="gap-1"><Target className="w-3 h-3" />Targets</TabsTrigger>
           <TabsTrigger value="staff">User Mgmt</TabsTrigger>
           <TabsTrigger value="export" className="gap-1"><Download className="w-3 h-3" />Export</TabsTrigger>
           <TabsTrigger value="deleted" className="gap-1"><Archive className="w-3 h-3" />Deleted</TabsTrigger>
@@ -393,7 +399,11 @@ const AdminDashboard = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input placeholder="Search by customer name..." value={nameSearch} onChange={e => setNameSearch(e.target.value)} className="pl-9" />
+                  <Input placeholder="Search by name..." value={nameSearch} onChange={e => setNameSearch(e.target.value)} className="pl-9" />
+                </div>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input placeholder="Search by phone..." value={phoneSearch} onChange={e => setPhoneSearch(e.target.value)} className="pl-9" />
                 </div>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
@@ -638,6 +648,10 @@ const AdminDashboard = () => {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="targets" className="mt-4">
+          <AdminSalesTargets />
         </TabsContent>
 
         <TabsContent value="export" className="mt-4">

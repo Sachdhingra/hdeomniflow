@@ -19,7 +19,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 type UploadStatus = "idle" | "uploading" | "success" | "failed";
 
-const UPLOAD_TIMEOUT_MS = 15000; // 15s per file
+const UPLOAD_TIMEOUT_MS = 8000;
 
 const FieldAgentDashboard = () => {
   const { user } = useAuth();
@@ -60,24 +60,24 @@ const FieldAgentDashboard = () => {
   const uploadSingleFile = async (file: File, jobId: string): Promise<string> => {
     const path = `jobs/${jobId}/${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+    return new Promise(async (resolve, reject) => {
+      const timeoutId = setTimeout(() => reject(new Error("Upload timed out. Retry?")), UPLOAD_TIMEOUT_MS);
 
-    try {
-      const { error } = await supabase.storage.from("job-photos").upload(path, file, {
-        contentType: "image/jpeg",
-        cacheControl: "3600",
-      });
-      clearTimeout(timeoutId);
-      if (error) throw new Error(error.message);
+      try {
+        const { error } = await supabase.storage.from("job-photos").upload(path, file, {
+          contentType: "image/jpeg",
+          cacheControl: "3600",
+        });
+        clearTimeout(timeoutId);
+        if (error) throw new Error(error.message);
 
-      const { data: urlData } = supabase.storage.from("job-photos").getPublicUrl(path);
-      return urlData.publicUrl;
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      if (err.name === "AbortError") throw new Error("Upload timed out");
-      throw err;
-    }
+        const { data: urlData } = supabase.storage.from("job-photos").getPublicUrl(path);
+        resolve(urlData.publicUrl);
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        reject(err);
+      }
+    });
   };
 
   const handleUploadPhotos = async (jobId: string) => {
@@ -101,10 +101,9 @@ const FieldAgentDashboard = () => {
           retries--;
           if (retries === 0) {
             setUploadStatus("failed");
-            setUploadError(`Photo ${i + 1} failed: ${err.message}. Tap Retry.`);
+            setUploadError(`Photo ${i + 1} failed: ${err.message}`);
             return;
           }
-          // brief pause before retry
           await new Promise(r => setTimeout(r, 1000));
         }
       }
@@ -114,11 +113,6 @@ const FieldAgentDashboard = () => {
     setUploadedUrls(urls);
     setUploadStatus("success");
     toast.success("All photos uploaded! ✅");
-  };
-
-  const handleRetryUpload = () => {
-    if (!completeDialog) return;
-    handleUploadPhotos(completeDialog);
   };
 
   const handleComplete = async () => {
@@ -142,7 +136,7 @@ const FieldAgentDashboard = () => {
       toast.success("Job completed with photos! 🎉");
       resetDialog();
     } catch {
-      toast.error("Failed to save job. Photos are uploaded — please try again.");
+      toast.error("Failed to save. Photos uploaded — try again.");
     }
   };
 
@@ -270,7 +264,6 @@ const FieldAgentDashboard = () => {
         <DialogContent>
           <DialogHeader><DialogTitle>Complete Job</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            {/* Step 1: Select photos */}
             <div className="space-y-1.5">
               <Label>Upload Site Photos (mandatory, auto-compressed)</Label>
               <ImageCompressor
@@ -278,7 +271,6 @@ const FieldAgentDashboard = () => {
                 onFilesReady={files => setSelectedFiles(prev => [...prev, ...files].slice(0, 5))}
                 onRemoveFile={(idx) => {
                   setSelectedFiles(prev => prev.filter((_, i) => i !== idx));
-                  // Reset upload if files changed
                   if (uploadStatus === "success") {
                     setUploadStatus("idle");
                     setUploadedUrls([]);
@@ -287,7 +279,6 @@ const FieldAgentDashboard = () => {
               />
             </div>
 
-            {/* Step 2: Upload button */}
             {selectedFiles.length > 0 && uploadStatus !== "success" && (
               <Button
                 variant="outline"
@@ -305,28 +296,15 @@ const FieldAgentDashboard = () => {
               </Button>
             )}
 
-            {/* Upload progress */}
-            {uploadStatus === "uploading" && (
-              <Progress value={uploadProgress} className="h-2" />
-            )}
+            {uploadStatus === "uploading" && <Progress value={uploadProgress} className="h-2" />}
+            {uploadStatus === "failed" && uploadError && <p className="text-xs text-destructive">{uploadError}</p>}
+            {uploadStatus === "success" && <p className="text-xs text-success font-medium">✅ {uploadedUrls.length} photo(s) uploaded</p>}
 
-            {/* Upload error */}
-            {uploadStatus === "failed" && uploadError && (
-              <p className="text-xs text-destructive">{uploadError}</p>
-            )}
-
-            {/* Upload success */}
-            {uploadStatus === "success" && (
-              <p className="text-xs text-success font-medium">✅ {uploadedUrls.length} photo(s) uploaded successfully</p>
-            )}
-
-            {/* Step 3: Remarks */}
             <div className="space-y-1.5">
               <Label>Remarks *</Label>
               <Textarea value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Job details, issues faced, etc." rows={3} />
             </div>
 
-            {/* Step 4: Complete — only after upload success */}
             <Button
               className="w-full gradient-primary min-h-[48px] text-base"
               onClick={handleComplete}
