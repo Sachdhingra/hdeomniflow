@@ -334,6 +334,7 @@ const AdminDashboard = () => {
           <TabsTrigger value="service">Service</TabsTrigger>
           <TabsTrigger value="field">Field Agents</TabsTrigger>
           <TabsTrigger value="site">Site Agents</TabsTrigger>
+          <TabsTrigger value="targets" className="gap-1"><Target className="w-3 h-3" />Targets</TabsTrigger>
           <TabsTrigger value="staff">User Mgmt</TabsTrigger>
           <TabsTrigger value="export" className="gap-1"><Download className="w-3 h-3" />Export</TabsTrigger>
           <TabsTrigger value="deleted" className="gap-1"><Archive className="w-3 h-3" />Deleted</TabsTrigger>
