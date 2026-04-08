@@ -650,6 +650,10 @@ const AdminDashboard = () => {
           </Card>
         </TabsContent>
 
+        <TabsContent value="targets" className="mt-4">
+          <AdminSalesTargets />
+        </TabsContent>
+
         <TabsContent value="export" className="mt-4">
           <AdminExport />
         </TabsContent>
