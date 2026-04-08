@@ -7,6 +7,7 @@ import AdminExport from "@/components/AdminExport";
 import AdminDeletedRecords from "@/components/AdminDeletedRecords";
 import DeleteButton from "@/components/DeleteButton";
 import AgentTrackingTimeline from "@/components/AgentTrackingTimeline";
+import AdminSalesTargets from "@/components/AdminSalesTargets";
 import AuditDashboard from "@/components/AuditDashboard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -114,6 +115,7 @@ const AdminDashboard = () => {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [trackingAgent, setTrackingAgent] = useState<string | null>(null);
   const [nameSearch, setNameSearch] = useState("");
+  const [phoneSearch, setPhoneSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [assignedFilter, setAssignedFilter] = useState("all");
@@ -124,11 +126,14 @@ const AdminDashboard = () => {
       const q = nameSearch.toLowerCase();
       result = result.filter(l => l.customer_name.toLowerCase().includes(q));
     }
+    if (phoneSearch.trim()) {
+      result = result.filter(l => l.customer_phone.includes(phoneSearch.trim()));
+    }
     if (statusFilter !== "all") result = result.filter(l => l.status === statusFilter);
     if (categoryFilter !== "all") result = result.filter(l => l.category === categoryFilter);
     if (assignedFilter !== "all") result = result.filter(l => l.assigned_to === assignedFilter);
     return result;
-  }, [leads, nameSearch, statusFilter, categoryFilter, assignedFilter]);
+  }, [leads, nameSearch, phoneSearch, statusFilter, categoryFilter, assignedFilter]);
 
   const totalPipeline = leads.reduce((s, l) => s + Number(l.value_in_rupees), 0);
   const wonValue = leads.filter(l => l.status === "won").reduce((s, l) => s + Number(l.value_in_rupees), 0);
