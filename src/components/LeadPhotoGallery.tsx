@@ -29,9 +29,14 @@ const LeadPhotoGallery = ({ leadId, className = "" }: LeadPhotoGalleryProps) => 
           for (const job of jobs) {
             if (job.photos && Array.isArray(job.photos)) {
               for (const photo of job.photos) {
-                if (photo) {
-                  const { data } = supabase.storage.from("job-photos").getPublicUrl(photo);
-                  if (data?.publicUrl) allPhotos.push(data.publicUrl);
+                if (photo && typeof photo === "string" && photo.length > 0) {
+                  // Photos are stored as full URLs already
+                  if (photo.startsWith("http")) {
+                    allPhotos.push(photo);
+                  } else {
+                    const { data } = supabase.storage.from("job-photos").getPublicUrl(photo);
+                    if (data?.publicUrl) allPhotos.push(data.publicUrl);
+                  }
                 }
               }
             }
