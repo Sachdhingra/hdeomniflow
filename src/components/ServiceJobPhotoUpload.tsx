@@ -7,7 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 const MAX_FILES = 5;
 const MAX_DIMENSION = 1200;
 const TARGET_SIZE_KB = 500;
-const UPLOAD_TIMEOUT_MS = 15000;
+const UPLOAD_TIMEOUT_MS = 10000;
 const MAX_RETRIES = 3;
 const BUCKET = "field-agent-photos";
 
@@ -43,7 +43,9 @@ async function compressImage(file: File): Promise<File> {
           (blob) => {
             if (!blob) { resolve(file); return; }
             if (blob.size / 1024 <= TARGET_SIZE_KB || quality <= 0.1) {
-              resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }));
+              const compressed = new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" });
+              console.log(`[PhotoUpload] Compressed: ${(file.size / 1024).toFixed(0)}KB → ${(compressed.size / 1024).toFixed(0)}KB`);
+              resolve(compressed);
             } else {
               quality -= 0.1;
               tryCompress();
@@ -55,33 +57,40 @@ async function compressImage(file: File): Promise<File> {
       };
       tryCompress();
     };
-    img.onerror = () => resolve(file);
+    img.onerror = () => { console.warn("[PhotoUpload] Image load failed, using original"); resolve(file); };
     img.src = url;
   });
 }
 
+function timeoutPromise(ms: number): Promise<never> {
+  return new Promise((_, reject) =>
+    setTimeout(() => reject(new Error(`Upload timed out after ${ms / 1000}s`)), ms)
+  );
+}
+
 async function uploadWithRetry(file: File, path: string): Promise<string> {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
-
+    console.log(`[PhotoUpload] Upload attempt ${attempt}/${MAX_RETRIES} for ${path} (${(file.size / 1024).toFixed(0)}KB)`);
     try {
-      const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+      const uploadPromise = supabase.storage.from(BUCKET).upload(path, file, {
         contentType: "image/jpeg",
         cacheControl: "3600",
         upsert: true,
       });
-      clearTimeout(timeout);
+
+      // Race upload against timeout
+      const { error } = await Promise.race([uploadPromise, timeoutPromise(UPLOAD_TIMEOUT_MS)]);
       if (error) throw new Error(error.message);
 
       const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-      console.log(`[PhotoUpload] Uploaded ${path} on attempt ${attempt}`);
+      console.log(`[PhotoUpload] ✅ Upload success: ${path}`);
       return data.publicUrl;
     } catch (err: any) {
-      clearTimeout(timeout);
-      console.warn(`[PhotoUpload] Attempt ${attempt}/${MAX_RETRIES} failed:`, err.message);
+      console.warn(`[PhotoUpload] ❌ Attempt ${attempt} failed: ${err.message}`);
       if (attempt === MAX_RETRIES) throw err;
-      await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+      const backoff = 1000 * Math.pow(2, attempt - 1);
+      console.log(`[PhotoUpload] Retrying in ${backoff}ms...`);
+      await new Promise(r => setTimeout(r, backoff));
     }
   }
   throw new Error("Upload failed after all retries");
@@ -119,7 +128,6 @@ const ServiceJobPhotoUpload = ({ jobId, onUploadComplete, disabled }: Props) => 
         const c = await compressImage(selected[i]);
         compressed.push(c);
         setProgress(Math.round(((i + 1) / selected.length) * 100));
-        console.log(`[PhotoUpload] Compressed ${selected[i].name}: ${(selected[i].size / 1024).toFixed(0)}KB → ${(c.size / 1024).toFixed(0)}KB`);
       }
 
       const newPreviews = compressed.map(f => URL.createObjectURL(f));
@@ -146,6 +154,7 @@ const ServiceJobPhotoUpload = ({ jobId, onUploadComplete, disabled }: Props) => 
 
   const handleUpload = async () => {
     if (!files.length) return;
+    console.log(`[PhotoUpload] 🚀 Upload started for ${files.length} file(s), jobId=${jobId}`);
     setUploadState("uploading");
     setProgress(0);
     setError(null);
@@ -158,12 +167,15 @@ const ServiceJobPhotoUpload = ({ jobId, onUploadComplete, disabled }: Props) => 
         urls.push(url);
         setProgress(Math.round(((i + 1) / files.length) * 100));
       }
+      console.log(`[PhotoUpload] 🎉 All ${urls.length} photos uploaded successfully`);
       setUploadedUrls(urls);
       setUploadState("success");
       onUploadComplete(urls);
     } catch (err: any) {
+      console.error(`[PhotoUpload] 💥 Upload failed: ${err.message}`);
       setError(`Upload failed: ${err.message}. Tap Retry.`);
       setUploadState("failed");
+      // Partial success — still pass what we got
       if (urls.length) {
         setUploadedUrls(urls);
         onUploadComplete(urls);
