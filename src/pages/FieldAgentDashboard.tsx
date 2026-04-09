@@ -2,24 +2,18 @@ import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useData } from "@/contexts/DataContext";
 import StatCard from "@/components/StatCard";
-import ImageCompressor from "@/components/ImageCompressor";
+import ServiceJobPhotoUpload from "@/components/ServiceJobPhotoUpload";
 import LeadForm from "@/components/LeadForm";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { MapPin, Clock, CheckCircle, Navigation, Phone, Wrench, Truck, RefreshCw } from "lucide-react";
+import { MapPin, Clock, CheckCircle, Navigation, Phone, Wrench, Truck } from "lucide-react";
 import { toast } from "sonner";
 import LoadingError from "@/components/LoadingError";
 import { DashboardSkeleton } from "@/components/DashboardSkeleton";
-import { supabase } from "@/integrations/supabase/client";
-
-type UploadStatus = "idle" | "uploading" | "success" | "failed";
-
-const UPLOAD_TIMEOUT_MS = 8000;
 
 const FieldAgentDashboard = () => {
   const { user } = useAuth();
@@ -27,11 +21,7 @@ const FieldAgentDashboard = () => {
   const [completeDialog, setCompleteDialog] = useState<string | null>(null);
   const [remarks, setRemarks] = useState("");
   const [gpsActive, setGpsActive] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadedUrls, setUploadedUrls] = useState<string[]>([]);
-  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const myJobs = serviceJobs.filter(j => j.assigned_agent === user?.id);
   const todayStr = new Date().toISOString().split("T")[0];
@@ -57,67 +47,9 @@ const FieldAgentDashboard = () => {
     toast.success("Marked as on site! ✅");
   };
 
-  const uploadSingleFile = async (file: File, jobId: string): Promise<string> => {
-    const path = `jobs/${jobId}/${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
-
-    return new Promise(async (resolve, reject) => {
-      const timeoutId = setTimeout(() => reject(new Error("Upload timed out. Retry?")), UPLOAD_TIMEOUT_MS);
-
-      try {
-        const { error } = await supabase.storage.from("job-photos").upload(path, file, {
-          contentType: "image/jpeg",
-          cacheControl: "3600",
-        });
-        clearTimeout(timeoutId);
-        if (error) throw new Error(error.message);
-
-        const { data: urlData } = supabase.storage.from("job-photos").getPublicUrl(path);
-        resolve(urlData.publicUrl);
-      } catch (err: any) {
-        clearTimeout(timeoutId);
-        reject(err);
-      }
-    });
-  };
-
-  const handleUploadPhotos = async (jobId: string) => {
-    if (selectedFiles.length === 0) return;
-
-    setUploadStatus("uploading");
-    setUploadProgress(0);
-    setUploadError(null);
-    setUploadedUrls([]);
-
-    const urls: string[] = [];
-    for (let i = 0; i < selectedFiles.length; i++) {
-      let retries = 2;
-      let uploaded = false;
-      while (retries > 0 && !uploaded) {
-        try {
-          const url = await uploadSingleFile(selectedFiles[i], jobId);
-          urls.push(url);
-          uploaded = true;
-        } catch (err: any) {
-          retries--;
-          if (retries === 0) {
-            setUploadStatus("failed");
-            setUploadError(`Photo ${i + 1} failed: ${err.message}`);
-            return;
-          }
-          await new Promise(r => setTimeout(r, 1000));
-        }
-      }
-      setUploadProgress(Math.round(((i + 1) / selectedFiles.length) * 100));
-    }
-
-    setUploadedUrls(urls);
-    setUploadStatus("success");
-    toast.success("All photos uploaded! ✅");
-  };
-
   const handleComplete = async () => {
     if (!completeDialog) return;
-    if (uploadStatus !== "success" || uploadedUrls.length === 0) {
+    if (uploadedUrls.length === 0) {
       toast.error("Upload photos first");
       return;
     }
@@ -143,11 +75,7 @@ const FieldAgentDashboard = () => {
   const resetDialog = () => {
     setCompleteDialog(null);
     setRemarks("");
-    setSelectedFiles([]);
-    setUploadStatus("idle");
-    setUploadProgress(0);
     setUploadedUrls([]);
-    setUploadError(null);
   };
 
   const statusLabel = (status: string) => {
@@ -266,39 +194,13 @@ const FieldAgentDashboard = () => {
           <div className="space-y-4">
             <div className="space-y-1.5">
               <Label>Upload Site Photos (mandatory, auto-compressed)</Label>
-              <ImageCompressor
-                selectedFiles={selectedFiles}
-                onFilesReady={files => setSelectedFiles(prev => [...prev, ...files].slice(0, 5))}
-                onRemoveFile={(idx) => {
-                  setSelectedFiles(prev => prev.filter((_, i) => i !== idx));
-                  if (uploadStatus === "success") {
-                    setUploadStatus("idle");
-                    setUploadedUrls([]);
-                  }
-                }}
-              />
+              {completeDialog && (
+                <ServiceJobPhotoUpload
+                  jobId={completeDialog}
+                  onUploadComplete={(urls) => setUploadedUrls(urls)}
+                />
+              )}
             </div>
-
-            {selectedFiles.length > 0 && uploadStatus !== "success" && (
-              <Button
-                variant="outline"
-                className="w-full gap-2"
-                onClick={() => completeDialog && handleUploadPhotos(completeDialog)}
-                disabled={uploadStatus === "uploading"}
-              >
-                {uploadStatus === "uploading" ? (
-                  <>⏳ Uploading… {uploadProgress}%</>
-                ) : uploadStatus === "failed" ? (
-                  <><RefreshCw className="w-4 h-4" />Retry Upload</>
-                ) : (
-                  <>📤 Upload Photos ({selectedFiles.length})</>
-                )}
-              </Button>
-            )}
-
-            {uploadStatus === "uploading" && <Progress value={uploadProgress} className="h-2" />}
-            {uploadStatus === "failed" && uploadError && <p className="text-xs text-destructive">{uploadError}</p>}
-            {uploadStatus === "success" && <p className="text-xs text-success font-medium">✅ {uploadedUrls.length} photo(s) uploaded</p>}
 
             <div className="space-y-1.5">
               <Label>Remarks *</Label>
@@ -308,7 +210,7 @@ const FieldAgentDashboard = () => {
             <Button
               className="w-full gradient-primary min-h-[48px] text-base"
               onClick={handleComplete}
-              disabled={uploadStatus !== "success" || !remarks.trim()}
+              disabled={uploadedUrls.length === 0 || !remarks.trim()}
             >
               ✅ Mark as Completed
             </Button>
