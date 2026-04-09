@@ -2,24 +2,18 @@ import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useData } from "@/contexts/DataContext";
 import StatCard from "@/components/StatCard";
-import ImageCompressor from "@/components/ImageCompressor";
+import ServiceJobPhotoUpload from "@/components/ServiceJobPhotoUpload";
 import LeadForm from "@/components/LeadForm";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { MapPin, Clock, CheckCircle, Navigation, Phone, Wrench, Truck, RefreshCw } from "lucide-react";
+import { MapPin, Clock, CheckCircle, Navigation, Phone, Wrench, Truck } from "lucide-react";
 import { toast } from "sonner";
 import LoadingError from "@/components/LoadingError";
 import { DashboardSkeleton } from "@/components/DashboardSkeleton";
-import { supabase } from "@/integrations/supabase/client";
-
-type UploadStatus = "idle" | "uploading" | "success" | "failed";
-
-const UPLOAD_TIMEOUT_MS = 8000;
 
 const FieldAgentDashboard = () => {
   const { user } = useAuth();
@@ -27,11 +21,7 @@ const FieldAgentDashboard = () => {
   const [completeDialog, setCompleteDialog] = useState<string | null>(null);
   const [remarks, setRemarks] = useState("");
   const [gpsActive, setGpsActive] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadedUrls, setUploadedUrls] = useState<string[]>([]);
-  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const myJobs = serviceJobs.filter(j => j.assigned_agent === user?.id);
   const todayStr = new Date().toISOString().split("T")[0];
