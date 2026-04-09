@@ -68,7 +68,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     // App version cache busting — clears stale data on new deploys
-    const APP_VERSION = "1.1.0";
+    const APP_VERSION = "1.2.0";
     const storedVersion = localStorage.getItem("furncrm_app_version");
     if (storedVersion !== APP_VERSION) {
       console.log("[Auth] New app version detected, clearing stale cache…");
