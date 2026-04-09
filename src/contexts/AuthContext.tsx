@@ -68,13 +68,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     // App version cache busting — clears stale data on new deploys
-    const APP_VERSION = "1.0.8";
+    const APP_VERSION = "1.1.0";
     const storedVersion = localStorage.getItem("furncrm_app_version");
     if (storedVersion !== APP_VERSION) {
-      // New version: clear all cached data but keep auth token
+      console.log("[Auth] New app version detected, clearing stale cache…");
       const authKey = Object.keys(localStorage).find(k => k.startsWith("sb-"));
       const authVal = authKey ? localStorage.getItem(authKey) : null;
       localStorage.clear();
+      sessionStorage.clear();
       if (authKey && authVal) localStorage.setItem(authKey, authVal);
       localStorage.setItem("furncrm_app_version", APP_VERSION);
     }
@@ -88,11 +89,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (key?.startsWith(CACHE_PREFIX)) {
           try {
             const parsed = JSON.parse(localStorage.getItem(key) || "");
-            if (Date.now() - parsed.ts > CACHE_TTL) localStorage.removeItem(key);
+            if (Date.now() - parsed.ts > CACHE_TTL) {
+              console.log("[Auth] Clearing stale cache:", key);
+              localStorage.removeItem(key);
+            }
           } catch { localStorage.removeItem(key!); }
         }
       }
     } catch {}
+
+    // Unregister stale service workers
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        regs.forEach(r => { r.unregister(); console.log("[Auth] Unregistered service worker"); });
+      });
+    }
+
+    // Validate auth token on startup
+    supabase.auth.getUser().then(({ data: { user: authUser } }) => {
+      if (!authUser) {
+        console.log("[Auth] No valid auth token, clearing storage");
+        const versionVal = localStorage.getItem("furncrm_app_version");
+        localStorage.clear();
+        sessionStorage.clear();
+        if (versionVal) localStorage.setItem("furncrm_app_version", versionVal);
+      }
+    });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
