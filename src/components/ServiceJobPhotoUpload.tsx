@@ -1,17 +1,23 @@
 import { useState, useRef, useCallback } from "react";
 import { Camera, X, RefreshCw, CheckCircle, AlertCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 
 const MAX_FILES = 5;
 const MAX_DIMENSION = 1200;
-const TARGET_SIZE_KB = 500;
-const UPLOAD_TIMEOUT_MS = 10000;
+const TARGET_SIZE_KB = 400;
+const UPLOAD_TIMEOUT_MS = 30000;
 const MAX_RETRIES = 3;
 const BUCKET = "field-agent-photos";
 
-type UploadState = "idle" | "compressing" | "uploading" | "success" | "failed";
+type FileEntry = {
+  id: string;
+  file: File;
+  preview: string;
+  status: "compressing" | "uploading" | "success" | "failed";
+  url?: string;
+  error?: string;
+  retryCount: number;
+};
 
 interface Props {
   jobId: string;
@@ -19,7 +25,12 @@ interface Props {
   disabled?: boolean;
 }
 
+function generateId() {
+  return `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 async function compressImage(file: File): Promise<File> {
+  console.log(`[PhotoUpload] 🗜️ Compressing: ${file.name} (${(file.size / 1024).toFixed(0)}KB)`);
   return new Promise((resolve) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
@@ -41,10 +52,18 @@ async function compressImage(file: File): Promise<File> {
       const tryCompress = () => {
         canvas.toBlob(
           (blob) => {
-            if (!blob) { resolve(file); return; }
+            if (!blob) {
+              console.warn("[PhotoUpload] ⚠️ Blob creation failed, using original");
+              resolve(file);
+              return;
+            }
             if (blob.size / 1024 <= TARGET_SIZE_KB || quality <= 0.1) {
-              const compressed = new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" });
-              console.log(`[PhotoUpload] Compressed: ${(file.size / 1024).toFixed(0)}KB → ${(compressed.size / 1024).toFixed(0)}KB`);
+              const compressed = new File(
+                [blob],
+                file.name.replace(/\.[^.]+$/, ".jpg"),
+                { type: "image/jpeg" }
+              );
+              console.log(`[PhotoUpload] ✅ Compression complete: ${(file.size / 1024).toFixed(0)}KB → ${(compressed.size / 1024).toFixed(0)}KB`);
               resolve(compressed);
             } else {
               quality -= 0.1;
@@ -57,131 +76,179 @@ async function compressImage(file: File): Promise<File> {
       };
       tryCompress();
     };
-    img.onerror = () => { console.warn("[PhotoUpload] Image load failed, using original"); resolve(file); };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      console.warn("[PhotoUpload] ⚠️ Image load failed, using original");
+      resolve(file);
+    };
     img.src = url;
   });
 }
 
-function timeoutPromise(ms: number): Promise<never> {
-  return new Promise((_, reject) =>
-    setTimeout(() => reject(new Error(`Upload timed out after ${ms / 1000}s`)), ms)
-  );
+async function uploadFile(file: File, path: string, attempt: number): Promise<string> {
+  console.log(`[PhotoUpload] 📡 Upload started: attempt ${attempt}/${MAX_RETRIES}, path=${path}, size=${(file.size / 1024).toFixed(0)}KB`);
+
+  if (!file || file.size === 0) {
+    throw new Error("Invalid file object - empty or null");
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    console.warn(`[PhotoUpload] ⏱️ Upload timed out after ${UPLOAD_TIMEOUT_MS / 1000}s`);
+    controller.abort();
+  }, UPLOAD_TIMEOUT_MS);
+
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const blob = new Blob([arrayBuffer], { type: "image/jpeg" });
+    console.log(`[PhotoUpload] 📦 File buffer ready: ${(blob.size / 1024).toFixed(0)}KB`);
+
+    const { error } = await supabase.storage.from(BUCKET).upload(path, blob, {
+      contentType: "image/jpeg",
+      cacheControl: "3600",
+      upsert: true,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (error) {
+      console.error(`[PhotoUpload] ❌ Supabase error:`, error.message);
+      throw new Error(error.message);
+    }
+
+    const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
+    console.log(`[PhotoUpload] ✅ Upload success: ${data.publicUrl}`);
+    return data.publicUrl;
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === "AbortError") {
+      throw new Error(`Upload timed out after ${UPLOAD_TIMEOUT_MS / 1000}s`);
+    }
+    throw err;
+  }
 }
 
 async function uploadWithRetry(file: File, path: string): Promise<string> {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    console.log(`[PhotoUpload] Upload attempt ${attempt}/${MAX_RETRIES} for ${path} (${(file.size / 1024).toFixed(0)}KB)`);
     try {
-      const uploadPromise = supabase.storage.from(BUCKET).upload(path, file, {
-        contentType: "image/jpeg",
-        cacheControl: "3600",
-        upsert: true,
-      });
-
-      // Race upload against timeout
-      const { error } = await Promise.race([uploadPromise, timeoutPromise(UPLOAD_TIMEOUT_MS)]);
-      if (error) throw new Error(error.message);
-
-      const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-      console.log(`[PhotoUpload] ✅ Upload success: ${path}`);
-      return data.publicUrl;
+      return await uploadFile(file, path, attempt);
     } catch (err: any) {
       console.warn(`[PhotoUpload] ❌ Attempt ${attempt} failed: ${err.message}`);
       if (attempt === MAX_RETRIES) throw err;
       const backoff = 1000 * Math.pow(2, attempt - 1);
-      console.log(`[PhotoUpload] Retrying in ${backoff}ms...`);
-      await new Promise(r => setTimeout(r, backoff));
+      console.log(`[PhotoUpload] ⏳ Retrying in ${backoff}ms...`);
+      await new Promise((r) => setTimeout(r, backoff));
     }
   }
   throw new Error("Upload failed after all retries");
 }
 
 const ServiceJobPhotoUpload = ({ jobId, onUploadComplete, disabled }: Props) => {
-  const [files, setFiles] = useState<File[]>([]);
-  const [previews, setPreviews] = useState<string[]>([]);
-  const [uploadState, setUploadState] = useState<UploadState>("idle");
-  const [progress, setProgress] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const [uploadedUrls, setUploadedUrls] = useState<string[]>([]);
+  const [entries, setEntries] = useState<FileEntry[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const prevUrlsRef = useRef<string>("");
 
-  const handleFiles = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const remaining = MAX_FILES - files.length;
-    if (remaining <= 0) return;
-    const selected = Array.from(e.target.files || []).slice(0, remaining);
-    if (!selected.length) return;
-
-    for (const f of selected) {
-      if (!f.type.startsWith("image/")) {
-        setError(`"${f.name}" is not an image file`);
-        return;
+  const uploadEntry = useCallback(
+    async (id: string, compressedFile: File) => {
+      const path = `jobs/${jobId}/${id}.jpg`;
+      setEntries((prev) =>
+        prev.map((e) => (e.id === id ? { ...e, status: "uploading" as const, error: undefined } : e))
+      );
+      try {
+        const url = await uploadWithRetry(compressedFile, path);
+        setEntries((prev) =>
+          prev.map((e) => (e.id === id ? { ...e, status: "success" as const, url } : e))
+        );
+      } catch (err: any) {
+        console.error(`[PhotoUpload] 💥 Upload failed for ${id}: ${err.message}`);
+        setEntries((prev) =>
+          prev.map((e) =>
+            e.id === id
+              ? { ...e, status: "failed" as const, error: err.message, retryCount: e.retryCount + 1 }
+              : e
+          )
+        );
       }
-    }
+    },
+    [jobId]
+  );
 
-    setUploadState("compressing");
-    setError(null);
-    setProgress(0);
+  const handleFiles = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const remaining = MAX_FILES - entries.length;
+      if (remaining <= 0) return;
+      const selected = Array.from(e.target.files || []).slice(0, remaining);
+      if (!selected.length) return;
 
-    try {
-      const compressed: File[] = [];
-      for (let i = 0; i < selected.length; i++) {
-        const c = await compressImage(selected[i]);
-        compressed.push(c);
-        setProgress(Math.round(((i + 1) / selected.length) * 100));
+      for (const f of selected) {
+        if (!f.type.startsWith("image/")) {
+          console.warn(`[PhotoUpload] ⚠️ Non-image rejected: ${f.name}`);
+          return;
+        }
       }
 
-      const newPreviews = compressed.map(f => URL.createObjectURL(f));
-      setFiles(prev => [...prev, ...compressed]);
-      setPreviews(prev => [...prev, ...newPreviews]);
-      setUploadState("idle");
-    } catch {
-      setError("Failed to compress images");
-      setUploadState("idle");
-    }
+      for (const rawFile of selected) {
+        const id = generateId();
+        const placeholder: FileEntry = {
+          id,
+          file: rawFile,
+          preview: "",
+          status: "compressing",
+          retryCount: 0,
+        };
+        setEntries((prev) => [...prev, placeholder]);
 
-    if (inputRef.current) inputRef.current.value = "";
-  }, [files.length]);
-
-  const removeFile = (idx: number) => {
-    URL.revokeObjectURL(previews[idx]);
-    setFiles(prev => prev.filter((_, i) => i !== idx));
-    setPreviews(prev => prev.filter((_, i) => i !== idx));
-    if (uploadState === "success") {
-      setUploadState("idle");
-      setUploadedUrls([]);
-    }
-  };
-
-  const handleUpload = async () => {
-    if (!files.length) return;
-    console.log(`[PhotoUpload] 🚀 Upload started for ${files.length} file(s), jobId=${jobId}`);
-    setUploadState("uploading");
-    setProgress(0);
-    setError(null);
-
-    const urls: string[] = [];
-    try {
-      for (let i = 0; i < files.length; i++) {
-        const path = `jobs/${jobId}/${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
-        const url = await uploadWithRetry(files[i], path);
-        urls.push(url);
-        setProgress(Math.round(((i + 1) / files.length) * 100));
+        // Compress then auto-upload
+        (async () => {
+          try {
+            const compressed = await compressImage(rawFile);
+            const preview = URL.createObjectURL(compressed);
+            setEntries((prev) =>
+              prev.map((entry) =>
+                entry.id === id ? { ...entry, file: compressed, preview, status: "uploading" as const } : entry
+              )
+            );
+            await uploadEntry(id, compressed);
+          } catch (err) {
+            setEntries((prev) =>
+              prev.map((entry) =>
+                entry.id === id ? { ...entry, status: "failed" as const, error: "Compression failed" } : entry
+              )
+            );
+          }
+        })();
       }
-      console.log(`[PhotoUpload] 🎉 All ${urls.length} photos uploaded successfully`);
-      setUploadedUrls(urls);
-      setUploadState("success");
-      onUploadComplete(urls);
-    } catch (err: any) {
-      console.error(`[PhotoUpload] 💥 Upload failed: ${err.message}`);
-      setError(`Upload failed: ${err.message}. Tap Retry.`);
-      setUploadState("failed");
-      // Partial success — still pass what we got
-      if (urls.length) {
-        setUploadedUrls(urls);
-        onUploadComplete(urls);
-      }
-    }
-  };
+
+      if (inputRef.current) inputRef.current.value = "";
+    },
+    [entries.length, uploadEntry]
+  );
+
+  const retryEntry = useCallback(
+    (entry: FileEntry) => {
+      uploadEntry(entry.id, entry.file);
+    },
+    [uploadEntry]
+  );
+
+  const removeEntry = useCallback((id: string) => {
+    setEntries((prev) => {
+      const e = prev.find((x) => x.id === id);
+      if (e?.preview) URL.revokeObjectURL(e.preview);
+      return prev.filter((x) => x.id !== id);
+    });
+  }, []);
+
+  // Notify parent when successful URLs change
+  const successUrls = entries.filter((e) => e.status === "success").map((e) => e.url!);
+  const urlsKey = successUrls.join(",");
+  if (urlsKey !== prevUrlsRef.current && successUrls.length > 0) {
+    prevUrlsRef.current = urlsKey;
+    setTimeout(() => onUploadComplete(successUrls), 0);
+  }
+
+  const hasUploading = entries.some((e) => e.status === "uploading" || e.status === "compressing");
+  const hasFailed = entries.some((e) => e.status === "failed");
 
   return (
     <div className="space-y-3">
@@ -198,66 +265,88 @@ const ServiceJobPhotoUpload = ({ jobId, onUploadComplete, disabled }: Props) => 
           capture="environment"
           className="w-full text-sm"
           onChange={handleFiles}
-          disabled={disabled || uploadState === "uploading" || uploadState === "compressing" || files.length >= MAX_FILES}
+          disabled={disabled || hasUploading || entries.length >= MAX_FILES}
         />
       </div>
 
-      {uploadState === "compressing" && (
-        <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">Compressing images…</p>
-          <Progress value={progress} className="h-2" />
-        </div>
-      )}
-
-      {previews.length > 0 && (
+      {entries.length > 0 && (
         <div className="flex gap-2 flex-wrap">
-          {previews.map((src, i) => (
-            <div key={i} className="relative group">
-              <img src={src} alt={`Photo ${i + 1}`} className="w-16 h-16 rounded-lg object-cover border border-border" />
-              {uploadState !== "uploading" && (
+          {entries.map((entry) => (
+            <div key={entry.id} className="relative group">
+              {entry.preview ? (
+                <img
+                  src={entry.preview}
+                  alt="Photo"
+                  className={`w-16 h-16 rounded-lg object-cover border ${
+                    entry.status === "success"
+                      ? "border-green-500"
+                      : entry.status === "failed"
+                      ? "border-destructive"
+                      : "border-border"
+                  }`}
+                />
+              ) : (
+                <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center border border-border">
+                  <Camera className="w-5 h-5 text-muted-foreground animate-pulse" />
+                </div>
+              )}
+
+              <div className="absolute inset-0 flex items-center justify-center">
+                {(entry.status === "compressing" || entry.status === "uploading") && (
+                  <div className="bg-background/80 rounded-full p-1">
+                    <RefreshCw className="w-4 h-4 animate-spin text-primary" />
+                  </div>
+                )}
+                {entry.status === "success" && (
+                  <div className="bg-green-500/80 rounded-full p-0.5">
+                    <CheckCircle className="w-4 h-4 text-white" />
+                  </div>
+                )}
+                {entry.status === "failed" && (
+                  <button
+                    type="button"
+                    onClick={() => retryEntry(entry)}
+                    className="bg-destructive/80 rounded-full p-0.5"
+                    title="Tap to retry"
+                  >
+                    <RefreshCw className="w-4 h-4 text-white" />
+                  </button>
+                )}
+              </div>
+
+              {entry.status !== "uploading" && entry.status !== "compressing" && (
                 <button
                   type="button"
-                  onClick={() => removeFile(i)}
-                  className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={() => removeEntry(entry.id)}
+                  className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs"
                 >
                   <X className="w-3 h-3" />
                 </button>
               )}
+
               <span className="absolute bottom-0.5 left-0.5 text-[9px] bg-background/80 px-1 rounded">
-                {(files[i]?.size / 1024).toFixed(0)}KB
+                {entry.status === "compressing" ? "…" : `${(entry.file.size / 1024).toFixed(0)}KB`}
               </span>
             </div>
           ))}
         </div>
       )}
 
-      {files.length > 0 && uploadState !== "success" && (
-        <Button
-          variant="outline"
-          className="w-full gap-2"
-          onClick={handleUpload}
-          disabled={uploadState === "uploading" || uploadState === "compressing"}
-        >
-          {uploadState === "uploading" ? (
-            <>⏳ Uploading… {progress}%</>
-          ) : uploadState === "failed" ? (
-            <><RefreshCw className="w-4 h-4" />Retry Upload</>
-          ) : (
-            <>📤 Upload {files.length} Photo(s)</>
-          )}
-        </Button>
-      )}
-
-      {uploadState === "uploading" && <Progress value={progress} className="h-2" />}
-
-      {error && (
-        <p className="text-xs text-destructive flex items-center gap-1">
-          <AlertCircle className="w-3.5 h-3.5" />{error}
+      {hasUploading && (
+        <p className="text-xs text-muted-foreground flex items-center gap-1">
+          <RefreshCw className="w-3.5 h-3.5 animate-spin" />Uploading…
         </p>
       )}
-      {uploadState === "success" && (
-        <p className="text-xs text-success font-medium flex items-center gap-1">
-          <CheckCircle className="w-3.5 h-3.5" />✅ {uploadedUrls.length} photo(s) uploaded successfully
+
+      {hasFailed && (
+        <p className="text-xs text-destructive flex items-center gap-1">
+          <AlertCircle className="w-3.5 h-3.5" />Some uploads failed. Tap ↻ to retry.
+        </p>
+      )}
+
+      {successUrls.length > 0 && !hasUploading && !hasFailed && (
+        <p className="text-xs text-green-600 font-medium flex items-center gap-1">
+          <CheckCircle className="w-3.5 h-3.5" />{successUrls.length} photo(s) uploaded
         </p>
       )}
     </div>
