@@ -1,13 +1,13 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Camera, X, RefreshCw, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
 
 const MAX_FILES = 5;
 const MAX_WIDTH = 1280;
 const TARGET_KB = 400;
-const UPLOAD_TIMEOUT = 10_000;
+const UPLOAD_TIMEOUT = 30_000; // 30s for mobile networks
 const BUCKET = "field-agent-photos";
+const MAX_RETRIES = 3;
 
 type UploadStatus = "compressing" | "uploading" | "success" | "failed";
 
@@ -25,8 +25,6 @@ interface Props {
   onUploadComplete: (urls: string[]) => void;
   disabled?: boolean;
 }
-
-/* ── helpers ── */
 
 function uid() {
   return `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -79,33 +77,45 @@ function compress(file: File): Promise<Blob> {
   });
 }
 
-async function upload(blob: Blob, path: string): Promise<string> {
-  console.log(`[Photo] 📡 Uploading ${path} (${(blob.size / 1024).toFixed(0)} KB)`);
+async function uploadWithRetry(blob: Blob, path: string, retries = MAX_RETRIES): Promise<string> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    console.log(`[Photo] 📡 Upload attempt ${attempt}/${retries}: ${path} (${(blob.size / 1024).toFixed(0)} KB)`);
+    
+    try {
+      const result = await Promise.race([
+        supabase.storage
+          .from(BUCKET)
+          .upload(path, blob, { contentType: "image/jpeg", cacheControl: "3600", upsert: true }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`Upload timed out (${UPLOAD_TIMEOUT / 1000}s)`)), UPLOAD_TIMEOUT)
+        ),
+      ]);
 
-  return new Promise<string>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("Upload timed out (10 s)")), UPLOAD_TIMEOUT);
+      const { error } = result as { error: any };
+      if (error) {
+        console.error(`[Photo] ❌ Upload error: ${error.message}`);
+        if (attempt === retries) throw new Error(error.message);
+        // Wait before retry with exponential backoff
+        await new Promise(r => setTimeout(r, 1000 * attempt));
+        continue;
+      }
 
-    supabase.storage
-      .from(BUCKET)
-      .upload(path, blob, { contentType: "image/jpeg", cacheControl: "3600", upsert: true })
-      .then(({ error }) => {
-        clearTimeout(timer);
-        if (error) { reject(new Error(error.message)); return; }
-        const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-        console.log(`[Photo] ✅ Uploaded → ${data.publicUrl}`);
-        resolve(data.publicUrl);
-      })
-      .catch((err) => { clearTimeout(timer); reject(err); });
-  });
+      const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
+      console.log(`[Photo] ✅ Uploaded → ${data.publicUrl}`);
+      return data.publicUrl;
+    } catch (err: any) {
+      console.error(`[Photo] ❌ Attempt ${attempt} failed: ${err.message}`);
+      if (attempt === retries) throw err;
+      await new Promise(r => setTimeout(r, 1000 * attempt));
+    }
+  }
+  throw new Error("Upload failed after all retries");
 }
-
-/* ── component ── */
 
 const ServiceJobPhotoUpload = ({ jobId, onUploadComplete, disabled }: Props) => {
   const [entries, setEntries] = useState<PhotoEntry[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Notify parent whenever successful URLs change
   const successUrls = entries.filter((e) => e.status === "success").map((e) => e.url!);
   const urlsKey = successUrls.join(",");
   const lastNotified = useRef("");
@@ -119,7 +129,6 @@ const ServiceJobPhotoUpload = ({ jobId, onUploadComplete, disabled }: Props) => 
 
   const processAndUpload = useCallback(
     async (id: string, file: File) => {
-      // 1. Compress
       let blob: Blob;
       try {
         blob = await compress(file);
@@ -134,10 +143,9 @@ const ServiceJobPhotoUpload = ({ jobId, onUploadComplete, disabled }: Props) => 
         p.map((e) => (e.id === id ? { ...e, blob, preview, status: "uploading" as const } : e)),
       );
 
-      // 2. Upload
       const path = `jobs/${jobId}/${id}.jpg`;
       try {
-        const url = await upload(blob, path);
+        const url = await uploadWithRetry(blob, path);
         setEntries((p) => p.map((e) => (e.id === id ? { ...e, status: "success" as const, url } : e)));
       } catch (err: any) {
         console.error(`[Photo] ❌ Upload failed: ${err.message}`);
@@ -178,7 +186,7 @@ const ServiceJobPhotoUpload = ({ jobId, onUploadComplete, disabled }: Props) => 
       console.log(`[Photo] 🔄 Retrying ${entry.id}`);
       setEntries((p) => p.map((e) => (e.id === entry.id ? { ...e, status: "uploading" as const, error: undefined } : e)));
       const path = `jobs/${jobId}/${entry.id}.jpg`;
-      upload(entry.blob, path)
+      uploadWithRetry(entry.blob, path)
         .then((url) => setEntries((p) => p.map((e) => (e.id === entry.id ? { ...e, status: "success" as const, url } : e))))
         .catch((err) => setEntries((p) => p.map((e) => (e.id === entry.id ? { ...e, status: "failed" as const, error: err.message } : e))));
     },
@@ -198,7 +206,6 @@ const ServiceJobPhotoUpload = ({ jobId, onUploadComplete, disabled }: Props) => 
 
   return (
     <div className="space-y-3">
-      {/* capture area */}
       <div className="border-2 border-dashed border-border rounded-lg p-4 text-center">
         <Camera className="w-7 h-7 mx-auto text-muted-foreground mb-1" />
         <p className="text-sm text-muted-foreground mb-2">
@@ -216,7 +223,6 @@ const ServiceJobPhotoUpload = ({ jobId, onUploadComplete, disabled }: Props) => 
         />
       </div>
 
-      {/* thumbnails */}
       {entries.length > 0 && (
         <div className="flex gap-2 flex-wrap">
           {entries.map((entry) => (
@@ -239,7 +245,6 @@ const ServiceJobPhotoUpload = ({ jobId, onUploadComplete, disabled }: Props) => 
                 </div>
               )}
 
-              {/* overlay icons */}
               <div className="absolute inset-0 flex items-center justify-center">
                 {(entry.status === "compressing" || entry.status === "uploading") && (
                   <div className="bg-background/80 rounded-full p-1">
@@ -258,7 +263,6 @@ const ServiceJobPhotoUpload = ({ jobId, onUploadComplete, disabled }: Props) => 
                 )}
               </div>
 
-              {/* remove button */}
               {!busy && (
                 <button
                   type="button"
@@ -277,7 +281,6 @@ const ServiceJobPhotoUpload = ({ jobId, onUploadComplete, disabled }: Props) => 
         </div>
       )}
 
-      {/* status messages */}
       {busy && (
         <p className="text-xs text-muted-foreground flex items-center gap-1">
           <RefreshCw className="w-3.5 h-3.5 animate-spin" />
