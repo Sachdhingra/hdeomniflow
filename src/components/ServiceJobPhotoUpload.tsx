@@ -3,11 +3,15 @@ import { Camera, X, RefreshCw, CheckCircle, AlertCircle, Loader2 } from "lucide-
 import { supabase } from "@/integrations/supabase/client";
 
 const MAX_FILES = 5;
-const MAX_WIDTH = 1280;
-const TARGET_KB = 400;
+const MAX_DIMENSION = 960;
+const TARGET_KB = 250;
 const UPLOAD_TIMEOUT = 30_000; // 30s for mobile networks
 const BUCKET = "field-agent-photos";
 const MAX_RETRIES = 3;
+const INITIAL_QUALITY = 0.68;
+const MIN_QUALITY = 0.35;
+const MIN_DIMENSION = 720;
+const SCALE_STEP = 0.85;
 
 type UploadStatus = "compressing" | "uploading" | "success" | "failed";
 
@@ -31,7 +35,7 @@ function uid() {
 }
 
 function compress(file: File): Promise<Blob> {
-  console.log(`[Photo] 🗜️ Compressing ${file.name} (${(file.size / 1024).toFixed(0)} KB)`);
+  console.log(`[Photo] 🗜️ Compressing ${file.name} (${(file.size / 1024).toFixed(0)} KB) → target ${TARGET_KB} KB`);
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
@@ -41,26 +45,56 @@ function compress(file: File): Promise<Blob> {
       const canvas = document.createElement("canvas");
       let { width, height } = img;
 
-      if (width > MAX_WIDTH) {
-        height = Math.round(height * (MAX_WIDTH / width));
-        width = MAX_WIDTH;
+      if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+        const ratio = Math.min(MAX_DIMENSION / width, MAX_DIMENSION / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
       }
-      canvas.width = width;
-      canvas.height = height;
-      canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
 
-      let quality = 0.75;
+      const render = (targetWidth: number, targetHeight: number) => {
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Canvas context unavailable"));
+          return;
+        }
+        ctx.clearRect(0, 0, targetWidth, targetHeight);
+        ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+      };
+
+      let quality = INITIAL_QUALITY;
+      let currentWidth = width;
+      let currentHeight = height;
+
       const attempt = () => {
+        render(currentWidth, currentHeight);
         canvas.toBlob(
           (blob) => {
             if (!blob) { reject(new Error("Canvas toBlob failed")); return; }
-            if (blob.size / 1024 <= TARGET_KB || quality <= 0.15) {
+            if (blob.size / 1024 <= TARGET_KB) {
               console.log(`[Photo] ✅ Compressed → ${(blob.size / 1024).toFixed(0)} KB`);
               resolve(blob);
-            } else {
-              quality -= 0.1;
-              attempt();
+              return;
             }
+
+            if (quality > MIN_QUALITY) {
+              quality = Math.max(MIN_QUALITY, Number((quality - 0.08).toFixed(2)));
+              attempt();
+              return;
+            }
+
+            const canScaleDown = Math.max(currentWidth, currentHeight) > MIN_DIMENSION;
+            if (!canScaleDown) {
+              console.log(`[Photo] ⚠️ Compression floor reached → ${(blob.size / 1024).toFixed(0)} KB`);
+              resolve(blob);
+              return;
+            }
+
+            currentWidth = Math.max(MIN_DIMENSION, Math.round(currentWidth * SCALE_STEP));
+            currentHeight = Math.max(1, Math.round(currentHeight * SCALE_STEP));
+            quality = INITIAL_QUALITY;
+            attempt();
           },
           "image/jpeg",
           quality,
