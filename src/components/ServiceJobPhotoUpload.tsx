@@ -307,11 +307,12 @@ const ServiceJobPhotoUpload = ({ jobId, onUploadComplete, disabled }: Props) => 
         <input
           ref={inputRef}
           type="file"
-          accept="image/*"
+          accept="image/jpeg,image/png,image/webp,image/*"
           multiple
-          capture="environment"
           className="w-full text-sm"
           onChange={handleFiles}
+          disabled={disabled || busy || entries.length >= MAX_FILES}
+        />
           disabled={disabled || busy || entries.length >= MAX_FILES}
         />
       </div>
