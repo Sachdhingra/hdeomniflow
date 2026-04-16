@@ -53,35 +53,26 @@ function logMobileDetails(file: File, label: string) {
   });
 }
 
-/** Convert any image to a JPEG blob via canvas. Handles HEIC/HEIF/WebP/PNG. */
+/** Convert any image to a JPEG blob via canvas. Uses FileReader for maximum mobile compat. */
 async function toJpegBlob(file: File, maxDim: number, quality: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
-    // For HEIC/HEIF: createImageBitmap may work on Safari 17+, canvas fallback otherwise
-    const useObjectUrl = () => {
+    const reader = new FileReader();
+    reader.onload = () => {
       const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        renderToBlob(img, maxDim, quality, resolve, reject);
-      };
+      img.onload = () => renderToBlob(img, maxDim, quality, resolve, reject);
       img.onerror = () => {
-        URL.revokeObjectURL(url);
-        reject(new Error(`Cannot decode image: ${file.type || file.name}`));
+        if (typeof createImageBitmap === "function") {
+          createImageBitmap(file)
+            .then((bmp) => renderToBlob(bmp, maxDim, quality, resolve, reject))
+            .catch(() => reject(new Error(`Cannot decode image: ${file.type || file.name}`)));
+        } else {
+          reject(new Error(`Cannot decode image: ${file.type || file.name}`));
+        }
       };
-      img.src = url;
+      img.src = reader.result as string;
     };
-
-    // Try createImageBitmap first (handles more formats on modern browsers)
-    if (typeof createImageBitmap === "function") {
-      createImageBitmap(file)
-        .then((bmp) => renderToBlob(bmp, maxDim, quality, resolve, reject))
-        .catch(() => {
-          console.log("[Photo] createImageBitmap failed, falling back to Image()");
-          useObjectUrl();
-        });
-    } else {
-      useObjectUrl();
-    }
+    reader.onerror = () => reject(new Error("FileReader failed"));
+    reader.readAsDataURL(file);
   });
 }
 
