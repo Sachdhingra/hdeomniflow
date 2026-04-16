@@ -311,9 +311,6 @@ const ServiceJobPhotoUpload = ({ jobId, onUploadComplete, disabled }: Props) => 
           multiple
           className="w-full text-sm"
           onChange={handleFiles}
-          disabled={disabled || busy || entries.length >= MAX_FILES}
-        />
-          disabled={disabled || busy || entries.length >= MAX_FILES}
         />
       </div>
 
