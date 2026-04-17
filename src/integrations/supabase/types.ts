@@ -91,12 +91,43 @@ export type Database = {
           },
         ]
       }
+      deletion_logs: {
+        Row: {
+          deleted_at: string
+          deleted_by: string
+          id: string
+          reason: string | null
+          record_id: string
+          record_snapshot: Json | null
+          table_name: string
+        }
+        Insert: {
+          deleted_at?: string
+          deleted_by: string
+          id?: string
+          reason?: string | null
+          record_id: string
+          record_snapshot?: Json | null
+          table_name: string
+        }
+        Update: {
+          deleted_at?: string
+          deleted_by?: string
+          id?: string
+          reason?: string | null
+          record_id?: string
+          record_snapshot?: Json | null
+          table_name?: string
+        }
+        Relationships: []
+      }
       leads: {
         Row: {
           assigned_to: string | null
           category: Database["public"]["Enums"]["lead_category"]
           created_at: string
           created_by: string
+          created_by_agent_id: string | null
           customer_name: string
           customer_phone: string
           deleted_at: string | null
@@ -114,12 +145,14 @@ export type Database = {
           updated_at: string
           updated_by: string
           value_in_rupees: number
+          visit_photo: string | null
         }
         Insert: {
           assigned_to?: string | null
           category: Database["public"]["Enums"]["lead_category"]
           created_at?: string
           created_by: string
+          created_by_agent_id?: string | null
           customer_name: string
           customer_phone: string
           deleted_at?: string | null
@@ -137,12 +170,14 @@ export type Database = {
           updated_at?: string
           updated_by: string
           value_in_rupees?: number
+          visit_photo?: string | null
         }
         Update: {
           assigned_to?: string | null
           category?: Database["public"]["Enums"]["lead_category"]
           created_at?: string
           created_by?: string
+          created_by_agent_id?: string | null
           customer_name?: string
           customer_phone?: string
           deleted_at?: string | null
@@ -160,6 +195,7 @@ export type Database = {
           updated_at?: string
           updated_by?: string
           value_in_rupees?: number
+          visit_photo?: string | null
         }
         Relationships: []
       }
@@ -433,6 +469,7 @@ export type Database = {
       }
       site_visits: {
         Row: {
+          accuracy_meters: number | null
           agent_id: string
           budget: number | null
           category: Database["public"]["Enums"]["lead_category"] | null
@@ -443,17 +480,20 @@ export type Database = {
           deleted_at: string | null
           deleted_by: string | null
           follow_up_date: string | null
+          gps_timestamp: string | null
           id: string
           lat: number | null
           leads_generated: number
           lng: number | null
           location: string
           notes: string | null
+          photo_url: string | null
           photos: string[] | null
           society: string
           status: string | null
         }
         Insert: {
+          accuracy_meters?: number | null
           agent_id: string
           budget?: number | null
           category?: Database["public"]["Enums"]["lead_category"] | null
@@ -464,17 +504,20 @@ export type Database = {
           deleted_at?: string | null
           deleted_by?: string | null
           follow_up_date?: string | null
+          gps_timestamp?: string | null
           id?: string
           lat?: number | null
           leads_generated?: number
           lng?: number | null
           location?: string
           notes?: string | null
+          photo_url?: string | null
           photos?: string[] | null
           society?: string
           status?: string | null
         }
         Update: {
+          accuracy_meters?: number | null
           agent_id?: string
           budget?: number | null
           category?: Database["public"]["Enums"]["lead_category"] | null
@@ -485,12 +528,14 @@ export type Database = {
           deleted_at?: string | null
           deleted_by?: string | null
           follow_up_date?: string | null
+          gps_timestamp?: string | null
           id?: string
           lat?: number | null
           leads_generated?: number
           lng?: number | null
           location?: string
           notes?: string | null
+          photo_url?: string | null
           photos?: string[] | null
           society?: string
           status?: string | null
