@@ -18,11 +18,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, Wrench, IndianRupee, TrendingUp, MapPin, BarChart3, UserPlus, Trophy, Truck, KeyRound, Ban, CheckCircle, Trash2, Loader2, Download, Archive, Locate, Search, MessageSquare, Send, ShieldAlert, Target } from "lucide-react";
+import { Users, Wrench, IndianRupee, TrendingUp, MapPin, BarChart3, UserPlus, Trophy, Truck, KeyRound, Ban, CheckCircle, Trash2, Loader2, Download, Archive, Locate, Search, MessageSquare, Send, ShieldAlert, Target, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import LoadingError from "@/components/LoadingError";
 import { DashboardSkeleton } from "@/components/DashboardSkeleton";
+import SiteVisitLocationDialog from "@/components/SiteVisitLocationDialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Link } from "react-router-dom";
 
 const MessageLogsPanel = () => {
   const [logs, setLogs] = useState<any[]>([]);
@@ -105,7 +108,7 @@ const MessageLogsPanel = () => {
 };
 
 const AdminDashboard = () => {
-  const { leads, serviceJobs, siteVisits, profiles, getProfilesByRole, softDeleteLead, softDeleteServiceJob, softDeleteSiteVisit, summaryLoading, summary, error, retryLoad, loading } = useData();
+  const { leads, serviceJobs, siteVisits, profiles, getProfilesByRole, softDeleteLead, softDeleteServiceJob, softDeleteSiteVisit, hardDeleteLead, summaryLoading, summary, error, retryLoad, loading } = useData();
   const { allProfiles, refreshProfiles } = useAuth();
   const [tab, setTab] = useState("overview");
   const [staffOpen, setStaffOpen] = useState(false);
@@ -221,6 +224,19 @@ const AdminDashboard = () => {
 
   const [editPhoneUser, setEditPhoneUser] = useState<string | null>(null);
   const [editPhoneValue, setEditPhoneValue] = useState("");
+  const [deletingLeadId, setDeletingLeadId] = useState<string | null>(null);
+
+  const handleHardDeleteLead = async (id: string) => {
+    setDeletingLeadId(id);
+    try {
+      await hardDeleteLead(id);
+      toast.success("Lead deleted");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete lead");
+    } finally {
+      setDeletingLeadId(null);
+    }
+  };
 
   const allUsersWithStatus = allProfiles.map(p => {
     const profile = profiles.find(pr => pr.id === p.id);
@@ -435,30 +451,65 @@ const AdminDashboard = () => {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead>Photo</TableHead>
                       <TableHead>Customer</TableHead>
                       <TableHead>Category</TableHead>
                       <TableHead>Value</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Assigned</TableHead>
                       <TableHead>Follow-up</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredLeads.slice(0, 50).map(l => (
-                      <TableRow key={l.id}>
-                        <TableCell className="font-medium">{l.customer_name}</TableCell>
-                        <TableCell>{LEAD_CATEGORIES.find(c => c.value === l.category)?.label}</TableCell>
-                        <TableCell>₹{Number(l.value_in_rupees).toLocaleString("en-IN")}</TableCell>
-                        <TableCell><Badge variant="outline" className="capitalize">{l.status.replace("_", " ")}</Badge></TableCell>
-                        <TableCell>{profiles.find(p => p.id === l.assigned_to)?.name || "—"}</TableCell>
-                        <TableCell className="text-xs">{l.next_follow_up_date || "—"}</TableCell>
-                      </TableRow>
-                    ))}
+                    {filteredLeads.slice(0, 50).map(l => {
+                      const photo = (l as any).visit_photo;
+                      return (
+                        <TableRow key={l.id}>
+                          <TableCell>
+                            {photo ? (
+                              <img src={photo} alt="Visit" className="w-10 h-10 rounded object-cover border border-border" loading="lazy" />
+                            ) : (
+                              <div className="w-10 h-10 rounded bg-muted" />
+                            )}
+                          </TableCell>
+                          <TableCell className="font-medium">{l.customer_name}</TableCell>
+                          <TableCell>{LEAD_CATEGORIES.find(c => c.value === l.category)?.label}</TableCell>
+                          <TableCell>₹{Number(l.value_in_rupees).toLocaleString("en-IN")}</TableCell>
+                          <TableCell><Badge variant="outline" className="capitalize">{l.status.replace("_", " ")}</Badge></TableCell>
+                          <TableCell>{profiles.find(p => p.id === l.assigned_to)?.name || "—"}</TableCell>
+                          <TableCell className="text-xs">{l.next_follow_up_date || "—"}</TableCell>
+                          <TableCell className="text-right">
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button size="sm" variant="outline" className="gap-1 h-7 text-xs text-destructive border-destructive/30" disabled={deletingLeadId === l.id}>
+                                  {deletingLeadId === l.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete this lead?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    This will permanently delete the lead <strong>{l.customer_name}</strong> and any associated visit photo. This action cannot be undone and will be logged in the deletion audit trail.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => handleHardDeleteLead(l.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                    Delete permanently
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                     {filteredLeads.length === 0 && (
-                      <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-6">No leads match your filters.</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-6">No leads match your filters.</TableCell></TableRow>
                     )}
                     {filteredLeads.length > 50 && (
-                      <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-2 text-xs">Showing first 50 of {filteredLeads.length} results</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-2 text-xs">Showing first 50 of {filteredLeads.length} results</TableCell></TableRow>
                     )}
                   </TableBody>
                 </Table>
@@ -538,20 +589,71 @@ const AdminDashboard = () => {
         </TabsContent>
 
         <TabsContent value="site" className="space-y-4 mt-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h3 className="font-semibold">Site Agent Performance</h3>
+              <p className="text-xs text-muted-foreground">Visits, leads originated, and recent locations</p>
+            </div>
+            <Button asChild variant="outline" size="sm" className="gap-1">
+              <Link to="/site-agent-leads">
+                <ExternalLink className="w-3 h-3" /> Open Site Agent Leads page
+              </Link>
+            </Button>
+          </div>
           <div className="space-y-3">
-            {sitePerformance.map(sp => (
-              <Card key={sp.id} className="shadow-card">
-                <CardContent className="p-4 flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">{sp.name}</p>
-                    <div className="flex gap-4 text-xs text-muted-foreground mt-0.5">
-                      <span>Visits: {sp.totalVisits}</span><span>Today: {sp.todayVisits}</span><span>Leads: {sp.totalLeads}</span>
+            {sitePerformance.map(sp => {
+              const agentVisits = siteVisits.filter(v => v.agent_id === sp.id).slice(0, 3);
+              const agentLeads = leads.filter(l =>
+                (l as any).created_by_agent_id === sp.id ||
+                (l.source === "site_agent" && l.assigned_to === sp.id)
+              );
+              return (
+                <Card key={sp.id} className="shadow-card">
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div>
+                        <p className="font-medium">{sp.name}</p>
+                        <div className="flex gap-4 text-xs text-muted-foreground mt-0.5">
+                          <span>Visits: {sp.totalVisits}</span><span>Today: {sp.todayVisits}</span><span>Leads: {agentLeads.length}</span>
+                        </div>
+                      </div>
+                      <Badge variant="outline">{sp.totalVisits} visits</Badge>
                     </div>
-                  </div>
-                  <Badge variant="outline">{sp.totalVisits} visits</Badge>
-                </CardContent>
-              </Card>
-            ))}
+                    {agentVisits.length > 0 && (
+                      <div className="grid grid-cols-3 gap-2">
+                        {agentVisits.map(v => {
+                          const photo = (v as any).photo_url || (v.photos && v.photos[0]) || null;
+                          const lat = (v as any).lat, lng = (v as any).lng;
+                          return (
+                            <div key={v.id} className="relative rounded-md overflow-hidden border border-border bg-muted/30">
+                              {photo ? (
+                                <img src={photo} alt={v.location} className="w-full h-20 object-cover" loading="lazy" />
+                              ) : (
+                                <div className="w-full h-20 flex items-center justify-center text-xs text-muted-foreground">No photo</div>
+                              )}
+                              <div className="p-1.5">
+                                <p className="text-xs truncate">{v.location}</p>
+                                {lat != null && lng != null && (
+                                  <SiteVisitLocationDialog
+                                    lat={lat}
+                                    lng={lng}
+                                    accuracy={(v as any).accuracy_meters}
+                                    capturedAt={(v as any).gps_timestamp}
+                                    trigger={
+                                      <button className="text-[10px] text-primary hover:underline">View location</button>
+                                    }
+                                  />
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
             {sitePerformance.length === 0 && <p className="text-muted-foreground text-sm">No site agents yet.</p>}
           </div>
         </TabsContent>
