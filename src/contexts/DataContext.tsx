@@ -74,6 +74,7 @@ interface DataContextType {
   softDeleteLead: (id: string) => Promise<void>;
   restoreLead: (id: string) => Promise<void>;
   permanentDeleteLead: (id: string) => Promise<void>;
+  hardDeleteLead: (id: string, reason?: string) => Promise<void>;
   assignDelivery: (leadId: string, deliveryDate: string, deliveryNotes: string, assignedTo: string) => Promise<void>;
   addServiceJob: (job: TablesInsert<"service_jobs">) => Promise<void>;
   updateServiceJob: (id: string, updates: Partial<ServiceJob>) => Promise<void>;
@@ -589,6 +590,48 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     setDeletedLeads(prev => prev.filter(l => l.id !== id));
   };
 
+  // Hard delete with audit log + storage cleanup of visit_photo
+  const hardDeleteLead = async (id: string, reason?: string) => {
+    // Snapshot from active leads or fetch
+    let snapshot: any = leads.find(l => l.id === id);
+    if (!snapshot) {
+      const { data } = await supabase.from("leads").select("*").eq("id", id).maybeSingle();
+      snapshot = data;
+    }
+
+    // Insert audit log first (so even if delete fails, we have intent — but we only commit on success)
+    const { error: delErr } = await supabase.from("leads").delete().eq("id", id);
+    if (delErr) throw delErr;
+
+    // Audit log (best-effort — do not fail the delete if logging fails)
+    try {
+      await supabase.from("deletion_logs").insert({
+        table_name: "leads",
+        record_id: id,
+        deleted_by: user?.id || "",
+        record_snapshot: snapshot || null,
+        reason: reason || null,
+      });
+    } catch (e) {
+      console.warn("deletion_logs insert failed", e);
+    }
+
+    // Cleanup visit_photo from storage if present
+    const photoUrl: string | null = snapshot?.visit_photo || null;
+    if (photoUrl && photoUrl.includes("/field-agent-photos/")) {
+      try {
+        const path = photoUrl.split("/field-agent-photos/")[1]?.split("?")[0];
+        if (path) await supabase.storage.from("field-agent-photos").remove([path]);
+      } catch (e) {
+        console.warn("storage cleanup failed", e);
+      }
+    }
+
+    // Optimistic local update
+    setLeads(prev => prev.filter(l => l.id !== id));
+    setDeletedLeads(prev => prev.filter(l => l.id !== id));
+  };
+
   const permanentDeleteServiceJob = async (id: string) => {
     const { error } = await supabase.from("service_jobs").delete().eq("id", id);
     if (error) throw error;
@@ -621,7 +664,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     <DataContext.Provider value={{
       leads, serviceJobs, siteVisits, notifications, profiles, loading,
       summaryLoading, summary, error,
-      addLead, updateLead, softDeleteLead, restoreLead, permanentDeleteLead, assignDelivery,
+      addLead, updateLead, softDeleteLead, restoreLead, permanentDeleteLead, hardDeleteLead, assignDelivery,
       addServiceJob, updateServiceJob, softDeleteServiceJob, restoreServiceJob, permanentDeleteServiceJob,
       addSiteVisit, updateSiteVisit, softDeleteSiteVisit, restoreSiteVisit, permanentDeleteSiteVisit,
       addNotification, markNotificationRead,
