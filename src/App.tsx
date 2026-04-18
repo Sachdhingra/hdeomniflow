@@ -63,6 +63,7 @@ const AppRoutes = () => {
             <Route path="/field-agents" element={<FieldAgentDashboard />} />
             <Route path="/site-agents" element={<SiteAgentDashboard />} />
             <Route path="/site-agent-leads" element={<SiteAgentLeads />} />
+            <Route path="/categories" element={<AdminCategories />} />
           </>
         );
       case "sales":
