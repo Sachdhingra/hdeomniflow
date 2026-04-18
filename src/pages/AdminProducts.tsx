@@ -150,6 +150,14 @@ const AdminProducts = () => {
     });
   }, [products, search, statusFilter, categoryFilter]);
 
+  if (!isAdmin) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <p className="text-muted-foreground">Admin access required.</p>
+      </div>
+    );
+  }
+
   const openCreate = () => {
     setEditing(null);
     setForm(emptyForm);
