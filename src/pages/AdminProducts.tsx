@@ -343,8 +343,10 @@ const AdminProducts = () => {
           if (!catId) { errors.push(`Row ${rowNum}: category "${catName}" not found`); continue; }
           if (isNaN(price) || price < 0) { errors.push(`Row ${rowNum}: invalid net_price`); continue; }
 
-          let sku = (r["sku"] || generateSKU(r["brand_code"] || "", r["line_code"] || "")).trim();
-          if (!sku) { errors.push(`Row ${rowNum}: missing sku and brand+line`); continue; }
+          // SKU MUST be brand-line. Only fall back to CSV sku column if brand+line missing.
+          const generated = generateSKU(r["brand_code"] || "", r["line_code"] || "");
+          let sku = (generated || r["sku"] || "").trim();
+          if (!sku) { errors.push(`Row ${rowNum}: missing brand_code+line_code (and no sku fallback)`); continue; }
           sku = await ensureUniqueSku(sku);
 
           const { error } = await (supabase as any).from("products").insert({
