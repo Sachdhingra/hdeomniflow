@@ -44,6 +44,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/service", label: "Service", icon: <Wrench className="w-5 h-5" />, badge: pendingJobCount || undefined },
       { to: "/field-agents", label: "Field Agents", icon: <Navigation className="w-5 h-5" /> },
       { to: "/site-agents", label: "Site Agents", icon: <MapPin className="w-5 h-5" /> },
+      { to: "/categories", label: "Categories", icon: <FolderTree className="w-5 h-5" /> },
     ],
     sales: [
       { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" />, badge: overdueCount || undefined },
