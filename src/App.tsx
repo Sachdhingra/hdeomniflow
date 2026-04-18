@@ -21,6 +21,7 @@ const SiteAgentDashboard = lazy(() => import("@/pages/SiteAgentDashboard"));
 const SiteAgentLeads = lazy(() => import("@/pages/SiteAgentLeads"));
 const AdminCategories = lazy(() => import("@/pages/AdminCategories"));
 const AdminProducts = lazy(() => import("@/pages/AdminProducts"));
+const ProductsView = lazy(() => import("@/pages/ProductsView"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
 const PageLoader = () => (
@@ -75,6 +76,7 @@ const AppRoutes = () => {
             <Route path="/" element={<SalesDashboard />} />
             <Route path="/leads" element={<SalesDashboard />} />
             <Route path="/pipeline" element={<SalesPipeline />} />
+            <Route path="/products" element={<ProductsView />} />
           </>
         );
       case "service_head":
@@ -99,6 +101,7 @@ const AppRoutes = () => {
             <Route path="/" element={<SiteAgentDashboard />} />
             <Route path="/site-visits" element={<SiteAgentDashboard />} />
             <Route path="/my-leads" element={<SalesDashboard />} />
+            <Route path="/products" element={<ProductsView />} />
           </>
         );
       default:
