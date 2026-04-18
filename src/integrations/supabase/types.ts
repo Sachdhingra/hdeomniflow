@@ -91,6 +91,42 @@ export type Database = {
           },
         ]
       }
+      categories: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          product_count: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          product_count?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          product_count?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       deletion_logs: {
         Row: {
           deleted_at: string
@@ -270,6 +306,62 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      products: {
+        Row: {
+          brand_code: string | null
+          category_id: string | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          hsn_code: string | null
+          id: string
+          line_code: string | null
+          net_price: number
+          product_name: string
+          sku: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          brand_code?: string | null
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          hsn_code?: string | null
+          id?: string
+          line_code?: string | null
+          net_price?: number
+          product_name: string
+          sku: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          brand_code?: string | null
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          hsn_code?: string | null
+          id?: string
+          line_code?: string | null
+          net_price?: number
+          product_name?: string
+          sku?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "products_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
