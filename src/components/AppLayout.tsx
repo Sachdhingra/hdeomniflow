@@ -51,6 +51,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" />, badge: overdueCount || undefined },
       { to: "/leads", label: "My Leads", icon: <ClipboardList className="w-5 h-5" /> },
       { to: "/pipeline", label: "Pipeline", icon: <BarChart3 className="w-5 h-5" /> },
+      { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
     ],
     service_head: [
       { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" />, badge: pendingJobCount || undefined },
@@ -66,6 +67,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" /> },
       { to: "/site-visits", label: "Site Visits", icon: <MapPin className="w-5 h-5" /> },
       { to: "/my-leads", label: "My Leads", icon: <ClipboardList className="w-5 h-5" /> },
+      { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
     ],
   };
 
