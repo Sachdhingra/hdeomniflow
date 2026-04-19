@@ -172,10 +172,22 @@ const SalesDashboard = () => {
       {isAdmin && viewMode === "all" && <TeamPerformancePanel compact />}
 
       <div className="flex gap-2 flex-wrap items-center">
+        <Button size="sm" variant={!fromDate && !toDate ? "default" : "outline"} onClick={() => { setFromDate(""); setToDate(""); }}>All Time</Button>
         <Button size="sm" variant={fromDate === todayStr && toDate === todayStr ? "default" : "outline"} onClick={() => setQuickDate(todayStr, todayStr)}>Today</Button>
         <Button size="sm" variant={fromDate === weekAgo && toDate === todayStr ? "default" : "outline"} onClick={() => setQuickDate(weekAgo, todayStr)}>This Week</Button>
         <Button size="sm" variant={fromDate === monthStart && toDate === todayStr ? "default" : "outline"} onClick={() => setQuickDate(monthStart, todayStr)}>This Month</Button>
-        {(fromDate || toDate) && <Button size="sm" variant="ghost" onClick={() => { setFromDate(""); setToDate(""); }}>Clear</Button>}
+      </div>
+
+      <div className="text-xs text-muted-foreground">
+        {!fromDate && !toDate
+          ? "Showing all leads (all time)"
+          : fromDate === todayStr && toDate === todayStr
+          ? "Showing leads: Today"
+          : fromDate === weekAgo && toDate === todayStr
+          ? "Showing leads: This Week"
+          : fromDate === monthStart && toDate === todayStr
+          ? "Showing leads: This Month"
+          : `Showing leads: ${fromDate || "…"} → ${toDate || "…"}`}
       </div>
 
       <div className="flex gap-3 flex-wrap items-center">
