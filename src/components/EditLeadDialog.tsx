@@ -78,6 +78,7 @@ const EditLeadDialog = ({ lead, open, onOpenChange }: Props) => {
             <p className="text-xs text-muted-foreground font-medium">🔒 Read-only</p>
             <p className="text-sm"><span className="font-medium">Customer:</span> {lead.customer_name}</p>
             <p className="text-sm"><span className="font-medium">Phone:</span> {lead.customer_phone}</p>
+            <p className="text-sm"><span className="font-medium">Lead Owner:</span> {profiles.find(p => p.id === lead.created_by)?.name || "Unknown"}</p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

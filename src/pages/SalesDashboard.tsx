@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Users, IndianRupee, TrendingUp, AlertCircle, Phone, Calendar, Truck, Clock, Trophy, Pencil } from "lucide-react";
+import { Users, IndianRupee, TrendingUp, AlertCircle, Phone, Calendar, Truck, Clock, Trophy, Pencil, User as UserIcon } from "lucide-react";
 import { toast } from "sonner";
 import type { Lead } from "@/contexts/DataContext";
 import SalesTargetCard from "@/components/SalesTargetCard";
@@ -36,7 +36,8 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
 
 const SalesDashboard = () => {
   const { user } = useAuth();
-  const { leads, updateLead, softDeleteLead, hasMoreLeads, loadMoreLeads, error, retryLoad, loading } = useData();
+  const { leads, updateLead, softDeleteLead, hasMoreLeads, loadMoreLeads, error, retryLoad, loading, profiles } = useData();
+  const ownerName = (id: string | null) => profiles.find(p => p.id === id)?.name || "Unknown";
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [fromDate, setFromDate] = useState("");
@@ -198,9 +199,10 @@ const SalesDashboard = () => {
                     <Badge variant="outline" className="text-xs">{LEAD_CATEGORIES.find(c => c.value === lead.category)?.label}</Badge>
                     <Pencil className="w-3 h-3 text-muted-foreground" />
                   </div>
-                  <div className="flex items-center gap-4 mt-1.5 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-4 mt-1.5 text-sm text-muted-foreground flex-wrap">
                     <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" />{lead.customer_phone}</span>
                     <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />{lead.created_at.split("T")[0]}</span>
+                    <span className="flex items-center gap-1"><UserIcon className="w-3.5 h-3.5" />Owner: <span className="font-medium text-foreground">{ownerName(lead.created_by)}</span></span>
                   </div>
                   {lead.next_follow_up_date && (
                     <p className={`text-xs mt-1 ${lead.status === "overdue" ? "text-destructive font-semibold" : "text-muted-foreground"}`}>
