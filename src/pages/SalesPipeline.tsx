@@ -44,6 +44,7 @@ const SalesPipeline = () => {
                   <div key={lead.id} className={`p-2 rounded-md ${stage.status === "overdue" ? "bg-destructive/10" : "bg-muted/50"}`}>
                     <p className="text-sm font-medium">{lead.customer_name}</p>
                     <p className="text-xs text-muted-foreground">₹{Number(lead.value_in_rupees).toLocaleString("en-IN")}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">👤 {ownerName(lead.created_by)}</p>
                     {lead.next_follow_up_date && (
                       <p className={`text-xs mt-0.5 ${stage.status === "overdue" ? "text-destructive" : "text-muted-foreground"}`}>
                         📅 {lead.next_follow_up_date}
