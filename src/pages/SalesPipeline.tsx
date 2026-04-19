@@ -14,7 +14,8 @@ const PIPELINE_STAGES: { status: LeadStatus; label: string; color: string }[] = 
 ];
 
 const SalesPipeline = () => {
-  const { leads } = useData();
+  const { leads, profiles } = useData();
+  const ownerName = (id: string | null) => profiles.find(p => p.id === id)?.name || "Unknown";
   const salesLeads = leads.filter(l => l.source === "sales");
 
   return (
