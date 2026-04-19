@@ -210,7 +210,7 @@ const SalesDashboard = () => {
                     </p>
                   )}
                   {lead.notes && <p className="text-sm text-muted-foreground mt-1">{lead.notes}</p>}
-                  {lead.status === "won" && lead.delivery_date && (
+                  {lead.status === "won" && (
                     <LeadPhotoGallery leadId={lead.id} />
                   )}
                 </div>
