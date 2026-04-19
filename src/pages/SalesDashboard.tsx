@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Users, IndianRupee, TrendingUp, AlertCircle, Phone, Calendar, Truck, Clock, Trophy, Pencil } from "lucide-react";
+import { Users, IndianRupee, TrendingUp, AlertCircle, Phone, Calendar, Truck, Clock, Trophy, Pencil, User as UserIcon } from "lucide-react";
 import { toast } from "sonner";
 import type { Lead } from "@/contexts/DataContext";
 import SalesTargetCard from "@/components/SalesTargetCard";
