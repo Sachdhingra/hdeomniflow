@@ -36,9 +36,9 @@ export const useSalesStats = (filters: Filters, deps: any[] = []) => {
         q = q.is("deleted_at", null);
         if (filters.userId) q = q.eq("created_by", filters.userId);
         if (filters.categoryFilter && filters.categoryFilter !== "all")
-          q = q.eq("category", filters.categoryFilter);
+          q = q.eq("category", filters.categoryFilter as any);
         if (filters.statusFilter && filters.statusFilter !== "all")
-          q = q.eq("status", filters.statusFilter);
+          q = q.eq("status", filters.statusFilter as any);
         if (filters.fromDate) q = q.gte("created_at", filters.fromDate);
         if (filters.toDate) q = q.lte("created_at", filters.toDate + "T23:59:59");
         if (filters.phoneSearch?.trim())
