@@ -22,7 +22,6 @@ const SiteAgentLeads = lazy(() => import("@/pages/SiteAgentLeads"));
 const AdminCategories = lazy(() => import("@/pages/AdminCategories"));
 const AdminProducts = lazy(() => import("@/pages/AdminProducts"));
 const ProductsView = lazy(() => import("@/pages/ProductsView"));
-const SalesLeaderboard = lazy(() => import("@/pages/SalesLeaderboard"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
 const PageLoader = () => (
@@ -69,7 +68,6 @@ const AppRoutes = () => {
             <Route path="/categories" element={<AdminCategories />} />
             <Route path="/products" element={<AdminProducts />} />
             <Route path="/admin/products" element={<AdminProducts />} />
-            <Route path="/sales-leaderboard" element={<SalesLeaderboard />} />
           </>
         );
       case "sales":

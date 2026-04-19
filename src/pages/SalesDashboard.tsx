@@ -1,8 +1,6 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useData, LEAD_CATEGORIES, LeadStatus } from "@/contexts/DataContext";
-import { useSalesStats } from "@/hooks/useSalesStats";
-import { useLeadsPage } from "@/hooks/useLeadsPage";
+import { useData, LEAD_CATEGORIES, LeadCategory, LeadStatus } from "@/contexts/DataContext";
 import StatCard from "@/components/StatCard";
 import LeadForm from "@/components/LeadForm";
 import DeliveryAssignDialog from "@/components/DeliveryAssignDialog";
@@ -16,17 +14,10 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import {
-  Pagination, PaginationContent, PaginationItem, PaginationLink,
-  PaginationNext, PaginationPrevious, PaginationEllipsis,
-} from "@/components/ui/pagination";
-import { Users, IndianRupee, TrendingUp, AlertCircle, Phone, Calendar, Truck, Clock, Trophy, Pencil, User } from "lucide-react";
+import { Users, IndianRupee, TrendingUp, AlertCircle, Phone, Calendar, Truck, Clock, Trophy, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import type { Lead } from "@/contexts/DataContext";
 import SalesTargetCard from "@/components/SalesTargetCard";
-import TeamPerformancePanel from "@/components/TeamPerformancePanel";
-
-const PAGE_SIZE = 20;
 
 const STATUS_COLORS: Record<LeadStatus, string> = {
   new: "bg-primary/10 text-primary",
@@ -45,8 +36,7 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
 
 const SalesDashboard = () => {
   const { user } = useAuth();
-  const { updateLead, softDeleteLead, error, retryLoad } = useData();
-
+  const { leads, updateLead, softDeleteLead, hasMoreLeads, loadMoreLeads, error, retryLoad, loading } = useData();
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [fromDate, setFromDate] = useState("");
@@ -55,83 +45,60 @@ const SalesDashboard = () => {
   const [deliveryLead, setDeliveryLead] = useState<Lead | null>(null);
   const [editLead, setEditLead] = useState<Lead | null>(null);
   const [phoneSearch, setPhoneSearch] = useState("");
-  const [page, setPage] = useState(1);
 
   const todayStr = new Date().toISOString().split("T")[0];
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split("T")[0];
 
-  const isAdmin = user?.role === "admin";
-  // Sales/site_agent always scope to own leads. Admin can switch.
-  const scopeUserId = useMemo(() => {
-    if (!user) return undefined;
-    if (user.role === "site_agent") return user.id;
-    if (user.role === "sales") return user.id;
-    if (isAdmin && viewMode === "my") return user.id;
-    return undefined; // admin viewing all
-  }, [user, isAdmin, viewMode]);
-
-  const filterArgs = {
-    userId: scopeUserId,
-    categoryFilter, statusFilter, fromDate, toDate, phoneSearch,
-  };
-
-  const { stats, loading: statsLoading, refetch: refetchStats } = useSalesStats(
-    filterArgs,
-    [scopeUserId, categoryFilter, statusFilter, fromDate, toDate, phoneSearch]
-  );
-
-  // reset page when filters change
-  useEffect(() => { setPage(1); }, [scopeUserId, categoryFilter, statusFilter, fromDate, toDate, phoneSearch]);
-
-  const { leads, totalCount, loading: pageLoading, refetch: refetchPage } = useLeadsPage(
-    { ...filterArgs, page, pageSize: PAGE_SIZE },
-    [scopeUserId, categoryFilter, statusFilter, fromDate, toDate, phoneSearch, page]
-  );
-
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-
   useEffect(() => {
     if (user?.role !== "sales") return;
     const interval = setInterval(() => {
-      if (stats.totalLeads === 0) {
+      const todayLeads = leads.filter(l => l.created_at.startsWith(todayStr) && l.assigned_to === user.id);
+      if (todayLeads.length === 0) {
         toast.warning("Reminder: You haven't added any leads today! 🔔", { duration: 5000 });
       }
     }, 2 * 60 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [user, stats.totalLeads]);
+  }, [user, leads, todayStr]);
 
   const setQuickDate = (from: string, to: string) => { setFromDate(from); setToDate(to); };
+
+  const filteredLeads = useMemo(() => {
+    return leads.filter(l => {
+      if (user?.role === "site_agent") return l.assigned_to === user.id;
+      if (viewMode === "my" && user?.role !== "admin") {
+        if (l.assigned_to !== user?.id) return false;
+      }
+      if (phoneSearch.trim() && !l.customer_phone.includes(phoneSearch.trim())) return false;
+      if (categoryFilter !== "all" && l.category !== categoryFilter) return false;
+      if (statusFilter !== "all" && l.status !== statusFilter) return false;
+      if (fromDate && l.created_at.split("T")[0] < fromDate) return false;
+      if (toDate && l.created_at.split("T")[0] > toDate) return false;
+      return true;
+    });
+  }, [leads, categoryFilter, statusFilter, fromDate, toDate, viewMode, user, phoneSearch]);
+
+  const totalValue = filteredLeads.reduce((s, l) => s + Number(l.value_in_rupees), 0);
+  const wonLeads = filteredLeads.filter(l => l.status === "won");
+  const wonValue = wonLeads.reduce((s, l) => s + Number(l.value_in_rupees), 0);
+  const overdueLeads = filteredLeads.filter(l => l.status === "overdue");
+  const needFollowUp = filteredLeads.filter(l => {
+    const daysSince = Math.floor((Date.now() - new Date(l.last_follow_up).getTime()) / 86400000);
+    return daysSince >= 2 && l.status !== "won" && l.status !== "lost";
+  });
 
   const handleStatusChange = async (id: string, status: LeadStatus) => {
     try {
       await updateLead(id, { status, last_follow_up: new Date().toISOString() });
-      refetchStats();
-      refetchPage();
     } catch (err: any) {
       toast.error(err.message || "Failed to update status");
     }
   };
 
-  const onAfterMutate = () => { refetchStats(); refetchPage(); };
+  const isAdmin = user?.role === "admin";
 
-  if (error && leads.length === 0 && !pageLoading) return <LoadingError message={error} onRetry={retryLoad} />;
-  if ((statsLoading || pageLoading) && leads.length === 0) return <DashboardSkeleton />;
-
-  const fmt = (n: number) =>
-    n >= 1000 ? (n / 1000).toFixed(0) + "K" : n.toLocaleString("en-IN");
-
-  // Pagination items (compact: first, current-1, current, current+1, last)
-  const pageNumbers: (number | "ellipsis")[] = [];
-  if (totalPages <= 7) {
-    for (let i = 1; i <= totalPages; i++) pageNumbers.push(i);
-  } else {
-    pageNumbers.push(1);
-    if (page > 3) pageNumbers.push("ellipsis");
-    for (let i = Math.max(2, page - 1); i <= Math.min(totalPages - 1, page + 1); i++) pageNumbers.push(i);
-    if (page < totalPages - 2) pageNumbers.push("ellipsis");
-    pageNumbers.push(totalPages);
-  }
+  if (error && leads.length === 0) return <LoadingError message={error} onRetry={retryLoad} />;
+  if (loading && leads.length === 0) return <DashboardSkeleton />;
 
   return (
     <div className="space-y-6">
@@ -143,12 +110,23 @@ const SalesDashboard = () => {
         <LeadForm source={user?.role === "site_agent" ? "site_agent" : "sales"} />
       </div>
 
-      {stats.overdueLeads > 0 && (
+      {overdueLeads.length > 0 && (
         <Card className="border-destructive/30 bg-destructive/5">
           <CardContent className="p-3 flex items-center gap-3">
             <AlertCircle className="w-5 h-5 text-destructive shrink-0 animate-pulse" />
             <p className="text-sm font-medium">
-              <span className="text-destructive font-bold">{stats.overdueLeads} OVERDUE leads!</span> Follow-up date has passed. Act now!
+              <span className="text-destructive font-bold">{overdueLeads.length} OVERDUE leads!</span> Follow-up date has passed. Act now!
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {needFollowUp.length > 0 && (
+        <Card className="border-warning/30 bg-warning/5">
+          <CardContent className="p-3 flex items-center gap-3">
+            <Clock className="w-5 h-5 text-warning shrink-0 animate-pulse" />
+            <p className="text-sm font-medium">
+              <span className="text-warning font-bold">{needFollowUp.length} leads</span> need follow-up!
             </p>
           </CardContent>
         </Card>
@@ -157,37 +135,17 @@ const SalesDashboard = () => {
       <SalesTargetCard />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard title="Total Leads" value={stats.totalLeads} icon={<Users className="w-5 h-5" />} />
-        <StatCard
-          title="Won Deals"
-          value={stats.wonLeads}
-          icon={<Trophy className="w-5 h-5" />}
-          trend={`${stats.conversionPct}% conversion`}
-          trendUp
-        />
-        <StatCard title="Won Value" value={`₹${fmt(stats.wonValue)}`} icon={<IndianRupee className="w-5 h-5" />} />
-        <StatCard title="Pipeline Value" value={`₹${fmt(stats.pipelineValue)}`} icon={<TrendingUp className="w-5 h-5" />} />
+        <StatCard title="Total Leads" value={filteredLeads.length} icon={<Users className="w-5 h-5" />} />
+        <StatCard title="Won Deals" value={wonLeads.length} icon={<Trophy className="w-5 h-5" />} trend={`${filteredLeads.length ? Math.round((wonLeads.length / filteredLeads.length) * 100) : 0}% conversion`} trendUp />
+        <StatCard title="Won Value" value={`₹${wonValue >= 1000 ? (wonValue / 1000).toFixed(0) + "K" : wonValue.toLocaleString("en-IN")}`} icon={<IndianRupee className="w-5 h-5" />} />
+        <StatCard title="Pipeline Value" value={`₹${totalValue >= 1000 ? (totalValue / 1000).toFixed(0) + "K" : totalValue.toLocaleString("en-IN")}`} icon={<TrendingUp className="w-5 h-5" />} />
       </div>
 
-      {isAdmin && viewMode === "all" && <TeamPerformancePanel compact />}
-
       <div className="flex gap-2 flex-wrap items-center">
-        <Button size="sm" variant={!fromDate && !toDate ? "default" : "outline"} onClick={() => { setFromDate(""); setToDate(""); }}>All Time</Button>
         <Button size="sm" variant={fromDate === todayStr && toDate === todayStr ? "default" : "outline"} onClick={() => setQuickDate(todayStr, todayStr)}>Today</Button>
         <Button size="sm" variant={fromDate === weekAgo && toDate === todayStr ? "default" : "outline"} onClick={() => setQuickDate(weekAgo, todayStr)}>This Week</Button>
         <Button size="sm" variant={fromDate === monthStart && toDate === todayStr ? "default" : "outline"} onClick={() => setQuickDate(monthStart, todayStr)}>This Month</Button>
-      </div>
-
-      <div className="text-xs text-muted-foreground">
-        {!fromDate && !toDate
-          ? "Showing all leads (all time)"
-          : fromDate === todayStr && toDate === todayStr
-          ? "Showing leads: Today"
-          : fromDate === weekAgo && toDate === todayStr
-          ? "Showing leads: This Week"
-          : fromDate === monthStart && toDate === todayStr
-          ? "Showing leads: This Month"
-          : `Showing leads: ${fromDate || "…"} → ${toDate || "…"}`}
+        {(fromDate || toDate) && <Button size="sm" variant="ghost" onClick={() => { setFromDate(""); setToDate(""); }}>Clear</Button>}
       </div>
 
       <div className="flex gap-3 flex-wrap items-center">
@@ -228,12 +186,8 @@ const SalesDashboard = () => {
         )}
       </div>
 
-      <div className="text-xs text-muted-foreground">
-        Showing {leads.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}–{(page - 1) * PAGE_SIZE + leads.length} of <span className="font-semibold text-foreground">{totalCount}</span> leads
-      </div>
-
       <div className="space-y-3">
-        {leads.map(lead => (
+        {filteredLeads.map(lead => (
           <Card key={lead.id} className={`shadow-card hover:shadow-card-hover transition-shadow cursor-pointer ${lead.status === "overdue" ? "border-destructive/50 bg-destructive/5" : ""}`} onClick={() => setEditLead(lead)}>
             <CardContent className="p-4">
               <div className="flex items-start justify-between gap-3">
@@ -244,10 +198,9 @@ const SalesDashboard = () => {
                     <Badge variant="outline" className="text-xs">{LEAD_CATEGORIES.find(c => c.value === lead.category)?.label}</Badge>
                     <Pencil className="w-3 h-3 text-muted-foreground" />
                   </div>
-                  <div className="flex items-center gap-4 mt-1.5 text-sm text-muted-foreground flex-wrap">
+                  <div className="flex items-center gap-4 mt-1.5 text-sm text-muted-foreground">
                     <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" />{lead.customer_phone}</span>
                     <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />{lead.created_at.split("T")[0]}</span>
-                    <span className="flex items-center gap-1"><User className="w-3.5 h-3.5" />Created by: <span className="font-medium text-foreground">{lead.creator_name || "Unknown"}</span></span>
                   </div>
                   {lead.next_follow_up_date && (
                     <p className={`text-xs mt-1 ${lead.status === "overdue" ? "text-destructive font-semibold" : "text-muted-foreground"}`}>
@@ -262,7 +215,7 @@ const SalesDashboard = () => {
                 <div className="text-right shrink-0 space-y-1" onClick={e => e.stopPropagation()}>
                   <div className="flex items-center gap-1 justify-end">
                     <p className="text-lg font-bold">₹{Number(lead.value_in_rupees).toLocaleString("en-IN")}</p>
-                    {isAdmin && <DeleteButton onDelete={async () => { await softDeleteLead(lead.id); onAfterMutate(); }} itemName="Lead" />}
+                    {isAdmin && <DeleteButton onDelete={() => softDeleteLead(lead.id)} itemName="Lead" />}
                   </div>
                   <Select value={lead.status} onValueChange={v => handleStatusChange(lead.id, v as LeadStatus)}>
                     <SelectTrigger className="w-28 h-7 text-xs"><SelectValue /></SelectTrigger>
@@ -281,54 +234,22 @@ const SalesDashboard = () => {
             </CardContent>
           </Card>
         ))}
-        {leads.length === 0 && !pageLoading && (
+        {filteredLeads.length === 0 && (
           <Card className="shadow-card"><CardContent className="p-8 text-center text-muted-foreground">No leads found.</CardContent></Card>
         )}
       </div>
 
-      {totalPages > 1 && (
-        <Pagination>
-          <PaginationContent>
-            <PaginationItem>
-              <PaginationPrevious
-                onClick={(e) => { e.preventDefault(); if (page > 1) setPage(page - 1); }}
-                className={page === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
-              />
-            </PaginationItem>
-            {pageNumbers.map((p, i) =>
-              p === "ellipsis" ? (
-                <PaginationItem key={`e-${i}`}><PaginationEllipsis /></PaginationItem>
-              ) : (
-                <PaginationItem key={p}>
-                  <PaginationLink
-                    isActive={p === page}
-                    onClick={(e) => { e.preventDefault(); setPage(p); }}
-                    className="cursor-pointer"
-                  >
-                    {p}
-                  </PaginationLink>
-                </PaginationItem>
-              )
-            )}
-            <PaginationItem>
-              <PaginationNext
-                onClick={(e) => { e.preventDefault(); if (page < totalPages) setPage(page + 1); }}
-                className={page === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
-              />
-            </PaginationItem>
-          </PaginationContent>
-        </Pagination>
+      {hasMoreLeads && (
+        <div className="flex justify-center">
+          <Button variant="outline" onClick={loadMoreLeads}>Load More Leads</Button>
+        </div>
       )}
 
       {deliveryLead && (
-        <DeliveryAssignDialog lead={deliveryLead} open={!!deliveryLead} onOpenChange={open => { if (!open) { setDeliveryLead(null); onAfterMutate(); } }} />
+        <DeliveryAssignDialog lead={deliveryLead} open={!!deliveryLead} onOpenChange={open => { if (!open) setDeliveryLead(null); }} />
       )}
 
-      <EditLeadDialog
-        lead={editLead}
-        open={!!editLead}
-        onOpenChange={open => { if (!open) { setEditLead(null); onAfterMutate(); } }}
-      />
+      <EditLeadDialog lead={editLead} open={!!editLead} onOpenChange={open => { if (!open) setEditLead(null); }} />
     </div>
   );
 };

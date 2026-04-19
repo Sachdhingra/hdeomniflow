@@ -5,7 +5,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import {
   Building2, LayoutDashboard, Users, Wrench, Navigation, MapPin,
   LogOut, Menu, X, ChevronRight, CalendarDays, BarChart3,
-  ClipboardList, FileText, MapPinned, FolderTree, Package, Trophy
+  ClipboardList, FileText, MapPinned, FolderTree, Package
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -41,7 +41,6 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
     admin: [
       { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" /> },
       { to: "/sales", label: "Sales", icon: <Users className="w-5 h-5" />, badge: overdueCount || undefined },
-      { to: "/sales-leaderboard", label: "Leaderboard", icon: <Trophy className="w-5 h-5" /> },
       { to: "/service", label: "Service", icon: <Wrench className="w-5 h-5" />, badge: pendingJobCount || undefined },
       { to: "/field-agents", label: "Field Agents", icon: <Navigation className="w-5 h-5" /> },
       { to: "/site-agents", label: "Site Agents", icon: <MapPin className="w-5 h-5" /> },
