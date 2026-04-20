@@ -110,13 +110,42 @@ const AdminProducts = () => {
 
   const fetchAll = async () => {
     setLoading(true);
-    const [prodRes, catRes] = await Promise.all([
-      (supabase as any).from("products").select("*").is("deleted_at", null).order("created_at", { ascending: false }),
-      (supabase as any).from("categories").select("id,name,is_active").is("deleted_at", null).eq("is_active", true).order("name"),
-    ]);
+
+    // Fetch categories + ALL products (paginated past Supabase's 1000-row default).
+    const catPromise = (supabase as any)
+      .from("categories")
+      .select("id,name,is_active")
+      .is("deleted_at", null)
+      .eq("is_active", true)
+      .order("name");
+
+    const fetchAllProducts = async (): Promise<{ data: Product[]; error: any }> => {
+      const batchSize = 1000;
+      let offset = 0;
+      const all: Product[] = [];
+      // Loop until a short batch indicates we're done.
+      // Range is inclusive on both ends in PostgREST.
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { data, error } = await (supabase as any)
+          .from("products")
+          .select("*")
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false })
+          .range(offset, offset + batchSize - 1);
+        if (error) return { data: all, error };
+        const batch = (data ?? []) as Product[];
+        all.push(...batch);
+        if (batch.length < batchSize) break;
+        offset += batchSize;
+      }
+      return { data: all, error: null };
+    };
+
+    const [prodRes, catRes] = await Promise.all([fetchAllProducts(), catPromise]);
 
     if (prodRes.error) toast({ title: "Failed to load products", description: prodRes.error.message, variant: "destructive" });
-    else setProducts((prodRes.data ?? []) as Product[]);
+    else setProducts(prodRes.data);
 
     if (catRes.error) toast({ title: "Failed to load categories", description: catRes.error.message, variant: "destructive" });
     else setCategories((catRes.data ?? []) as Category[]);
