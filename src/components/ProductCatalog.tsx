@@ -57,14 +57,31 @@ const ProductCatalog = ({ onSelect, embedded = false }: Props) => {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const [prodRes, catRes] = await Promise.all([
-        (supabase as any)
-          .from("products")
-          .select("id,sku,product_name,category_id,hsn_code,line_code,brand_code,net_price")
-          .eq("status", "active")
-          .is("deleted_at", null)
-          .order("product_name", { ascending: true })
-          .limit(5000),
+
+      // Fetch ALL active products in batches (Supabase defaults to 1000/req).
+      const fetchAllProducts = async (): Promise<CatalogProduct[]> => {
+        const batchSize = 1000;
+        let offset = 0;
+        const all: CatalogProduct[] = [];
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const { data, error } = await (supabase as any)
+            .from("products")
+            .select("id,sku,product_name,category_id,hsn_code,line_code,brand_code,net_price")
+            .eq("status", "active")
+            .is("deleted_at", null)
+            .order("product_name", { ascending: true })
+            .range(offset, offset + batchSize - 1);
+          if (error || !data) break;
+          all.push(...(data as CatalogProduct[]));
+          if (data.length < batchSize) break;
+          offset += batchSize;
+        }
+        return all;
+      };
+
+      const [prodList, catRes] = await Promise.all([
+        fetchAllProducts(),
         (supabase as any)
           .from("categories")
           .select("id,name")
@@ -73,7 +90,7 @@ const ProductCatalog = ({ onSelect, embedded = false }: Props) => {
           .order("name"),
       ]);
       if (cancelled) return;
-      setProducts((prodRes.data ?? []) as CatalogProduct[]);
+      setProducts(prodList);
       setCategories((catRes.data ?? []) as Category[]);
       setLoading(false);
     })();
