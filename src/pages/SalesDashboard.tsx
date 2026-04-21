@@ -27,11 +27,13 @@ const STATUS_COLORS: Record<LeadStatus, string> = {
   won: "bg-success/10 text-success",
   lost: "bg-destructive/10 text-destructive",
   overdue: "bg-destructive text-destructive-foreground",
+  converted: "bg-success text-success-foreground",
 };
 
 const STATUS_LABELS: Record<LeadStatus, string> = {
   new: "New", contacted: "Contacted", follow_up: "Follow Up",
   negotiation: "Negotiation", won: "Won", lost: "Lost", overdue: "Overdue",
+  converted: "Converted",
 };
 
 const SalesDashboard = () => {

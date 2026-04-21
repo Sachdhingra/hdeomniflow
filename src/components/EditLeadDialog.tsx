@@ -12,6 +12,7 @@ import { toast } from "sonner";
 const STATUS_LABELS: Record<LeadStatus, string> = {
   new: "New", contacted: "Contacted", follow_up: "Follow Up",
   negotiation: "Negotiation", won: "Won", lost: "Lost", overdue: "Overdue",
+  converted: "Converted",
 };
 
 interface Props {
