@@ -23,6 +23,7 @@ const SiteAgentLeads = lazy(() => import("@/pages/SiteAgentLeads"));
 const AdminCategories = lazy(() => import("@/pages/AdminCategories"));
 const AdminProducts = lazy(() => import("@/pages/AdminProducts"));
 const ProductsView = lazy(() => import("@/pages/ProductsView"));
+const LeadsBoard = lazy(() => import("@/pages/LeadsBoard"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
 const PageLoader = () => (
@@ -69,6 +70,7 @@ const AppRoutes = () => {
             <Route path="/categories" element={<AdminCategories />} />
             <Route path="/products" element={<AdminProducts />} />
             <Route path="/admin/products" element={<AdminProducts />} />
+            <Route path="/leads/board" element={<LeadsBoard />} />
           </>
         );
       case "sales":
@@ -76,6 +78,7 @@ const AppRoutes = () => {
           <>
             <Route path="/" element={<SalesDashboard />} />
             <Route path="/leads" element={<SalesDashboard />} />
+            <Route path="/leads/board" element={<LeadsBoard />} />
             <Route path="/pipeline" element={<SalesPipeline />} />
             <Route path="/products" element={<ProductsView />} />
           </>

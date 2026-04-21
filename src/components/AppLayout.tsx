@@ -5,7 +5,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import {
   Building2, LayoutDashboard, Users, Wrench, Navigation, MapPin,
   LogOut, Menu, X, ChevronRight, CalendarDays, BarChart3,
-  ClipboardList, FileText, MapPinned, FolderTree, Package
+  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +42,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
     admin: [
       { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" /> },
       { to: "/sales", label: "Sales", icon: <Users className="w-5 h-5" />, badge: overdueCount || undefined },
+      { to: "/leads/board", label: "Leads Board", icon: <KanbanSquare className="w-5 h-5" /> },
       { to: "/service", label: "Service", icon: <Wrench className="w-5 h-5" />, badge: pendingJobCount || undefined },
       { to: "/field-agents", label: "Field Agents", icon: <Navigation className="w-5 h-5" /> },
       { to: "/site-agents", label: "Site Agents", icon: <MapPin className="w-5 h-5" /> },
@@ -51,6 +52,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
     sales: [
       { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" />, badge: overdueCount || undefined },
       { to: "/leads", label: "My Leads", icon: <ClipboardList className="w-5 h-5" /> },
+      { to: "/leads/board", label: "Leads Board", icon: <KanbanSquare className="w-5 h-5" /> },
       { to: "/pipeline", label: "Pipeline", icon: <BarChart3 className="w-5 h-5" /> },
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
     ],
