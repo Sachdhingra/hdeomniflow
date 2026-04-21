@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import NotificationPanel from "@/components/NotificationPanel";
+import NetworkStatusBadge from "@/components/NetworkStatusBadge";
 
 interface NavItem {
   to: string;
@@ -141,6 +142,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
             <Menu className="w-5 h-5" />
           </button>
           <div className="flex-1" />
+          <NetworkStatusBadge />
           <NotificationPanel />
         </header>
         <main className="flex-1 p-4 lg:p-6 overflow-y-auto">
