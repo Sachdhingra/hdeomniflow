@@ -91,6 +91,109 @@ export type Database = {
           },
         ]
       }
+      auto_nurture_messages: {
+        Row: {
+          concern_type: string | null
+          created_at: string
+          customer_opened: boolean
+          customer_response: string | null
+          days_in_stage: number
+          error_message: string | null
+          id: string
+          lead_id: string
+          message_body: string
+          message_type: string
+          responded_at: string | null
+          scheduled_for: string | null
+          sent_at: string | null
+          status: string
+          trigger_stage: string
+          twilio_message_sid: string | null
+        }
+        Insert: {
+          concern_type?: string | null
+          created_at?: string
+          customer_opened?: boolean
+          customer_response?: string | null
+          days_in_stage?: number
+          error_message?: string | null
+          id?: string
+          lead_id: string
+          message_body: string
+          message_type: string
+          responded_at?: string | null
+          scheduled_for?: string | null
+          sent_at?: string | null
+          status?: string
+          trigger_stage: string
+          twilio_message_sid?: string | null
+        }
+        Update: {
+          concern_type?: string | null
+          created_at?: string
+          customer_opened?: boolean
+          customer_response?: string | null
+          days_in_stage?: number
+          error_message?: string | null
+          id?: string
+          lead_id?: string
+          message_body?: string
+          message_type?: string
+          responded_at?: string | null
+          scheduled_for?: string | null
+          sent_at?: string | null
+          status?: string
+          trigger_stage?: string
+          twilio_message_sid?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "auto_nurture_messages_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      automation_logs: {
+        Row: {
+          details: Json | null
+          error_message: string | null
+          event_type: string
+          executed_at: string
+          id: string
+          lead_id: string | null
+          success: boolean
+        }
+        Insert: {
+          details?: Json | null
+          error_message?: string | null
+          event_type: string
+          executed_at?: string
+          id?: string
+          lead_id?: string | null
+          success?: boolean
+        }
+        Update: {
+          details?: Json | null
+          error_message?: string | null
+          event_type?: string
+          executed_at?: string
+          id?: string
+          lead_id?: string | null
+          success?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_logs_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       categories: {
         Row: {
           created_at: string
@@ -157,13 +260,54 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_stage_history: {
+        Row: {
+          changed_at: string
+          changed_by_id: string | null
+          id: string
+          lead_id: string
+          new_stage: string
+          old_stage: string | null
+          reason: string | null
+        }
+        Insert: {
+          changed_at?: string
+          changed_by_id?: string | null
+          id?: string
+          lead_id: string
+          new_stage: string
+          old_stage?: string | null
+          reason?: string | null
+        }
+        Update: {
+          changed_at?: string
+          changed_by_id?: string | null
+          id?: string
+          lead_id?: string
+          new_stage?: string
+          old_stage?: string | null
+          reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_stage_history_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
           assigned_to: string | null
           category: Database["public"]["Enums"]["lead_category"]
+          concern_type: string | null
+          conversion_probability: number | null
           created_at: string
           created_by: string
           created_by_agent_id: string | null
+          customer_email: string | null
           customer_name: string
           customer_phone: string
           deleted_at: string | null
@@ -171,24 +315,36 @@ export type Database = {
           delivery_assigned_to: string | null
           delivery_date: string | null
           delivery_notes: string | null
+          family_visit_date: string | null
+          has_family: boolean | null
           id: string
           last_follow_up: string
+          liked_product: string | null
+          next_action_suggested: string | null
           next_follow_up_date: string | null
           next_follow_up_time: string | null
           notes: string | null
+          price_sensitivity: string | null
+          products_viewed: Json | null
           source: string
+          stage_changed_at: string | null
           status: Database["public"]["Enums"]["lead_status"]
           updated_at: string
           updated_by: string
           value_in_rupees: number
+          visit_date: string | null
           visit_photo: string | null
+          why_lost: string | null
         }
         Insert: {
           assigned_to?: string | null
           category: Database["public"]["Enums"]["lead_category"]
+          concern_type?: string | null
+          conversion_probability?: number | null
           created_at?: string
           created_by: string
           created_by_agent_id?: string | null
+          customer_email?: string | null
           customer_name: string
           customer_phone: string
           deleted_at?: string | null
@@ -196,24 +352,36 @@ export type Database = {
           delivery_assigned_to?: string | null
           delivery_date?: string | null
           delivery_notes?: string | null
+          family_visit_date?: string | null
+          has_family?: boolean | null
           id?: string
           last_follow_up?: string
+          liked_product?: string | null
+          next_action_suggested?: string | null
           next_follow_up_date?: string | null
           next_follow_up_time?: string | null
           notes?: string | null
+          price_sensitivity?: string | null
+          products_viewed?: Json | null
           source?: string
+          stage_changed_at?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
           updated_at?: string
           updated_by: string
           value_in_rupees?: number
+          visit_date?: string | null
           visit_photo?: string | null
+          why_lost?: string | null
         }
         Update: {
           assigned_to?: string | null
           category?: Database["public"]["Enums"]["lead_category"]
+          concern_type?: string | null
+          conversion_probability?: number | null
           created_at?: string
           created_by?: string
           created_by_agent_id?: string | null
+          customer_email?: string | null
           customer_name?: string
           customer_phone?: string
           deleted_at?: string | null
@@ -221,17 +389,26 @@ export type Database = {
           delivery_assigned_to?: string | null
           delivery_date?: string | null
           delivery_notes?: string | null
+          family_visit_date?: string | null
+          has_family?: boolean | null
           id?: string
           last_follow_up?: string
+          liked_product?: string | null
+          next_action_suggested?: string | null
           next_follow_up_date?: string | null
           next_follow_up_time?: string | null
           notes?: string | null
+          price_sensitivity?: string | null
+          products_viewed?: Json | null
           source?: string
+          stage_changed_at?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
           updated_at?: string
           updated_by?: string
           value_in_rupees?: number
+          visit_date?: string | null
           visit_photo?: string | null
+          why_lost?: string | null
         }
         Relationships: []
       }
@@ -657,6 +834,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      calculate_conversion_probability: {
+        Args: { _lead_id: string }
+        Returns: number
+      }
       get_dashboard_summary: { Args: never; Returns: Json }
       get_user_role: {
         Args: { _user_id: string }
@@ -696,6 +877,7 @@ export type Database = {
         | "won"
         | "lost"
         | "overdue"
+        | "converted"
       service_job_status:
         | "pending"
         | "assigned"
@@ -853,6 +1035,7 @@ export const Constants = {
         "won",
         "lost",
         "overdue",
+        "converted",
       ],
       service_job_status: [
         "pending",
