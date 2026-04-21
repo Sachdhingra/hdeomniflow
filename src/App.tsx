@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { DataProvider } from "@/contexts/DataContext";
 import AppLayout from "@/components/AppLayout";
 import Login from "@/pages/Login";
+import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import { Loader2 } from "lucide-react";
 
 const AdminDashboard = lazy(() => import("@/pages/AdminDashboard"));
@@ -130,6 +131,7 @@ const App = () => (
         <DataProvider>
           <BrowserRouter>
             <AppRoutes />
+            <PWAInstallPrompt />
           </BrowserRouter>
         </DataProvider>
       </AuthProvider>
