@@ -19,9 +19,10 @@ interface Props {
   lead: Lead | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSaved?: (leadId: string) => void;
 }
 
-const EditLeadDialog = ({ lead, open, onOpenChange }: Props) => {
+const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
   const { user } = useAuth();
   const { updateLead, profiles } = useData();
   const [form, setForm] = useState({
@@ -51,6 +52,8 @@ const EditLeadDialog = ({ lead, open, onOpenChange }: Props) => {
 
   const handleSave = async () => {
     setSaving(true);
+    // Capture scroll BEFORE state mutates / dialog closes
+    const scrollY = window.scrollY;
     try {
       await updateLead(lead.id, {
         category: form.category,
@@ -60,8 +63,11 @@ const EditLeadDialog = ({ lead, open, onOpenChange }: Props) => {
         next_follow_up_date: form.next_follow_up_date || null,
         next_follow_up_time: form.next_follow_up_time || null,
       });
-      toast.success("Lead updated!");
+      toast.success("Lead updated", { duration: 2000 });
+      onSaved?.(lead.id);
       onOpenChange(false);
+      // Restore scroll position after dialog close re-layout
+      requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: "instant" as ScrollBehavior }));
     } catch (err: any) {
       toast.error(err.message || "Failed to update");
     } finally {
