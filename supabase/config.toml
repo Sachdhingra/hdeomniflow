@@ -1,1 +1,4 @@
 project_id = "cdrgbhnntonyofqkhzpm"
+
+[functions.nurture-engine]
+verify_jwt = false
