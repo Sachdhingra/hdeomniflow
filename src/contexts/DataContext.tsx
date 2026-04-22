@@ -139,6 +139,9 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         totalPipelineValue: d?.total_pipeline_value || 0,
         pendingJobs: d?.pending_jobs || 0,
         overdueLeads: d?.overdue_leads || 0,
+        myTotalLeads: d?.my_total_leads || 0,
+        myMonthWonCount: d?.my_month_won_count || 0,
+        myMonthWonValue: Number(d?.my_month_won_value) || 0,
       };
       setSummary(s);
       setCache("summary", s);
