@@ -24,6 +24,7 @@ const AdminCategories = lazy(() => import("@/pages/AdminCategories"));
 const AdminProducts = lazy(() => import("@/pages/AdminProducts"));
 const ProductsView = lazy(() => import("@/pages/ProductsView"));
 const LeadsBoard = lazy(() => import("@/pages/LeadsBoard"));
+const AdminAutomation = lazy(() => import("@/pages/AdminAutomation"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
 const PageLoader = () => (
@@ -71,6 +72,7 @@ const AppRoutes = () => {
             <Route path="/products" element={<AdminProducts />} />
             <Route path="/admin/products" element={<AdminProducts />} />
             <Route path="/leads/board" element={<LeadsBoard />} />
+            <Route path="/admin/automation" element={<AdminAutomation />} />
           </>
         );
       case "sales":
