@@ -11,7 +11,8 @@ type StageRow = { stage: string; count: number; avg_days: number };
 type LogRow = { id: string; event_type: string; success: boolean; details: any; error_message: string | null; executed_at: string; lead_id: string | null };
 type MsgRow = { id: string; lead_id: string; message_type: string; trigger_stage: string; status: string; created_at: string; sent_at: string | null; error_message: string | null };
 
-const STAGES = ["new", "contacted", "follow_up", "negotiation", "overdue"];
+const STAGES = ["new", "contacted", "follow_up", "negotiation", "overdue"] as const;
+type ActiveStage = typeof STAGES[number];
 
 const AdminAutomation = () => {
   const [loading, setLoading] = useState(true);
