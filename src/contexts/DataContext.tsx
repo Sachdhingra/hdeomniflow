@@ -116,7 +116,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const [allRoles, setAllRoles] = useState<{ user_id: string; role: string }[]>(() => getCache<any[]>("roles") || []);
   const [loading, setLoading] = useState(true);
   const [summaryLoading, setSummaryLoading] = useState(true);
-  const [summary, setSummary] = useState<SummaryData>(() => getCache<SummaryData>("summary") || { totalLeads: 0, totalPipelineValue: 0, pendingJobs: 0, overdueLeads: 0 });
+  const [summary, setSummary] = useState<SummaryData>(() => getCache<SummaryData>("summary") || { totalLeads: 0, totalPipelineValue: 0, pendingJobs: 0, overdueLeads: 0, myTotalLeads: 0, myMonthWonCount: 0, myMonthWonValue: 0 });
   const [error, setError] = useState<string | null>(null);
   const [hasMoreLeads, setHasMoreLeads] = useState(false);
   const [hasMoreJobs, setHasMoreJobs] = useState(false);
