@@ -17,7 +17,13 @@ import { DashboardSkeleton } from "@/components/DashboardSkeleton";
 
 const FieldAgentDashboard = () => {
   const { user } = useAuth();
-  const { serviceJobs, updateServiceJob, error, retryLoad, loading } = useData();
+  const { serviceJobs, updateServiceJob, error, retryLoad, loading, leads, profiles } = useData();
+  const getLeadOwner = (sourceLeadId: string | null) => {
+    if (!sourceLeadId) return null;
+    const lead = leads.find(l => l.id === sourceLeadId);
+    if (!lead) return null;
+    return profiles.find(p => p.id === lead.created_by) || null;
+  };
   const [completeDialog, setCompleteDialog] = useState<string | null>(null);
   const [remarks, setRemarks] = useState("");
   const [gpsActive, setGpsActive] = useState(false);
@@ -141,6 +147,17 @@ const FieldAgentDashboard = () => {
                     <div className="flex items-center gap-1 mt-1 text-sm text-muted-foreground">
                       <MapPin className="w-3.5 h-3.5" />{job.address}
                     </div>
+                    {(() => {
+                      const owner = getLeadOwner(job.source_lead_id);
+                      return owner ? (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Salesperson: <span className="font-medium text-foreground">{owner.name}</span>
+                          {owner.phone_number && (
+                            <> · <a href={`tel:${owner.phone_number}`} className="text-primary underline" onClick={e => e.stopPropagation()}>{owner.phone_number}</a></>
+                          )}
+                        </p>
+                      ) : null;
+                    })()}
                   </div>
                   <Badge className={statusColor(job.status)}>{statusLabel(job.status)}</Badge>
                 </div>

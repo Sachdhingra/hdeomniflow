@@ -38,7 +38,13 @@ const STATUS_LABEL: Record<string, string> = {
 
 const ServiceDashboard = () => {
   const { user } = useAuth();
-  const { serviceJobs, addServiceJob, updateServiceJob, softDeleteServiceJob, getProfilesByRole, profiles, hasMoreJobs, loadMoreJobs, error, retryLoad, loading } = useData();
+  const { serviceJobs, addServiceJob, updateServiceJob, softDeleteServiceJob, getProfilesByRole, profiles, leads, hasMoreJobs, loadMoreJobs, error, retryLoad, loading } = useData();
+  const getLeadOwner = (sourceLeadId: string | null) => {
+    if (!sourceLeadId) return null;
+    const lead = leads.find(l => l.id === sourceLeadId);
+    if (!lead) return null;
+    return profiles.find(p => p.id === lead.created_by) || null;
+  };
   const [dateFilter, setDateFilter] = useState("");
   const [tab, setTab] = useState("all");
   const [addOpen, setAddOpen] = useState(false);
@@ -318,6 +324,15 @@ const ServiceDashboard = () => {
                         Agent: {profiles.find(p => p.id === job.assigned_agent)?.name || "—"}
                       </p>
                     )}
+                    {(() => {
+                      const owner = getLeadOwner(job.source_lead_id);
+                      return owner ? (
+                        <p className="text-xs text-muted-foreground">
+                          Salesperson: <span className="font-medium text-foreground">{owner.name}</span>
+                          {owner.phone_number && <> · {owner.phone_number}</>}
+                        </p>
+                      ) : null;
+                    })()}
                   </div>
                 </div>
               </CardContent>

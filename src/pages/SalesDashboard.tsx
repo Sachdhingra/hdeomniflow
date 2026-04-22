@@ -38,7 +38,7 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
 
 const SalesDashboard = () => {
   const { user } = useAuth();
-  const { leads, updateLead, softDeleteLead, hasMoreLeads, loadMoreLeads, error, retryLoad, loading, profiles } = useData();
+  const { leads, updateLead, softDeleteLead, hasMoreLeads, loadMoreLeads, error, retryLoad, loading, profiles, summary } = useData();
   const ownerName = (id: string | null) => profiles.find(p => p.id === id)?.name || "Unknown";
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -138,9 +138,9 @@ const SalesDashboard = () => {
       <SalesTargetCard />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard title="Total Leads" value={filteredLeads.length} icon={<Users className="w-5 h-5" />} />
-        <StatCard title="Won Deals" value={wonLeads.length} icon={<Trophy className="w-5 h-5" />} trend={`${filteredLeads.length ? Math.round((wonLeads.length / filteredLeads.length) * 100) : 0}% conversion`} trendUp />
-        <StatCard title="Won Value" value={`₹${wonValue >= 1000 ? (wonValue / 1000).toFixed(0) + "K" : wonValue.toLocaleString("en-IN")}`} icon={<IndianRupee className="w-5 h-5" />} />
+        <StatCard title="My Total Leads" value={user?.role === "admin" ? filteredLeads.length : summary.myTotalLeads} icon={<Users className="w-5 h-5" />} trend={user?.role !== "admin" && filteredLeads.length < summary.myTotalLeads ? `${filteredLeads.length} shown` : undefined} />
+        <StatCard title="Won This Month" value={summary.myMonthWonCount} icon={<Trophy className="w-5 h-5" />} trend={summary.myTotalLeads ? `${Math.round((summary.myMonthWonCount / summary.myTotalLeads) * 100)}% conversion` : undefined} trendUp />
+        <StatCard title="Won Value (Month)" value={`₹${summary.myMonthWonValue >= 1000 ? (summary.myMonthWonValue / 1000).toFixed(0) + "K" : summary.myMonthWonValue.toLocaleString("en-IN")}`} icon={<IndianRupee className="w-5 h-5" />} />
         <StatCard title="Pipeline Value" value={`₹${totalValue >= 1000 ? (totalValue / 1000).toFixed(0) + "K" : totalValue.toLocaleString("en-IN")}`} icon={<TrendingUp className="w-5 h-5" />} />
       </div>
 
