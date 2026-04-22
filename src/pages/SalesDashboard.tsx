@@ -192,7 +192,7 @@ const SalesDashboard = () => {
 
       <div className="space-y-3">
         {filteredLeads.map(lead => (
-          <Card key={lead.id} className={`shadow-card hover:shadow-card-hover transition-shadow cursor-pointer ${lead.status === "overdue" ? "border-destructive/50 bg-destructive/5" : ""}`} onClick={() => setEditLead(lead)}>
+          <Card key={lead.id} className={`shadow-card hover:shadow-card-hover transition-all cursor-pointer ${lead.status === "overdue" ? "border-destructive/50 bg-destructive/5" : ""} ${recentlyUpdatedId === lead.id ? "ring-2 ring-primary/60" : ""}`} onClick={() => setEditLead(lead)}>
             <CardContent className="p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
@@ -201,6 +201,7 @@ const SalesDashboard = () => {
                     <Badge variant="outline" className={STATUS_COLORS[lead.status]}>{STATUS_LABELS[lead.status]}</Badge>
                     <Badge variant="outline" className="text-xs">{LEAD_CATEGORIES.find(c => c.value === lead.category)?.label}</Badge>
                     <Pencil className="w-3 h-3 text-muted-foreground" />
+                    {recentlyUpdatedId === lead.id && <Badge className="text-[10px] h-4 px-1.5 bg-success text-success-foreground">Updated</Badge>}
                   </div>
                   <div className="flex items-center gap-4 mt-1.5 text-sm text-muted-foreground flex-wrap">
                     <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" />{lead.customer_phone}</span>
