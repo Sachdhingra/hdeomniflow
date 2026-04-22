@@ -47,6 +47,7 @@ const SalesDashboard = () => {
   const [viewMode, setViewMode] = useState<"my" | "all">(user?.role === "admin" ? "all" : "my");
   const [deliveryLead, setDeliveryLead] = useState<Lead | null>(null);
   const [editLead, setEditLead] = useState<Lead | null>(null);
+  const [recentlyUpdatedId, setRecentlyUpdatedId] = useState<string | null>(null);
   const [phoneSearch, setPhoneSearch] = useState("");
 
   const todayStr = new Date().toISOString().split("T")[0];
