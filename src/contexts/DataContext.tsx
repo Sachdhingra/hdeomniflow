@@ -57,6 +57,9 @@ interface SummaryData {
   totalPipelineValue: number;
   pendingJobs: number;
   overdueLeads: number;
+  myTotalLeads: number;
+  myMonthWonCount: number;
+  myMonthWonValue: number;
 }
 
 interface DataContextType {
