@@ -176,24 +176,42 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
 
       if (data) {
         if (reset) {
-          setLeads(data);
-          leadsPageRef.current = 1;
-          setCache("leads", data);
+          // MERGE strategy: preserve existing order so an update/refetch
+          // doesn't jump the user back to the top of the list.
+          setLeads(prev => {
+            if (prev.length === 0) {
+              setCache("leads", data);
+              return data;
+            }
+            const fetchedById = new Map(data.map(l => [l.id, l]));
+            // 1. Update existing leads in place (keep current order)
+            const merged = prev.map(l => fetchedById.get(l.id) || l);
+            const existingIds = new Set(prev.map(l => l.id));
+            // 2. Prepend brand-new leads we didn't have before
+            const newOnes = data.filter(l => !existingIds.has(l.id));
+            const result = [...newOnes, ...merged];
+            setCache("leads", result);
+            return result;
+          });
+          leadsPageRef.current = Math.max(leadsPageRef.current, 1);
+          setHasMoreLeads((count || 0) > leads.length + (data.length - leads.length));
         } else {
           setLeads(prev => {
-            const updated = [...prev, ...data];
+            const existingIds = new Set(prev.map(l => l.id));
+            const appended = data.filter(l => !existingIds.has(l.id));
+            const updated = [...prev, ...appended];
             setCache("leads", updated);
             return updated;
           });
           leadsPageRef.current = page + 1;
+          setHasMoreLeads((count || 0) > (page + 1) * PAGE_SIZE);
         }
-        setHasMoreLeads((count || 0) > (page + 1) * PAGE_SIZE);
       }
       setError(null);
     } catch (err: any) {
       setError("Failed to load leads. Tap retry.");
     }
-  }, [user]);
+  }, [user, leads.length]);
 
   const loadMoreLeads = useCallback(async () => {
     await fetchLeads(false);
