@@ -389,14 +389,16 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [user, refreshAll]);
 
-  // Polling fallback: refresh every 30s as safety net
+  // Polling fallback: refresh summary only every 60s.
+  // (Previously refetched the full leads list, which replaced state and
+  // caused the page to jump to the top while the user was scrolled.)
   useEffect(() => {
     if (!user) return;
     const interval = setInterval(() => {
-      if (document.visibilityState === "visible") refreshAll();
-    }, 30000);
+      if (document.visibilityState === "visible") fetchSummary();
+    }, 60000);
     return () => clearInterval(interval);
-  }, [user, refreshAll]);
+  }, [user, fetchSummary]);
 
   // Real-time subscriptions — debounced to avoid rapid refetches
   useEffect(() => {
