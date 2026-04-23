@@ -312,9 +312,14 @@ const SalesDashboard = () => {
                     </SelectContent>
                   </Select>
                   {lead.status === "won" && !lead.delivery_date && (
-                    <Button size="sm" className="w-full gap-1 bg-success text-success-foreground hover:bg-success/90 text-xs h-7" onClick={() => setDeliveryLead(lead)}>
-                      <Truck className="w-3 h-3" />Assign Delivery
-                    </Button>
+                    <div className="flex flex-col gap-1">
+                      <Button size="sm" className="w-full gap-1 bg-success text-success-foreground hover:bg-success/90 text-xs h-7" onClick={() => setDeliveryLead(lead)}>
+                        <Truck className="w-3 h-3" />Assign Delivery
+                      </Button>
+                      <Button size="sm" variant="outline" className="w-full gap-1 text-xs h-7 border-success/40 text-success hover:bg-success/10" onClick={() => setSelfDeliveryLead(lead)}>
+                        📦 Self Delivery
+                      </Button>
+                    </div>
                   )}
                   {lead.delivery_date && <p className="text-xs text-success">🚚 Delivery: {lead.delivery_date}</p>}
                 </div>
@@ -335,6 +340,10 @@ const SalesDashboard = () => {
 
       {deliveryLead && (
         <DeliveryAssignDialog lead={deliveryLead} open={!!deliveryLead} onOpenChange={open => { if (!open) setDeliveryLead(null); }} />
+      )}
+
+      {selfDeliveryLead && (
+        <SelfDeliveryDialog lead={selfDeliveryLead} open={!!selfDeliveryLead} onOpenChange={open => { if (!open) setSelfDeliveryLead(null); }} />
       )}
 
       <EditLeadDialog lead={editLead} open={!!editLead} onOpenChange={open => { if (!open) setEditLead(null); }} onSaved={(id) => { setRecentlyUpdatedId(id); setTimeout(() => setRecentlyUpdatedId(curr => curr === id ? null : curr), 3000); }} />
