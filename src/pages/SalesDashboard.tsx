@@ -107,8 +107,16 @@ const SalesDashboard = () => {
   const totalValue = filteredLeads.reduce((s, l) => s + Number(l.value_in_rupees), 0);
   const wonLeads = filteredLeads.filter(l => l.status === "won");
   const wonValue = wonLeads.reduce((s, l) => s + Number(l.value_in_rupees), 0);
-  const overdueLeads = filteredLeads.filter(l => l.status === "overdue");
-  const needFollowUp = filteredLeads.filter(l => {
+
+  // Alert scope: user's own leads (admin sees all) — independent of UI filters & URL quickFilter
+  const scopeLeads = useMemo(() => {
+    if (user?.role === "admin") return leads;
+    return leads.filter(l => l.assigned_to === user?.id || l.created_by === user?.id);
+  }, [leads, user]);
+  const overdueLeads = scopeLeads.filter(l => l.status === "overdue");
+  const followUpsToday = scopeLeads.filter(l => l.next_follow_up_date === todayStr);
+  const followUpsThisWeek = scopeLeads.filter(l => l.next_follow_up_date && l.next_follow_up_date >= todayStr && l.next_follow_up_date <= weekAhead);
+  const needFollowUp = scopeLeads.filter(l => {
     const daysSince = Math.floor((Date.now() - new Date(l.last_follow_up).getTime()) / 86400000);
     return daysSince >= 2 && l.status !== "won" && l.status !== "lost";
   });
