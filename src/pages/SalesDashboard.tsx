@@ -93,9 +93,16 @@ const SalesDashboard = () => {
       if (statusFilter !== "all" && l.status !== statusFilter) return false;
       if (fromDate && l.created_at.split("T")[0] < fromDate) return false;
       if (toDate && l.created_at.split("T")[0] > toDate) return false;
+      // URL-driven quick filters from clickable alerts
+      if (quickFilter === "overdue" && l.status !== "overdue") return false;
+      if (quickFilter === "followup-today" && l.next_follow_up_date !== todayStr) return false;
+      if (quickFilter === "followup-week") {
+        if (!l.next_follow_up_date) return false;
+        if (l.next_follow_up_date < todayStr || l.next_follow_up_date > weekAhead) return false;
+      }
       return true;
     });
-  }, [leads, categoryFilter, statusFilter, fromDate, toDate, viewMode, user, phoneSearch]);
+  }, [leads, categoryFilter, statusFilter, fromDate, toDate, viewMode, user, phoneSearch, quickFilter, todayStr, weekAhead]);
 
   const totalValue = filteredLeads.reduce((s, l) => s + Number(l.value_in_rupees), 0);
   const wonLeads = filteredLeads.filter(l => l.status === "won");
