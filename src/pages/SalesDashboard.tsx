@@ -145,25 +145,73 @@ const SalesDashboard = () => {
       </div>
 
       {overdueLeads.length > 0 && (
-        <Card className="border-destructive/30 bg-destructive/5">
-          <CardContent className="p-3 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => applyQuickFilter("overdue")}
+          aria-label={`View ${overdueLeads.length} overdue leads`}
+          className="w-full text-left rounded-lg border-2 border-destructive/40 bg-destructive/5 hover:bg-destructive/10 transition p-3 flex items-center justify-between gap-3"
+        >
+          <div className="flex items-center gap-3 min-w-0">
             <AlertCircle className="w-5 h-5 text-destructive shrink-0 animate-pulse" />
-            <p className="text-sm font-medium">
-              <span className="text-destructive font-bold">{overdueLeads.length} OVERDUE leads!</span> Follow-up date has passed. Act now!
-            </p>
-          </CardContent>
-        </Card>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-destructive">
+                {overdueLeads.length} OVERDUE {overdueLeads.length === 1 ? "lead" : "leads"}!
+              </p>
+              <p className="text-xs text-destructive/80">Follow-up date has passed. Tap to view all overdue.</p>
+            </div>
+          </div>
+          <span className="text-destructive shrink-0">→</span>
+        </button>
       )}
 
-      {needFollowUp.length > 0 && (
-        <Card className="border-warning/30 bg-warning/5">
-          <CardContent className="p-3 flex items-center gap-3">
-            <Clock className="w-5 h-5 text-warning shrink-0 animate-pulse" />
-            <p className="text-sm font-medium">
-              <span className="text-warning font-bold">{needFollowUp.length} leads</span> need follow-up!
-            </p>
-          </CardContent>
-        </Card>
+      {followUpsToday.length > 0 && (
+        <button
+          type="button"
+          onClick={() => applyQuickFilter("followup-today")}
+          aria-label={`View ${followUpsToday.length} follow-ups due today`}
+          className="w-full text-left rounded-lg border-2 border-warning/40 bg-warning/5 hover:bg-warning/10 transition p-3 flex items-center justify-between gap-3"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <Calendar className="w-5 h-5 text-warning shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-warning">
+                {followUpsToday.length} follow-{followUpsToday.length === 1 ? "up" : "ups"} due today
+              </p>
+              <p className="text-xs text-warning/80">Tap to view and take action.</p>
+            </div>
+          </div>
+          <span className="text-warning shrink-0">→</span>
+        </button>
+      )}
+
+      {followUpsThisWeek.length > 0 && (
+        <button
+          type="button"
+          onClick={() => applyQuickFilter("followup-week")}
+          aria-label={`View ${followUpsThisWeek.length} follow-ups this week`}
+          className="w-full text-left rounded-lg border-2 border-primary/30 bg-primary/5 hover:bg-primary/10 transition p-3 flex items-center justify-between gap-3"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <Clock className="w-5 h-5 text-primary shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-primary">
+                {followUpsThisWeek.length} follow-{followUpsThisWeek.length === 1 ? "up" : "ups"} this week
+              </p>
+              <p className="text-xs text-primary/80">Tap to view all upcoming.</p>
+            </div>
+          </div>
+          <span className="text-primary shrink-0">→</span>
+        </button>
+      )}
+
+      {quickFilter && (
+        <div className="flex items-center gap-2 text-sm">
+          <Badge variant="secondary" className="gap-1">
+            Filter:{" "}
+            {quickFilter === "overdue" ? "Overdue" : quickFilter === "followup-today" ? "Follow-ups today" : "Follow-ups this week"}
+          </Badge>
+          <Button size="sm" variant="ghost" className="h-7" onClick={clearQuickFilter}>Clear</Button>
+        </div>
       )}
 
       <SalesTargetCard />
