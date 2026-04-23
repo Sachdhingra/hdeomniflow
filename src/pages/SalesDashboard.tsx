@@ -40,6 +40,8 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
 const SalesDashboard = () => {
   const { user } = useAuth();
   const { leads, updateLead, softDeleteLead, hasMoreLeads, loadMoreLeads, error, retryLoad, loading, profiles, summary } = useData();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const quickFilter = searchParams.get("filter"); // overdue | followup-today | followup-week
   const ownerName = (id: string | null) => profiles.find(p => p.id === id)?.name || "Unknown";
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -53,7 +55,19 @@ const SalesDashboard = () => {
 
   const todayStr = new Date().toISOString().split("T")[0];
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
+  const weekAhead = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split("T")[0];
+
+  const clearQuickFilter = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("filter");
+    setSearchParams(next, { replace: true });
+  };
+  const applyQuickFilter = (f: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("filter", f);
+    setSearchParams(next, { replace: true });
+  };
 
   useEffect(() => {
     if (user?.role !== "sales") return;
