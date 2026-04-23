@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useData, LEAD_CATEGORIES, LeadCategory, LeadStatus } from "@/contexts/DataContext";
 import StatCard from "@/components/StatCard";
@@ -39,6 +40,8 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
 const SalesDashboard = () => {
   const { user } = useAuth();
   const { leads, updateLead, softDeleteLead, hasMoreLeads, loadMoreLeads, error, retryLoad, loading, profiles, summary } = useData();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const quickFilter = searchParams.get("filter"); // overdue | followup-today | followup-week
   const ownerName = (id: string | null) => profiles.find(p => p.id === id)?.name || "Unknown";
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -52,7 +55,19 @@ const SalesDashboard = () => {
 
   const todayStr = new Date().toISOString().split("T")[0];
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
+  const weekAhead = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split("T")[0];
+
+  const clearQuickFilter = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("filter");
+    setSearchParams(next, { replace: true });
+  };
+  const applyQuickFilter = (f: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("filter", f);
+    setSearchParams(next, { replace: true });
+  };
 
   useEffect(() => {
     if (user?.role !== "sales") return;
@@ -78,15 +93,30 @@ const SalesDashboard = () => {
       if (statusFilter !== "all" && l.status !== statusFilter) return false;
       if (fromDate && l.created_at.split("T")[0] < fromDate) return false;
       if (toDate && l.created_at.split("T")[0] > toDate) return false;
+      // URL-driven quick filters from clickable alerts
+      if (quickFilter === "overdue" && l.status !== "overdue") return false;
+      if (quickFilter === "followup-today" && l.next_follow_up_date !== todayStr) return false;
+      if (quickFilter === "followup-week") {
+        if (!l.next_follow_up_date) return false;
+        if (l.next_follow_up_date < todayStr || l.next_follow_up_date > weekAhead) return false;
+      }
       return true;
     });
-  }, [leads, categoryFilter, statusFilter, fromDate, toDate, viewMode, user, phoneSearch]);
+  }, [leads, categoryFilter, statusFilter, fromDate, toDate, viewMode, user, phoneSearch, quickFilter, todayStr, weekAhead]);
 
   const totalValue = filteredLeads.reduce((s, l) => s + Number(l.value_in_rupees), 0);
   const wonLeads = filteredLeads.filter(l => l.status === "won");
   const wonValue = wonLeads.reduce((s, l) => s + Number(l.value_in_rupees), 0);
-  const overdueLeads = filteredLeads.filter(l => l.status === "overdue");
-  const needFollowUp = filteredLeads.filter(l => {
+
+  // Alert scope: user's own leads (admin sees all) — independent of UI filters & URL quickFilter
+  const scopeLeads = useMemo(() => {
+    if (user?.role === "admin") return leads;
+    return leads.filter(l => l.assigned_to === user?.id || l.created_by === user?.id);
+  }, [leads, user]);
+  const overdueLeads = scopeLeads.filter(l => l.status === "overdue");
+  const followUpsToday = scopeLeads.filter(l => l.next_follow_up_date === todayStr);
+  const followUpsThisWeek = scopeLeads.filter(l => l.next_follow_up_date && l.next_follow_up_date >= todayStr && l.next_follow_up_date <= weekAhead);
+  const needFollowUp = scopeLeads.filter(l => {
     const daysSince = Math.floor((Date.now() - new Date(l.last_follow_up).getTime()) / 86400000);
     return daysSince >= 2 && l.status !== "won" && l.status !== "lost";
   });
@@ -115,25 +145,73 @@ const SalesDashboard = () => {
       </div>
 
       {overdueLeads.length > 0 && (
-        <Card className="border-destructive/30 bg-destructive/5">
-          <CardContent className="p-3 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => applyQuickFilter("overdue")}
+          aria-label={`View ${overdueLeads.length} overdue leads`}
+          className="w-full text-left rounded-lg border-2 border-destructive/40 bg-destructive/5 hover:bg-destructive/10 transition p-3 flex items-center justify-between gap-3"
+        >
+          <div className="flex items-center gap-3 min-w-0">
             <AlertCircle className="w-5 h-5 text-destructive shrink-0 animate-pulse" />
-            <p className="text-sm font-medium">
-              <span className="text-destructive font-bold">{overdueLeads.length} OVERDUE leads!</span> Follow-up date has passed. Act now!
-            </p>
-          </CardContent>
-        </Card>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-destructive">
+                {overdueLeads.length} OVERDUE {overdueLeads.length === 1 ? "lead" : "leads"}!
+              </p>
+              <p className="text-xs text-destructive/80">Follow-up date has passed. Tap to view all overdue.</p>
+            </div>
+          </div>
+          <span className="text-destructive shrink-0">→</span>
+        </button>
       )}
 
-      {needFollowUp.length > 0 && (
-        <Card className="border-warning/30 bg-warning/5">
-          <CardContent className="p-3 flex items-center gap-3">
-            <Clock className="w-5 h-5 text-warning shrink-0 animate-pulse" />
-            <p className="text-sm font-medium">
-              <span className="text-warning font-bold">{needFollowUp.length} leads</span> need follow-up!
-            </p>
-          </CardContent>
-        </Card>
+      {followUpsToday.length > 0 && (
+        <button
+          type="button"
+          onClick={() => applyQuickFilter("followup-today")}
+          aria-label={`View ${followUpsToday.length} follow-ups due today`}
+          className="w-full text-left rounded-lg border-2 border-warning/40 bg-warning/5 hover:bg-warning/10 transition p-3 flex items-center justify-between gap-3"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <Calendar className="w-5 h-5 text-warning shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-warning">
+                {followUpsToday.length} follow-{followUpsToday.length === 1 ? "up" : "ups"} due today
+              </p>
+              <p className="text-xs text-warning/80">Tap to view and take action.</p>
+            </div>
+          </div>
+          <span className="text-warning shrink-0">→</span>
+        </button>
+      )}
+
+      {followUpsThisWeek.length > 0 && (
+        <button
+          type="button"
+          onClick={() => applyQuickFilter("followup-week")}
+          aria-label={`View ${followUpsThisWeek.length} follow-ups this week`}
+          className="w-full text-left rounded-lg border-2 border-primary/30 bg-primary/5 hover:bg-primary/10 transition p-3 flex items-center justify-between gap-3"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <Clock className="w-5 h-5 text-primary shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-primary">
+                {followUpsThisWeek.length} follow-{followUpsThisWeek.length === 1 ? "up" : "ups"} this week
+              </p>
+              <p className="text-xs text-primary/80">Tap to view all upcoming.</p>
+            </div>
+          </div>
+          <span className="text-primary shrink-0">→</span>
+        </button>
+      )}
+
+      {quickFilter && (
+        <div className="flex items-center gap-2 text-sm">
+          <Badge variant="secondary" className="gap-1">
+            Filter:{" "}
+            {quickFilter === "overdue" ? "Overdue" : quickFilter === "followup-today" ? "Follow-ups today" : "Follow-ups this week"}
+          </Badge>
+          <Button size="sm" variant="ghost" className="h-7" onClick={clearQuickFilter}>Clear</Button>
+        </div>
       )}
 
       <SalesTargetCard />

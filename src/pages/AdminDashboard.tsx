@@ -328,11 +328,16 @@ const AdminDashboard = () => {
       </div>
 
       {overdueLeads.length > 0 && (
-        <Card className="border-destructive/30 bg-destructive/5">
-          <CardContent className="p-3 flex items-center gap-3">
+        <Link
+          to="/sales?filter=overdue"
+          aria-label={`View ${overdueLeads.length} overdue leads`}
+          className="block rounded-lg border-2 border-destructive/40 bg-destructive/5 hover:bg-destructive/10 transition p-3"
+        >
+          <div className="flex items-center justify-between gap-3">
             <span className="text-destructive font-bold animate-pulse">⚠️ {overdueLeads.length} OVERDUE leads across the system!</span>
-          </CardContent>
-        </Card>
+            <span className="text-destructive shrink-0">→</span>
+          </div>
+        </Link>
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
