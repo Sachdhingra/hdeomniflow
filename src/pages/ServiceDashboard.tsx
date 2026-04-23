@@ -287,6 +287,14 @@ const ServiceDashboard = () => {
                     {job.claim_part_no && (
                       <p className="text-xs text-destructive mt-1">Part: {job.claim_part_no} | {job.claim_reason} | Due: {job.claim_due_date}</p>
                     )}
+                    {job.remarks && (
+                      <div className="mt-2 p-2 rounded-md bg-accent/10 border border-accent/30">
+                        <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wide flex items-center gap-1">
+                          💬 Field Agent Remarks
+                        </p>
+                        <p className="text-xs text-foreground mt-0.5 whitespace-pre-wrap">{job.remarks}</p>
+                      </div>
+                    )}
                     {photos.length > 0 && (
                       <div className="flex gap-1.5 mt-2 flex-wrap">
                         {photos.slice(0, 3).map((url, i) => (

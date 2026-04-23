@@ -358,13 +358,14 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   }, [user, refreshAll]);
 
   // Auto-mark overdue leads (client-side, runs after leads load)
+  // Excludes won/lost/converted — those are closed, never overdue.
   useEffect(() => {
     if (!user || leads.length === 0) return;
     const todayStr = new Date().toISOString().split("T")[0];
     const overdueLeads = leads.filter(l =>
       l.next_follow_up_date &&
       l.next_follow_up_date < todayStr &&
-      !["won", "lost", "overdue"].includes(l.status)
+      !["won", "lost", "overdue", "converted"].includes(l.status)
     );
     if (overdueLeads.length > 0) {
       // Batch update overdue leads

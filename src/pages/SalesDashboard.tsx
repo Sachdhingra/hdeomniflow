@@ -5,6 +5,7 @@ import { useData, LEAD_CATEGORIES, LeadCategory, LeadStatus } from "@/contexts/D
 import StatCard from "@/components/StatCard";
 import LeadForm from "@/components/LeadForm";
 import DeliveryAssignDialog from "@/components/DeliveryAssignDialog";
+import SelfDeliveryDialog from "@/components/SelfDeliveryDialog";
 import DeleteButton from "@/components/DeleteButton";
 import EditLeadDialog from "@/components/EditLeadDialog";
 import LeadPhotoGallery from "@/components/LeadPhotoGallery";
@@ -49,6 +50,7 @@ const SalesDashboard = () => {
   const [toDate, setToDate] = useState("");
   const [viewMode, setViewMode] = useState<"my" | "all">(user?.role === "admin" ? "all" : "my");
   const [deliveryLead, setDeliveryLead] = useState<Lead | null>(null);
+  const [selfDeliveryLead, setSelfDeliveryLead] = useState<Lead | null>(null);
   const [editLead, setEditLead] = useState<Lead | null>(null);
   const [recentlyUpdatedId, setRecentlyUpdatedId] = useState<string | null>(null);
   const [phoneSearch, setPhoneSearch] = useState("");
@@ -113,12 +115,14 @@ const SalesDashboard = () => {
     if (user?.role === "admin") return leads;
     return leads.filter(l => l.assigned_to === user?.id || l.created_by === user?.id);
   }, [leads, user]);
-  const overdueLeads = scopeLeads.filter(l => l.status === "overdue");
-  const followUpsToday = scopeLeads.filter(l => l.next_follow_up_date === todayStr);
-  const followUpsThisWeek = scopeLeads.filter(l => l.next_follow_up_date && l.next_follow_up_date >= todayStr && l.next_follow_up_date <= weekAhead);
+  // Closed deals never appear in urgency lists
+  const isOpen = (l: Lead) => l.status !== "won" && l.status !== "lost" && l.status !== "converted";
+  const overdueLeads = scopeLeads.filter(l => l.status === "overdue" && isOpen(l));
+  const followUpsToday = scopeLeads.filter(l => l.next_follow_up_date === todayStr && isOpen(l));
+  const followUpsThisWeek = scopeLeads.filter(l => l.next_follow_up_date && l.next_follow_up_date >= todayStr && l.next_follow_up_date <= weekAhead && isOpen(l));
   const needFollowUp = scopeLeads.filter(l => {
     const daysSince = Math.floor((Date.now() - new Date(l.last_follow_up).getTime()) / 86400000);
-    return daysSince >= 2 && l.status !== "won" && l.status !== "lost";
+    return daysSince >= 2 && isOpen(l);
   });
 
   const handleStatusChange = async (id: string, status: LeadStatus) => {
@@ -308,9 +312,14 @@ const SalesDashboard = () => {
                     </SelectContent>
                   </Select>
                   {lead.status === "won" && !lead.delivery_date && (
-                    <Button size="sm" className="w-full gap-1 bg-success text-success-foreground hover:bg-success/90 text-xs h-7" onClick={() => setDeliveryLead(lead)}>
-                      <Truck className="w-3 h-3" />Assign Delivery
-                    </Button>
+                    <div className="flex flex-col gap-1">
+                      <Button size="sm" className="w-full gap-1 bg-success text-success-foreground hover:bg-success/90 text-xs h-7" onClick={() => setDeliveryLead(lead)}>
+                        <Truck className="w-3 h-3" />Assign Delivery
+                      </Button>
+                      <Button size="sm" variant="outline" className="w-full gap-1 text-xs h-7 border-success/40 text-success hover:bg-success/10" onClick={() => setSelfDeliveryLead(lead)}>
+                        📦 Self Delivery
+                      </Button>
+                    </div>
                   )}
                   {lead.delivery_date && <p className="text-xs text-success">🚚 Delivery: {lead.delivery_date}</p>}
                 </div>
@@ -331,6 +340,10 @@ const SalesDashboard = () => {
 
       {deliveryLead && (
         <DeliveryAssignDialog lead={deliveryLead} open={!!deliveryLead} onOpenChange={open => { if (!open) setDeliveryLead(null); }} />
+      )}
+
+      {selfDeliveryLead && (
+        <SelfDeliveryDialog lead={selfDeliveryLead} open={!!selfDeliveryLead} onOpenChange={open => { if (!open) setSelfDeliveryLead(null); }} />
       )}
 
       <EditLeadDialog lead={editLead} open={!!editLead} onOpenChange={open => { if (!open) setEditLead(null); }} onSaved={(id) => { setRecentlyUpdatedId(id); setTimeout(() => setRecentlyUpdatedId(curr => curr === id ? null : curr), 3000); }} />
