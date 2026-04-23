@@ -142,7 +142,7 @@ const AdminDashboard = () => {
   const wonValue = leads.filter(l => l.status === "won").reduce((s, l) => s + Number(l.value_in_rupees), 0);
   const serviceRevenue = serviceJobs.filter(j => !j.is_foc && j.status === "completed" && j.type === "service").reduce((s, j) => s + Number(j.value), 0);
   const todayStr = new Date().toISOString().split("T")[0];
-  const overdueLeads = leads.filter(l => l.status === "overdue");
+  const overdueLeads = leads.filter(l => l.status === "overdue" && l.status !== ("won" as any) && l.status !== ("lost" as any));
   const deliveryJobs = serviceJobs.filter(j => j.type === "delivery");
 
   const salesProfiles = getProfilesByRole("sales");

@@ -5,6 +5,7 @@ import { useData, LEAD_CATEGORIES, LeadCategory, LeadStatus } from "@/contexts/D
 import StatCard from "@/components/StatCard";
 import LeadForm from "@/components/LeadForm";
 import DeliveryAssignDialog from "@/components/DeliveryAssignDialog";
+import SelfDeliveryDialog from "@/components/SelfDeliveryDialog";
 import DeleteButton from "@/components/DeleteButton";
 import EditLeadDialog from "@/components/EditLeadDialog";
 import LeadPhotoGallery from "@/components/LeadPhotoGallery";
@@ -49,6 +50,7 @@ const SalesDashboard = () => {
   const [toDate, setToDate] = useState("");
   const [viewMode, setViewMode] = useState<"my" | "all">(user?.role === "admin" ? "all" : "my");
   const [deliveryLead, setDeliveryLead] = useState<Lead | null>(null);
+  const [selfDeliveryLead, setSelfDeliveryLead] = useState<Lead | null>(null);
   const [editLead, setEditLead] = useState<Lead | null>(null);
   const [recentlyUpdatedId, setRecentlyUpdatedId] = useState<string | null>(null);
   const [phoneSearch, setPhoneSearch] = useState("");
