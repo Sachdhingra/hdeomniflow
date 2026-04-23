@@ -113,12 +113,14 @@ const SalesDashboard = () => {
     if (user?.role === "admin") return leads;
     return leads.filter(l => l.assigned_to === user?.id || l.created_by === user?.id);
   }, [leads, user]);
-  const overdueLeads = scopeLeads.filter(l => l.status === "overdue");
-  const followUpsToday = scopeLeads.filter(l => l.next_follow_up_date === todayStr);
-  const followUpsThisWeek = scopeLeads.filter(l => l.next_follow_up_date && l.next_follow_up_date >= todayStr && l.next_follow_up_date <= weekAhead);
+  // Closed deals never appear in urgency lists
+  const isOpen = (l: Lead) => l.status !== "won" && l.status !== "lost" && l.status !== "converted";
+  const overdueLeads = scopeLeads.filter(l => l.status === "overdue" && isOpen(l));
+  const followUpsToday = scopeLeads.filter(l => l.next_follow_up_date === todayStr && isOpen(l));
+  const followUpsThisWeek = scopeLeads.filter(l => l.next_follow_up_date && l.next_follow_up_date >= todayStr && l.next_follow_up_date <= weekAhead && isOpen(l));
   const needFollowUp = scopeLeads.filter(l => {
     const daysSince = Math.floor((Date.now() - new Date(l.last_follow_up).getTime()) / 86400000);
-    return daysSince >= 2 && l.status !== "won" && l.status !== "lost";
+    return daysSince >= 2 && isOpen(l);
   });
 
   const handleStatusChange = async (id: string, status: LeadStatus) => {
