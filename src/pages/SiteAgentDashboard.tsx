@@ -104,11 +104,21 @@ const SiteAgentDashboard = () => {
 
       {tripStarted && (
         <Card className="border-success/30 bg-success/5">
-          <CardContent className="p-3 flex items-center gap-3">
-            <MapPin className="w-5 h-5 text-success animate-pulse" />
-            <div>
-              <p className="text-sm font-medium text-success">Trip Active — GPS Tracking On</p>
-              <p className="text-xs text-muted-foreground">Started at {tripStartTime?.toLocaleTimeString("en-IN")}</p>
+          <CardContent className="p-3 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3">
+              <MapPin className="w-5 h-5 text-success animate-pulse" />
+              <div>
+                <p className="text-sm font-medium text-success">Trip Active — GPS Tracking On</p>
+                <p className="text-xs text-muted-foreground">
+                  Started at {tripStartTime?.toLocaleTimeString("en-IN")}
+                  {position && ` · Accuracy ±${Math.round(position.accuracy)}m`}
+                  {gpsError && ` · ${gpsError}`}
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-bold text-success leading-none">{kmTraveled.toFixed(2)}</p>
+              <p className="text-xs text-muted-foreground">km traveled</p>
             </div>
           </CardContent>
         </Card>
