@@ -671,6 +671,8 @@ export type Database = {
           description: string
           id: string
           is_foc: boolean
+          location_lat: number | null
+          location_lng: number | null
           photos: string[] | null
           remarks: string | null
           source_lead_id: string | null
@@ -700,6 +702,8 @@ export type Database = {
           description?: string
           id?: string
           is_foc?: boolean
+          location_lat?: number | null
+          location_lng?: number | null
           photos?: string[] | null
           remarks?: string | null
           source_lead_id?: string | null
@@ -729,6 +733,8 @@ export type Database = {
           description?: string
           id?: string
           is_foc?: boolean
+          location_lat?: number | null
+          location_lng?: number | null
           photos?: string[] | null
           remarks?: string | null
           source_lead_id?: string | null
