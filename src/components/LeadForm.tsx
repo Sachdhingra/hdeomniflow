@@ -75,6 +75,16 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
       toast.error("Lead already exists for this number. Use Service module for repeat customers.");
       return;
     }
+    // Capture GPS for field agents (best-effort, no blocking)
+    let gps: { lat?: number; lng?: number } = {};
+    if (source === "field_agent" && typeof navigator !== "undefined" && navigator.geolocation) {
+      try {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 6000 });
+        });
+        gps = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      } catch { /* ignore */ }
+    }
     try {
       await addLead({
         customer_name: form.customerName,
@@ -85,11 +95,14 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
         assigned_to: user?.id || "",
         notes: form.notes,
         source,
+        source_type: source as any,
         next_follow_up_date: form.nextFollowUpDate,
         next_follow_up_time: form.nextFollowUpTime,
         created_by: user?.id || "",
         updated_by: user?.id || "",
-      });
+        created_from_lat: gps.lat,
+        created_from_lng: gps.lng,
+      } as any);
       toast.success("Lead added successfully!");
       setForm({ customerName: "", customerPhone: "", category: "", valueInRupees: "", notes: "", nextFollowUpDate: "", nextFollowUpTime: "" });
       setDuplicateCheck({ checking: false, exists: false });
