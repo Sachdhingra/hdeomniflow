@@ -876,6 +876,7 @@ export type Database = {
         | "service_head"
         | "field_agent"
         | "site_agent"
+        | "accounts"
       lead_category:
         | "sofa"
         | "coffee_table"
@@ -904,6 +905,8 @@ export type Database = {
         | "on_route"
         | "on_site"
         | "rescheduled"
+        | "pending_accounts_approval"
+        | "accounts_rejected"
       service_job_type: "service" | "delivery"
     }
     CompositeTypes: {
@@ -1032,7 +1035,14 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "sales", "service_head", "field_agent", "site_agent"],
+      app_role: [
+        "admin",
+        "sales",
+        "service_head",
+        "field_agent",
+        "site_agent",
+        "accounts",
+      ],
       lead_category: [
         "sofa",
         "coffee_table",
@@ -1063,6 +1073,8 @@ export const Constants = {
         "on_route",
         "on_site",
         "rescheduled",
+        "pending_accounts_approval",
+        "accounts_rejected",
       ],
       service_job_type: ["service", "delivery"],
     },
