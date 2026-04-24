@@ -146,7 +146,7 @@ const SiteAgentDashboard = () => {
             <div className="grid grid-cols-3 gap-4 text-center">
               <div><p className="text-2xl font-bold">{todayVisits.length}</p><p className="text-xs text-muted-foreground">Visits</p></div>
               <div><p className="text-2xl font-bold">{todayVisits.filter(v => v.customer_name).length}</p><p className="text-xs text-muted-foreground">Leads</p></div>
-              <div><p className="text-2xl font-bold">—</p><p className="text-xs text-muted-foreground">KM Traveled</p></div>
+              <div><p className="text-2xl font-bold">{kmTraveled > 0 ? kmTraveled.toFixed(2) : "—"}</p><p className="text-xs text-muted-foreground">KM Traveled</p></div>
             </div>
           </CardContent>
         </Card>
