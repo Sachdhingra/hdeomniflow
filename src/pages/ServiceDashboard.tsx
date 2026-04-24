@@ -70,13 +70,18 @@ const ServiceDashboard = () => {
 
   const filteredJobs = useMemo(() => {
     let jobs = serviceJobs;
+    // Service Head can only see jobs that have passed Accounts Approval.
+    // Admin sees everything (including pending approval) for visibility.
+    if (isServiceHead && !isAdmin) {
+      jobs = jobs.filter(j => (j as any).accounts_approval_status === "approved");
+    }
     if (dateFilter) jobs = jobs.filter(j => j.date_received >= dateFilter);
     if (tab === "deliveries") jobs = jobs.filter(j => j.type === "delivery");
     else if (tab === "services") jobs = jobs.filter(j => j.type === "service");
     else if (tab === "pending") jobs = jobs.filter(j => j.status === "pending");
     else if (tab === "completed") jobs = jobs.filter(j => j.status === "completed");
     return jobs;
-  }, [serviceJobs, dateFilter, tab]);
+  }, [serviceJobs, dateFilter, tab, isServiceHead, isAdmin]);
 
   const todayStr = new Date().toISOString().split("T")[0];
   const todayJobs = serviceJobs.filter(j => j.date_to_attend === todayStr);

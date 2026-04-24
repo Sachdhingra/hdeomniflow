@@ -5,7 +5,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import {
   Building2, LayoutDashboard, Users, Wrench, Navigation, MapPin,
   LogOut, Menu, X, ChevronRight, CalendarDays, BarChart3,
-  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot
+  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot, ShieldCheck
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +25,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
   service_head: "Service Head",
   field_agent: "Field Agent",
   site_agent: "Site Agent",
+  accounts: "Accounts",
 };
 
 const AppLayout = ({ children }: { children: ReactNode }) => {
@@ -44,6 +45,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/sales", label: "Sales", icon: <Users className="w-5 h-5" />, badge: overdueCount || undefined },
       { to: "/leads/board", label: "Leads Board", icon: <KanbanSquare className="w-5 h-5" /> },
       { to: "/service", label: "Service", icon: <Wrench className="w-5 h-5" />, badge: pendingJobCount || undefined },
+      { to: "/accounts/approvals", label: "Accounts Approvals", icon: <ShieldCheck className="w-5 h-5" /> },
       { to: "/field-agents", label: "Field Agents", icon: <Navigation className="w-5 h-5" /> },
       { to: "/site-agents", label: "Site Agents", icon: <MapPin className="w-5 h-5" /> },
       { to: "/categories", label: "Categories", icon: <FolderTree className="w-5 h-5" /> },
@@ -72,6 +74,10 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/site-visits", label: "Site Visits", icon: <MapPin className="w-5 h-5" /> },
       { to: "/my-leads", label: "My Leads", icon: <ClipboardList className="w-5 h-5" /> },
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
+    ],
+    accounts: [
+      { to: "/", label: "Approvals", icon: <ShieldCheck className="w-5 h-5" /> },
+      { to: "/accounts/approvals", label: "All Approvals", icon: <ClipboardList className="w-5 h-5" /> },
     ],
   };
 
