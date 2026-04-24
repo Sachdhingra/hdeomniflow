@@ -29,8 +29,12 @@ const FieldAgentDashboard = () => {
   };
   const [completeDialog, setCompleteDialog] = useState<string | null>(null);
   const [remarks, setRemarks] = useState("");
-  const [gpsActive, setGpsActive] = useState(false);
   const [uploadedUrls, setUploadedUrls] = useState<string[]>([]);
+
+  // Auto-start GPS as soon as the field agent dashboard mounts
+  const { position: gps, error: gpsError } = useGeolocation(true);
+  const gpsActive = !!gps && !gpsError;
+  const autoReachedRef = useRef<Set<string>>(new Set());
 
   const myJobs = serviceJobs.filter(j => j.assigned_agent === user?.id);
   const todayStr = new Date().toISOString().split("T")[0];
