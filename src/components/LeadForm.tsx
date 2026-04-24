@@ -108,7 +108,12 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
       setDuplicateCheck({ checking: false, exists: false });
       setOpen(false);
     } catch (err: any) {
-      toast.error(err.message || "Failed to add lead");
+      const msg = err?.message || "Failed to add lead";
+      if (msg.includes("Daily lead limit")) {
+        toast.error("Daily limit reached: field agents can add maximum 2 leads per day.");
+      } else {
+        toast.error(msg);
+      }
     }
   };
 
