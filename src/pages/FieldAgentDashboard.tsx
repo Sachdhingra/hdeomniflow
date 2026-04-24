@@ -48,7 +48,31 @@ const FieldAgentDashboard = () => {
       accepted_at: new Date().toISOString(),
       travel_started_at: new Date().toISOString(),
     });
-    setGpsActive(true);
+    toast.success("Job accepted! On route. 🚗");
+  };
+
+  // Auto-mark "reached" when within AUTO_REACH_RADIUS_M of a job's location
+  useEffect(() => {
+    if (!gps) return;
+    for (const job of myJobs) {
+      if (autoReachedRef.current.has(job.id)) continue;
+      if (job.agent_reached_at || job.status === "completed") continue;
+      if (!["on_route", "in_progress", "assigned"].includes(job.status)) continue;
+      const lat = (job as any).location_lat;
+      const lng = (job as any).location_lng;
+      if (lat == null || lng == null) continue;
+      const d = distanceMeters(gps, { lat: Number(lat), lng: Number(lng) });
+      if (d <= AUTO_REACH_RADIUS_M) {
+        autoReachedRef.current.add(job.id);
+        updateServiceJob(job.id, {
+          status: "on_site" as any,
+          agent_reached_at: new Date().toISOString(),
+        }).then(() => toast.success(`📍 Auto-reached: ${job.customer_name}`)).catch(() => {});
+      }
+    }
+  }, [gps, myJobs, updateServiceJob]);
+
+  const _noop = () => {
     toast.success("Job accepted! On route. 🚗");
   };
 
