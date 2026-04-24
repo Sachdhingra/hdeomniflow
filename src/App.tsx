@@ -74,6 +74,14 @@ const AppRoutes = () => {
             <Route path="/admin/products" element={<AdminProducts />} />
             <Route path="/leads/board" element={<LeadsBoard />} />
             <Route path="/admin/automation" element={<AdminAutomation />} />
+            <Route path="/accounts/approvals" element={<AccountsApprovals />} />
+          </>
+        );
+      case "accounts":
+        return (
+          <>
+            <Route path="/" element={<AccountsApprovals />} />
+            <Route path="/accounts/approvals" element={<AccountsApprovals />} />
           </>
         );
       case "sales":
