@@ -45,6 +45,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/sales", label: "Sales", icon: <Users className="w-5 h-5" />, badge: overdueCount || undefined },
       { to: "/leads/board", label: "Leads Board", icon: <KanbanSquare className="w-5 h-5" /> },
       { to: "/service", label: "Service", icon: <Wrench className="w-5 h-5" />, badge: pendingJobCount || undefined },
+      { to: "/accounts/approvals", label: "Accounts Approvals", icon: <ShieldCheck className="w-5 h-5" /> },
       { to: "/field-agents", label: "Field Agents", icon: <Navigation className="w-5 h-5" /> },
       { to: "/site-agents", label: "Site Agents", icon: <MapPin className="w-5 h-5" /> },
       { to: "/categories", label: "Categories", icon: <FolderTree className="w-5 h-5" /> },
@@ -73,6 +74,10 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/site-visits", label: "Site Visits", icon: <MapPin className="w-5 h-5" /> },
       { to: "/my-leads", label: "My Leads", icon: <ClipboardList className="w-5 h-5" /> },
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
+    ],
+    accounts: [
+      { to: "/", label: "Approvals", icon: <ShieldCheck className="w-5 h-5" /> },
+      { to: "/accounts/approvals", label: "All Approvals", icon: <ClipboardList className="w-5 h-5" /> },
     ],
   };
 
