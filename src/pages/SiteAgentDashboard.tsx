@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useData, LEAD_CATEGORIES, LeadCategory } from "@/contexts/DataContext";
+import { useGeolocation } from "@/hooks/useGeolocation";
 import StatCard from "@/components/StatCard";
 import LeadForm from "@/components/LeadForm";
 import SiteVisitForm from "@/components/SiteVisitForm";
@@ -18,6 +19,9 @@ const SiteAgentDashboard = () => {
   const [tripStartTime, setTripStartTime] = useState<Date | null>(null);
   const [convertingId, setConvertingId] = useState<string | null>(null);
 
+  // Real GPS odometer — only active during a trip
+  const { kmTraveled, position, error: gpsError, resetOdometer } = useGeolocation(tripStarted);
+
   const myVisits = siteVisits.filter(v => v.agent_id === user?.id);
   const myLeads = leads.filter(l =>
     (l as any).created_by_agent_id === user?.id ||
@@ -29,14 +33,14 @@ const SiteAgentDashboard = () => {
   const handleStartTrip = () => {
     setTripStarted(true);
     setTripStartTime(new Date());
+    resetOdometer();
     toast.success("Trip started! GPS tracking active. 📍");
   };
 
   const handleEndTrip = () => {
     setTripStarted(false);
     const duration = tripStartTime ? Math.round((Date.now() - tripStartTime.getTime()) / 60000) : 0;
-    const estimatedKm = Math.round(duration * 0.5);
-    toast.success(`Trip ended! Duration: ${duration} min, Est. KM: ${estimatedKm}`);
+    toast.success(`Trip ended! Duration: ${duration} min · Distance: ${kmTraveled.toFixed(2)} km`);
   };
 
   const handleConvertToLead = async (visitId: string) => {
