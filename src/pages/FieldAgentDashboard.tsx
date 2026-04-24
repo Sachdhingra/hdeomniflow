@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useData } from "@/contexts/DataContext";
+import { useGeolocation, distanceMeters } from "@/hooks/useGeolocation";
 import StatCard from "@/components/StatCard";
 import ServiceJobPhotoUpload from "@/components/ServiceJobPhotoUpload";
 import LeadForm from "@/components/LeadForm";
@@ -15,6 +16,8 @@ import { toast } from "sonner";
 import LoadingError from "@/components/LoadingError";
 import { DashboardSkeleton } from "@/components/DashboardSkeleton";
 
+const AUTO_REACH_RADIUS_M = 100;
+
 const FieldAgentDashboard = () => {
   const { user } = useAuth();
   const { serviceJobs, updateServiceJob, error, retryLoad, loading, leads, profiles } = useData();
@@ -26,8 +29,12 @@ const FieldAgentDashboard = () => {
   };
   const [completeDialog, setCompleteDialog] = useState<string | null>(null);
   const [remarks, setRemarks] = useState("");
-  const [gpsActive, setGpsActive] = useState(false);
   const [uploadedUrls, setUploadedUrls] = useState<string[]>([]);
+
+  // Auto-start GPS as soon as the field agent dashboard mounts
+  const { position: gps, error: gpsError } = useGeolocation(true);
+  const gpsActive = !!gps && !gpsError;
+  const autoReachedRef = useRef<Set<string>>(new Set());
 
   const myJobs = serviceJobs.filter(j => j.assigned_agent === user?.id);
   const todayStr = new Date().toISOString().split("T")[0];
@@ -41,9 +48,29 @@ const FieldAgentDashboard = () => {
       accepted_at: new Date().toISOString(),
       travel_started_at: new Date().toISOString(),
     });
-    setGpsActive(true);
     toast.success("Job accepted! On route. 🚗");
   };
+
+  // Auto-mark "reached" when within AUTO_REACH_RADIUS_M of a job's location
+  useEffect(() => {
+    if (!gps) return;
+    for (const job of myJobs) {
+      if (autoReachedRef.current.has(job.id)) continue;
+      if (job.agent_reached_at || job.status === "completed") continue;
+      if (!["on_route", "in_progress", "assigned"].includes(job.status)) continue;
+      const lat = (job as any).location_lat;
+      const lng = (job as any).location_lng;
+      if (lat == null || lng == null) continue;
+      const d = distanceMeters(gps, { lat: Number(lat), lng: Number(lng) });
+      if (d <= AUTO_REACH_RADIUS_M) {
+        autoReachedRef.current.add(job.id);
+        updateServiceJob(job.id, {
+          status: "on_site" as any,
+          agent_reached_at: new Date().toISOString(),
+        }).then(() => toast.success(`📍 Auto-reached: ${job.customer_name}`)).catch(() => {});
+      }
+    }
+  }, [gps, myJobs, updateServiceJob]);
 
   const handleReached = async (id: string) => {
     await updateServiceJob(id, {

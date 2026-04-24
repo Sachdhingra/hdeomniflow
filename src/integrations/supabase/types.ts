@@ -307,6 +307,9 @@ export type Database = {
           created_at: string
           created_by: string
           created_by_agent_id: string | null
+          created_from_lat: number | null
+          created_from_lng: number | null
+          created_from_location: string | null
           customer_email: string | null
           customer_name: string
           customer_phone: string
@@ -327,6 +330,7 @@ export type Database = {
           price_sensitivity: string | null
           products_viewed: Json | null
           source: string
+          source_type: string | null
           stage_changed_at: string | null
           status: Database["public"]["Enums"]["lead_status"]
           updated_at: string
@@ -344,6 +348,9 @@ export type Database = {
           created_at?: string
           created_by: string
           created_by_agent_id?: string | null
+          created_from_lat?: number | null
+          created_from_lng?: number | null
+          created_from_location?: string | null
           customer_email?: string | null
           customer_name: string
           customer_phone: string
@@ -364,6 +371,7 @@ export type Database = {
           price_sensitivity?: string | null
           products_viewed?: Json | null
           source?: string
+          source_type?: string | null
           stage_changed_at?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
           updated_at?: string
@@ -381,6 +389,9 @@ export type Database = {
           created_at?: string
           created_by?: string
           created_by_agent_id?: string | null
+          created_from_lat?: number | null
+          created_from_lng?: number | null
+          created_from_location?: string | null
           customer_email?: string | null
           customer_name?: string
           customer_phone?: string
@@ -401,6 +412,7 @@ export type Database = {
           price_sensitivity?: string | null
           products_viewed?: Json | null
           source?: string
+          source_type?: string | null
           stage_changed_at?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
           updated_at?: string
@@ -659,6 +671,8 @@ export type Database = {
           description: string
           id: string
           is_foc: boolean
+          location_lat: number | null
+          location_lng: number | null
           photos: string[] | null
           remarks: string | null
           source_lead_id: string | null
@@ -688,6 +702,8 @@ export type Database = {
           description?: string
           id?: string
           is_foc?: boolean
+          location_lat?: number | null
+          location_lng?: number | null
           photos?: string[] | null
           remarks?: string | null
           source_lead_id?: string | null
@@ -717,6 +733,8 @@ export type Database = {
           description?: string
           id?: string
           is_foc?: boolean
+          location_lat?: number | null
+          location_lng?: number | null
           photos?: string[] | null
           remarks?: string | null
           source_lead_id?: string | null
