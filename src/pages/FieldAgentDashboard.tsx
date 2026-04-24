@@ -72,10 +72,6 @@ const FieldAgentDashboard = () => {
     }
   }, [gps, myJobs, updateServiceJob]);
 
-  const _noop = () => {
-    toast.success("Job accepted! On route. 🚗");
-  };
-
   const handleReached = async (id: string) => {
     await updateServiceJob(id, {
       status: "on_site" as any,
