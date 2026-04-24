@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useData } from "@/contexts/DataContext";
+import { useGeolocation, distanceMeters } from "@/hooks/useGeolocation";
 import StatCard from "@/components/StatCard";
 import ServiceJobPhotoUpload from "@/components/ServiceJobPhotoUpload";
 import LeadForm from "@/components/LeadForm";
@@ -14,6 +15,8 @@ import { MapPin, Clock, CheckCircle, Navigation, Phone, Wrench, Truck } from "lu
 import { toast } from "sonner";
 import LoadingError from "@/components/LoadingError";
 import { DashboardSkeleton } from "@/components/DashboardSkeleton";
+
+const AUTO_REACH_RADIUS_M = 100;
 
 const FieldAgentDashboard = () => {
   const { user } = useAuth();
