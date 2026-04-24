@@ -14,6 +14,47 @@ export type Database = {
   }
   public: {
     Tables: {
+      accounts_approvals_log: {
+        Row: {
+          action: string
+          amount_verified: number | null
+          dues_checked: boolean | null
+          id: string
+          notes: string | null
+          performed_at: string
+          performed_by: string
+          service_job_id: string
+        }
+        Insert: {
+          action: string
+          amount_verified?: number | null
+          dues_checked?: boolean | null
+          id?: string
+          notes?: string | null
+          performed_at?: string
+          performed_by: string
+          service_job_id: string
+        }
+        Update: {
+          action?: string
+          amount_verified?: number | null
+          dues_checked?: boolean | null
+          id?: string
+          notes?: string | null
+          performed_at?: string
+          performed_by?: string
+          service_job_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accounts_approvals_log_service_job_id_fkey"
+            columns: ["service_job_id"]
+            isOneToOne: false
+            referencedRelation: "service_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agent_scores: {
         Row: {
           agent_id: string
@@ -227,6 +268,48 @@ export type Database = {
           name?: string
           product_count?: number
           updated_at?: string
+        }
+        Relationships: []
+      }
+      customer_dues: {
+        Row: {
+          amount: number
+          cleared_at: string | null
+          cleared_by: string | null
+          created_at: string
+          customer_name: string
+          customer_phone: string
+          description: string | null
+          due_type: string | null
+          id: string
+          is_cleared: boolean
+          reference_id: string | null
+        }
+        Insert: {
+          amount?: number
+          cleared_at?: string | null
+          cleared_by?: string | null
+          created_at?: string
+          customer_name: string
+          customer_phone: string
+          description?: string | null
+          due_type?: string | null
+          id?: string
+          is_cleared?: boolean
+          reference_id?: string | null
+        }
+        Update: {
+          amount?: number
+          cleared_at?: string | null
+          cleared_by?: string | null
+          created_at?: string
+          customer_name?: string
+          customer_phone?: string
+          description?: string | null
+          due_type?: string | null
+          id?: string
+          is_cleared?: boolean
+          reference_id?: string | null
         }
         Relationships: []
       }
@@ -653,8 +736,15 @@ export type Database = {
       service_jobs: {
         Row: {
           accepted_at: string | null
+          accounts_approval_status: string | null
+          accounts_approved_at: string | null
+          accounts_approved_by: string | null
+          accounts_notes: string | null
+          accounts_rejection_reason: string | null
           address: string
           agent_reached_at: string | null
+          amount_paid: number | null
+          amount_pending: number | null
           assigned_agent: string | null
           category: Database["public"]["Enums"]["lead_category"]
           claim_due_date: string | null
@@ -673,6 +763,8 @@ export type Database = {
           is_foc: boolean
           location_lat: number | null
           location_lng: number | null
+          payment_notes: string | null
+          payment_status: string | null
           photos: string[] | null
           remarks: string | null
           source_lead_id: string | null
@@ -684,8 +776,15 @@ export type Database = {
         }
         Insert: {
           accepted_at?: string | null
+          accounts_approval_status?: string | null
+          accounts_approved_at?: string | null
+          accounts_approved_by?: string | null
+          accounts_notes?: string | null
+          accounts_rejection_reason?: string | null
           address?: string
           agent_reached_at?: string | null
+          amount_paid?: number | null
+          amount_pending?: number | null
           assigned_agent?: string | null
           category: Database["public"]["Enums"]["lead_category"]
           claim_due_date?: string | null
@@ -704,6 +803,8 @@ export type Database = {
           is_foc?: boolean
           location_lat?: number | null
           location_lng?: number | null
+          payment_notes?: string | null
+          payment_status?: string | null
           photos?: string[] | null
           remarks?: string | null
           source_lead_id?: string | null
@@ -715,8 +816,15 @@ export type Database = {
         }
         Update: {
           accepted_at?: string | null
+          accounts_approval_status?: string | null
+          accounts_approved_at?: string | null
+          accounts_approved_by?: string | null
+          accounts_notes?: string | null
+          accounts_rejection_reason?: string | null
           address?: string
           agent_reached_at?: string | null
+          amount_paid?: number | null
+          amount_pending?: number | null
           assigned_agent?: string | null
           category?: Database["public"]["Enums"]["lead_category"]
           claim_due_date?: string | null
@@ -735,6 +843,8 @@ export type Database = {
           is_foc?: boolean
           location_lat?: number | null
           location_lng?: number | null
+          payment_notes?: string | null
+          payment_status?: string | null
           photos?: string[] | null
           remarks?: string | null
           source_lead_id?: string | null
@@ -856,7 +966,17 @@ export type Database = {
         Args: { _lead_id: string }
         Returns: number
       }
+      check_customer_dues: {
+        Args: { p_customer_phone: string }
+        Returns: {
+          due_count: number
+          dues_list: Json
+          has_dues: boolean
+          total_pending: number
+        }[]
+      }
       get_dashboard_summary: { Args: never; Returns: Json }
+      get_pending_approvals_count: { Args: never; Returns: number }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
