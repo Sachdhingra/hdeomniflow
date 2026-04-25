@@ -473,6 +473,34 @@ const SalesDashboard = () => {
       )}
 
       <EditLeadDialog lead={editLead} open={!!editLead} onOpenChange={open => { if (!open) setEditLead(null); }} onSaved={(id) => { setRecentlyUpdatedId(id); setTimeout(() => setRecentlyUpdatedId(curr => curr === id ? null : curr), 3000); }} />
+
+      <Dialog open={!!resubmitJobId} onOpenChange={o => !o && setResubmitJobId(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Resubmit dispatch for approval</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Add a note for accounts explaining what was fixed (payment cleared, advance received, etc.).
+            </p>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Note to accounts</label>
+              <textarea
+                className="w-full border rounded px-3 py-2 text-sm bg-background min-h-[90px]"
+                placeholder="e.g. Customer cleared ₹15,000 outstanding via UPI on 25-Apr"
+                value={resubmitNote}
+                onChange={e => setResubmitNote(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setResubmitJobId(null)} disabled={resubmitting}>Cancel</Button>
+              <Button onClick={handleResubmit} disabled={resubmitting}>
+                {resubmitting ? "Resubmitting..." : "Resubmit for approval"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
