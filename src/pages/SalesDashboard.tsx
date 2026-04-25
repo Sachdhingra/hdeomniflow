@@ -348,6 +348,15 @@ const SalesDashboard = () => {
                     </div>
                   )}
                   {lead.delivery_date && <p className="text-xs text-success">🚚 Delivery: {lead.delivery_date}</p>}
+                  {approvalByLead[lead.id] && (
+                    <Badge variant="outline" className={`text-[10px] ${
+                      approvalByLead[lead.id].status === "approved" ? "bg-success/10 text-success border-success/30" :
+                      approvalByLead[lead.id].status === "rejected" ? "bg-destructive/10 text-destructive border-destructive/30" :
+                      "bg-warning/10 text-warning border-warning/30"
+                    }`} title={approvalByLead[lead.id].reason || undefined}>
+                      Accounts: {approvalByLead[lead.id].status}
+                    </Badge>
+                  )}
                 </div>
               </div>
             </CardContent>
