@@ -187,11 +187,12 @@ const AccountsApprovals = () => {
         </TabsList>
       </Tabs>
 
-      {loading ? (
-        <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
-      ) : filtered.length === 0 ? (
-        <Card><CardContent className="p-8 text-center text-muted-foreground">No {tab} dispatches</CardContent></Card>
-      ) : (
+      {(tab === "pending" || tab === "approved" || tab === "rejected") && (
+        loading ? (
+          <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
+        ) : filtered.length === 0 ? (
+          <Card><CardContent className="p-8 text-center text-muted-foreground">No {tab} dispatches</CardContent></Card>
+        ) : (
         <div className="space-y-3">
           {filtered.map(job => {
             const dues = duesByPhone[job.customer_phone];
