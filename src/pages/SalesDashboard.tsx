@@ -55,7 +55,10 @@ const SalesDashboard = () => {
   const [editLead, setEditLead] = useState<Lead | null>(null);
   const [recentlyUpdatedId, setRecentlyUpdatedId] = useState<string | null>(null);
   const [phoneSearch, setPhoneSearch] = useState("");
-  const [approvalByLead, setApprovalByLead] = useState<Record<string, { status: string; reason: string | null }>>({});
+  const [approvalByLead, setApprovalByLead] = useState<Record<string, { jobId: string; status: string; reason: string | null; notes: string | null; customer: string }>>({});
+  const [resubmitJobId, setResubmitJobId] = useState<string | null>(null);
+  const [resubmitNote, setResubmitNote] = useState("");
+  const [resubmitting, setResubmitting] = useState(false);
 
   const todayStr = new Date().toISOString().split("T")[0];
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
