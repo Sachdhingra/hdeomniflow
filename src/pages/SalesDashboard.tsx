@@ -55,6 +55,7 @@ const SalesDashboard = () => {
   const [editLead, setEditLead] = useState<Lead | null>(null);
   const [recentlyUpdatedId, setRecentlyUpdatedId] = useState<string | null>(null);
   const [phoneSearch, setPhoneSearch] = useState("");
+  const [approvalByLead, setApprovalByLead] = useState<Record<string, { status: string; reason: string | null }>>({});
 
   const todayStr = new Date().toISOString().split("T")[0];
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
