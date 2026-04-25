@@ -221,6 +221,50 @@ const SalesDashboard = () => {
         <LeadForm source={user?.role === "site_agent" ? "site_agent" : "sales"} />
       </div>
 
+      {myRejectedDispatches.length > 0 && (
+        <div className="rounded-lg border-2 border-destructive/40 bg-destructive/5 p-4 space-y-3">
+          <div>
+            <h3 className="font-bold text-destructive flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 shrink-0" />
+              {myRejectedDispatches.length} Dispatch{myRejectedDispatches.length > 1 ? "es" : ""} Rejected by Accounts
+            </h3>
+            <p className="text-xs text-destructive/80 mt-1">
+              Review the reason, fix the issue, then resubmit for approval.
+            </p>
+          </div>
+          <div className="space-y-2">
+            {myRejectedDispatches.slice(0, 5).map(r => (
+              <div key={r.jobId} className="bg-background rounded-md p-2.5 border border-destructive/20">
+                <div className="flex items-start justify-between gap-2 flex-wrap">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-sm">{r.customer}</p>
+                    {r.reason && (
+                      <p className="text-xs text-destructive mt-0.5">
+                        <span className="font-semibold">Reason: </span>{r.reason}
+                      </p>
+                    )}
+                    {r.notes && (
+                      <p className="text-xs text-muted-foreground mt-0.5">📝 {r.notes}</p>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => { setResubmitJobId(r.jobId); setResubmitNote(""); }}
+                  >
+                    Resubmit →
+                  </Button>
+                </div>
+              </div>
+            ))}
+            {myRejectedDispatches.length > 5 && (
+              <p className="text-xs text-destructive/80">+ {myRejectedDispatches.length - 5} more rejections</p>
+            )}
+          </div>
+        </div>
+      )}
+
+
       {overdueLeads.length > 0 && (
         <button
           type="button"
