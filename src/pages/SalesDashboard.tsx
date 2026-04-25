@@ -84,6 +84,30 @@ const SalesDashboard = () => {
     return () => clearInterval(interval);
   }, [user, leads, todayStr]);
 
+  // Fetch accounts approval status for leads that have a service_job (won/converted)
+  useEffect(() => {
+    const ids = leads.filter(l => l.status === "won" || l.status === "converted").map(l => l.id);
+    if (ids.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("service_jobs")
+        .select("source_lead_id,accounts_approval_status,accounts_rejection_reason")
+        .in("source_lead_id", ids)
+        .is("deleted_at", null);
+      if (cancelled || !data) return;
+      const map: Record<string, { status: string; reason: string | null }> = {};
+      data.forEach((r: any) => {
+        if (r.source_lead_id) map[r.source_lead_id] = {
+          status: r.accounts_approval_status || "pending",
+          reason: r.accounts_rejection_reason,
+        };
+      });
+      setApprovalByLead(map);
+    })();
+    return () => { cancelled = true; };
+  }, [leads]);
+
   const setQuickDate = (from: string, to: string) => { setFromDate(from); setToDate(to); };
 
   const filteredLeads = useMemo(() => {
