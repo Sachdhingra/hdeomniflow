@@ -316,6 +316,7 @@ const AdminDashboard = () => {
                       <SelectItem value="service_head">Service Head</SelectItem>
                       <SelectItem value="field_agent">Field Agent</SelectItem>
                       <SelectItem value="site_agent">Site Agent</SelectItem>
+                      <SelectItem value="accounts">Accounts</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
