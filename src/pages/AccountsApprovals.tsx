@@ -178,10 +178,12 @@ const AccountsApprovals = () => {
       </div>
 
       <Tabs value={tab} onValueChange={v => setTab(v as any)}>
-        <TabsList>
+        <TabsList className="flex-wrap h-auto">
           <TabsTrigger value="pending">Pending ({counts.pending})</TabsTrigger>
           <TabsTrigger value="approved">Approved</TabsTrigger>
           <TabsTrigger value="rejected">Rejected</TabsTrigger>
+          <TabsTrigger value="audit">Audit Log</TabsTrigger>
+          <TabsTrigger value="dues">Customer Dues</TabsTrigger>
         </TabsList>
       </Tabs>
 
