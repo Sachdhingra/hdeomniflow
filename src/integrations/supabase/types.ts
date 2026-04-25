@@ -1027,7 +1027,7 @@ export type Database = {
         | "rescheduled"
         | "pending_accounts_approval"
         | "accounts_rejected"
-      service_job_type: "service" | "delivery"
+      service_job_type: "service" | "delivery" | "self_delivery"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1196,7 +1196,7 @@ export const Constants = {
         "pending_accounts_approval",
         "accounts_rejected",
       ],
-      service_job_type: ["service", "delivery"],
+      service_job_type: ["service", "delivery", "self_delivery"],
     },
   },
 } as const
