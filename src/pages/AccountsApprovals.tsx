@@ -83,7 +83,25 @@ const AccountsApprovals = () => {
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  const loadAudit = useCallback(async () => {
+    const { data } = await supabase
+      .from("accounts_approvals_log" as any)
+      .select("*")
+      .order("performed_at", { ascending: false })
+      .limit(100);
+    setAuditLog((data as any) || []);
+  }, []);
+
+  const loadDues = useCallback(async () => {
+    const { data } = await supabase
+      .from("customer_dues" as any)
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    setDues((data as any) || []);
+  }, []);
+
+  useEffect(() => { load(); loadAudit(); loadDues(); }, [load, loadAudit, loadDues]);
 
   const filtered = jobs.filter(j => j.accounts_approval_status === tab);
 
