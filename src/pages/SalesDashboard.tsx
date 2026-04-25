@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Users, IndianRupee, TrendingUp, AlertCircle, Phone, Calendar, Truck, Clock, Trophy, Pencil, User as UserIcon } from "lucide-react";
 import { toast } from "sonner";
 import type { Lead } from "@/contexts/DataContext";
@@ -55,7 +56,10 @@ const SalesDashboard = () => {
   const [editLead, setEditLead] = useState<Lead | null>(null);
   const [recentlyUpdatedId, setRecentlyUpdatedId] = useState<string | null>(null);
   const [phoneSearch, setPhoneSearch] = useState("");
-  const [approvalByLead, setApprovalByLead] = useState<Record<string, { status: string; reason: string | null }>>({});
+  const [approvalByLead, setApprovalByLead] = useState<Record<string, { jobId: string; status: string; reason: string | null; notes: string | null; customer: string }>>({});
+  const [resubmitJobId, setResubmitJobId] = useState<string | null>(null);
+  const [resubmitNote, setResubmitNote] = useState("");
+  const [resubmitting, setResubmitting] = useState(false);
 
   const todayStr = new Date().toISOString().split("T")[0];
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
@@ -85,28 +89,72 @@ const SalesDashboard = () => {
   }, [user, leads, todayStr]);
 
   // Fetch accounts approval status for leads that have a service_job (won/converted)
-  useEffect(() => {
+  const loadApprovals = async () => {
     const ids = leads.filter(l => l.status === "won" || l.status === "converted").map(l => l.id);
-    if (ids.length === 0) return;
-    let cancelled = false;
-    (async () => {
-      const { data } = await supabase
+    if (ids.length === 0) { setApprovalByLead({}); return; }
+    const { data } = await supabase
+      .from("service_jobs")
+      .select("id,source_lead_id,customer_name,accounts_approval_status,accounts_rejection_reason,accounts_notes")
+      .in("source_lead_id", ids)
+      .is("deleted_at", null);
+    if (!data) return;
+    const map: Record<string, { jobId: string; status: string; reason: string | null; notes: string | null; customer: string }> = {};
+    data.forEach((r: any) => {
+      if (r.source_lead_id) map[r.source_lead_id] = {
+        jobId: r.id,
+        status: r.accounts_approval_status || "pending",
+        reason: r.accounts_rejection_reason,
+        notes: r.accounts_notes,
+        customer: r.customer_name,
+      };
+    });
+    setApprovalByLead(map);
+  };
+  useEffect(() => { loadApprovals(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [leads]);
+
+  // Build list of rejected dispatches owned by current sales user
+  const myRejectedDispatches = useMemo(() => {
+    const myLeadIds = new Set(
+      leads.filter(l => l.created_by === user?.id || l.assigned_to === user?.id).map(l => l.id)
+    );
+    return Object.entries(approvalByLead)
+      .filter(([leadId, a]) => a.status === "rejected" && myLeadIds.has(leadId))
+      .map(([leadId, a]) => ({ leadId, ...a }));
+  }, [approvalByLead, leads, user]);
+
+  const handleResubmit = async () => {
+    if (!resubmitJobId) return;
+    setResubmitting(true);
+    try {
+      const { error } = await supabase
         .from("service_jobs")
-        .select("source_lead_id,accounts_approval_status,accounts_rejection_reason")
-        .in("source_lead_id", ids)
-        .is("deleted_at", null);
-      if (cancelled || !data) return;
-      const map: Record<string, { status: string; reason: string | null }> = {};
-      data.forEach((r: any) => {
-        if (r.source_lead_id) map[r.source_lead_id] = {
-          status: r.accounts_approval_status || "pending",
-          reason: r.accounts_rejection_reason,
-        };
+        .update({
+          accounts_approval_status: "pending",
+          accounts_rejection_reason: null,
+          accounts_notes: resubmitNote ? `[Resubmitted by sales] ${resubmitNote}` : "[Resubmitted by sales]",
+          accounts_approved_by: null,
+          accounts_approved_at: null,
+          status: "pending_accounts_approval",
+        } as any)
+        .eq("id", resubmitJobId);
+      if (error) throw error;
+      // Audit log entry
+      await supabase.from("accounts_approvals_log" as any).insert({
+        service_job_id: resubmitJobId,
+        action: "resubmitted",
+        performed_by: user?.id,
+        notes: resubmitNote || null,
       });
-      setApprovalByLead(map);
-    })();
-    return () => { cancelled = true; };
-  }, [leads]);
+      toast.success("Dispatch resubmitted for approval");
+      setResubmitJobId(null);
+      setResubmitNote("");
+      loadApprovals();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to resubmit");
+    } finally {
+      setResubmitting(false);
+    }
+  };
 
   const setQuickDate = (from: string, to: string) => { setFromDate(from); setToDate(to); };
 
@@ -173,6 +221,50 @@ const SalesDashboard = () => {
         </div>
         <LeadForm source={user?.role === "site_agent" ? "site_agent" : "sales"} />
       </div>
+
+      {myRejectedDispatches.length > 0 && (
+        <div className="rounded-lg border-2 border-destructive/40 bg-destructive/5 p-4 space-y-3">
+          <div>
+            <h3 className="font-bold text-destructive flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 shrink-0" />
+              {myRejectedDispatches.length} Dispatch{myRejectedDispatches.length > 1 ? "es" : ""} Rejected by Accounts
+            </h3>
+            <p className="text-xs text-destructive/80 mt-1">
+              Review the reason, fix the issue, then resubmit for approval.
+            </p>
+          </div>
+          <div className="space-y-2">
+            {myRejectedDispatches.slice(0, 5).map(r => (
+              <div key={r.jobId} className="bg-background rounded-md p-2.5 border border-destructive/20">
+                <div className="flex items-start justify-between gap-2 flex-wrap">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-sm">{r.customer}</p>
+                    {r.reason && (
+                      <p className="text-xs text-destructive mt-0.5">
+                        <span className="font-semibold">Reason: </span>{r.reason}
+                      </p>
+                    )}
+                    {r.notes && (
+                      <p className="text-xs text-muted-foreground mt-0.5">📝 {r.notes}</p>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => { setResubmitJobId(r.jobId); setResubmitNote(""); }}
+                  >
+                    Resubmit →
+                  </Button>
+                </div>
+              </div>
+            ))}
+            {myRejectedDispatches.length > 5 && (
+              <p className="text-xs text-destructive/80">+ {myRejectedDispatches.length - 5} more rejections</p>
+            )}
+          </div>
+        </div>
+      )}
+
 
       {overdueLeads.length > 0 && (
         <button
@@ -382,6 +474,34 @@ const SalesDashboard = () => {
       )}
 
       <EditLeadDialog lead={editLead} open={!!editLead} onOpenChange={open => { if (!open) setEditLead(null); }} onSaved={(id) => { setRecentlyUpdatedId(id); setTimeout(() => setRecentlyUpdatedId(curr => curr === id ? null : curr), 3000); }} />
+
+      <Dialog open={!!resubmitJobId} onOpenChange={o => !o && setResubmitJobId(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Resubmit dispatch for approval</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Add a note for accounts explaining what was fixed (payment cleared, advance received, etc.).
+            </p>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Note to accounts</label>
+              <textarea
+                className="w-full border rounded px-3 py-2 text-sm bg-background min-h-[90px]"
+                placeholder="e.g. Customer cleared ₹15,000 outstanding via UPI on 25-Apr"
+                value={resubmitNote}
+                onChange={e => setResubmitNote(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setResubmitJobId(null)} disabled={resubmitting}>Cancel</Button>
+              <Button onClick={handleResubmit} disabled={resubmitting}>
+                {resubmitting ? "Resubmitting..." : "Resubmit for approval"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
