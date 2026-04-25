@@ -20,6 +20,7 @@ import { Users, IndianRupee, TrendingUp, AlertCircle, Phone, Calendar, Truck, Cl
 import { toast } from "sonner";
 import type { Lead } from "@/contexts/DataContext";
 import SalesTargetCard from "@/components/SalesTargetCard";
+import { supabase } from "@/integrations/supabase/client";
 
 const STATUS_COLORS: Record<LeadStatus, string> = {
   new: "bg-primary/10 text-primary",
