@@ -43,13 +43,16 @@ const AccountsApprovals = () => {
   const { user } = useAuth();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"pending" | "approved" | "rejected">("pending");
+  const [tab, setTab] = useState<"pending" | "approved" | "rejected" | "audit" | "dues">("pending");
   const [actionJob, setActionJob] = useState<Job | null>(null);
   const [actionType, setActionType] = useState<"approve" | "reject">("approve");
   const [notes, setNotes] = useState("");
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [duesByPhone, setDuesByPhone] = useState<Record<string, { total: number; count: number }>>({});
+  const [auditLog, setAuditLog] = useState<any[]>([]);
+  const [dues, setDues] = useState<any[]>([]);
+  const [newDue, setNewDue] = useState({ customer_name: "", customer_phone: "", amount: "", description: "" });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -80,7 +83,25 @@ const AccountsApprovals = () => {
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  const loadAudit = useCallback(async () => {
+    const { data } = await supabase
+      .from("accounts_approvals_log" as any)
+      .select("*")
+      .order("performed_at", { ascending: false })
+      .limit(100);
+    setAuditLog((data as any) || []);
+  }, []);
+
+  const loadDues = useCallback(async () => {
+    const { data } = await supabase
+      .from("customer_dues" as any)
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    setDues((data as any) || []);
+  }, []);
+
+  useEffect(() => { load(); loadAudit(); loadDues(); }, [load, loadAudit, loadDues]);
 
   const filtered = jobs.filter(j => j.accounts_approval_status === tab);
 
@@ -157,18 +178,21 @@ const AccountsApprovals = () => {
       </div>
 
       <Tabs value={tab} onValueChange={v => setTab(v as any)}>
-        <TabsList>
+        <TabsList className="flex-wrap h-auto">
           <TabsTrigger value="pending">Pending ({counts.pending})</TabsTrigger>
           <TabsTrigger value="approved">Approved</TabsTrigger>
           <TabsTrigger value="rejected">Rejected</TabsTrigger>
+          <TabsTrigger value="audit">Audit Log</TabsTrigger>
+          <TabsTrigger value="dues">Customer Dues</TabsTrigger>
         </TabsList>
       </Tabs>
 
-      {loading ? (
-        <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
-      ) : filtered.length === 0 ? (
-        <Card><CardContent className="p-8 text-center text-muted-foreground">No {tab} dispatches</CardContent></Card>
-      ) : (
+      {(tab === "pending" || tab === "approved" || tab === "rejected") && (
+        loading ? (
+          <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
+        ) : filtered.length === 0 ? (
+          <Card><CardContent className="p-8 text-center text-muted-foreground">No {tab} dispatches</CardContent></Card>
+        ) : (
         <div className="space-y-3">
           {filtered.map(job => {
             const dues = duesByPhone[job.customer_phone];
@@ -234,6 +258,105 @@ const AccountsApprovals = () => {
               </Card>
             );
           })}
+        </div>
+        )
+      )}
+
+      {tab === "audit" && (
+        <Card>
+          <CardContent className="p-4 space-y-2">
+            <h3 className="font-semibold mb-2">Approval Audit Log (last 100)</h3>
+            {auditLog.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No audit entries yet.</p>
+            ) : auditLog.map(a => (
+              <div key={a.id} className="text-xs border-b border-border pb-2 last:border-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant="outline" className={a.action === "approved" ? STATUS_BADGE.approved : STATUS_BADGE.rejected}>
+                    {a.action.toUpperCase()}
+                  </Badge>
+                  <span className="text-muted-foreground">{new Date(a.performed_at).toLocaleString()}</span>
+                  {a.amount_verified != null && (
+                    <span className="font-medium">₹{Number(a.amount_verified).toLocaleString("en-IN")}</span>
+                  )}
+                  {a.dues_checked && <Badge variant="outline" className="text-[10px]">Dues checked</Badge>}
+                </div>
+                {a.notes && <p className="mt-1">📝 {a.notes}</p>}
+                <p className="text-muted-foreground/70 mt-0.5">job: {a.service_job_id}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {tab === "dues" && (
+        <div className="space-y-4">
+          <Card>
+            <CardContent className="p-4 space-y-2">
+              <h3 className="font-semibold">Add Customer Due</h3>
+              <div className="grid grid-cols-2 gap-2">
+                <input className="border rounded px-2 py-1 text-sm bg-background"
+                  placeholder="Customer name" value={newDue.customer_name}
+                  onChange={e => setNewDue({ ...newDue, customer_name: e.target.value })} />
+                <input className="border rounded px-2 py-1 text-sm bg-background"
+                  placeholder="Phone" value={newDue.customer_phone}
+                  onChange={e => setNewDue({ ...newDue, customer_phone: e.target.value })} />
+                <input className="border rounded px-2 py-1 text-sm bg-background" type="number"
+                  placeholder="Amount (₹)" value={newDue.amount}
+                  onChange={e => setNewDue({ ...newDue, amount: e.target.value })} />
+                <input className="border rounded px-2 py-1 text-sm bg-background"
+                  placeholder="Description" value={newDue.description}
+                  onChange={e => setNewDue({ ...newDue, description: e.target.value })} />
+              </div>
+              <Button size="sm" onClick={async () => {
+                if (!newDue.customer_name || !newDue.customer_phone || !newDue.amount) {
+                  toast.error("Name, phone & amount are required"); return;
+                }
+                const { error } = await supabase.from("customer_dues" as any).insert({
+                  customer_name: newDue.customer_name,
+                  customer_phone: newDue.customer_phone,
+                  amount: Number(newDue.amount),
+                  description: newDue.description || null,
+                  due_type: "manual",
+                });
+                if (error) { toast.error(error.message); return; }
+                toast.success("Due added");
+                setNewDue({ customer_name: "", customer_phone: "", amount: "", description: "" });
+                loadDues();
+              }}>Add Due</Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4 space-y-2">
+              <h3 className="font-semibold mb-2">Outstanding Dues</h3>
+              {dues.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No dues recorded.</p>
+              ) : dues.map(d => (
+                <div key={d.id} className="text-sm border-b border-border pb-2 last:border-0 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{d.customer_name} <span className="text-muted-foreground">· {d.customer_phone}</span></p>
+                    {d.description && <p className="text-xs text-muted-foreground">{d.description}</p>}
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="font-bold">₹{Number(d.amount).toLocaleString("en-IN")}</p>
+                    {d.is_cleared ? (
+                      <Badge variant="outline" className={STATUS_BADGE.approved}>Cleared</Badge>
+                    ) : (
+                      <Button size="sm" variant="outline" className="h-6 text-xs"
+                        onClick={async () => {
+                          const { error } = await supabase.from("customer_dues" as any)
+                            .update({ is_cleared: true, cleared_at: new Date().toISOString(), cleared_by: user?.id })
+                            .eq("id", d.id);
+                          if (error) { toast.error(error.message); return; }
+                          toast.success("Marked cleared");
+                          loadDues();
+                        }}>Mark cleared</Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
         </div>
       )}
 

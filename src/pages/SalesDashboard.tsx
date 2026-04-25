@@ -20,6 +20,7 @@ import { Users, IndianRupee, TrendingUp, AlertCircle, Phone, Calendar, Truck, Cl
 import { toast } from "sonner";
 import type { Lead } from "@/contexts/DataContext";
 import SalesTargetCard from "@/components/SalesTargetCard";
+import { supabase } from "@/integrations/supabase/client";
 
 const STATUS_COLORS: Record<LeadStatus, string> = {
   new: "bg-primary/10 text-primary",
@@ -54,6 +55,7 @@ const SalesDashboard = () => {
   const [editLead, setEditLead] = useState<Lead | null>(null);
   const [recentlyUpdatedId, setRecentlyUpdatedId] = useState<string | null>(null);
   const [phoneSearch, setPhoneSearch] = useState("");
+  const [approvalByLead, setApprovalByLead] = useState<Record<string, { status: string; reason: string | null }>>({});
 
   const todayStr = new Date().toISOString().split("T")[0];
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
@@ -81,6 +83,30 @@ const SalesDashboard = () => {
     }, 2 * 60 * 60 * 1000);
     return () => clearInterval(interval);
   }, [user, leads, todayStr]);
+
+  // Fetch accounts approval status for leads that have a service_job (won/converted)
+  useEffect(() => {
+    const ids = leads.filter(l => l.status === "won" || l.status === "converted").map(l => l.id);
+    if (ids.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("service_jobs")
+        .select("source_lead_id,accounts_approval_status,accounts_rejection_reason")
+        .in("source_lead_id", ids)
+        .is("deleted_at", null);
+      if (cancelled || !data) return;
+      const map: Record<string, { status: string; reason: string | null }> = {};
+      data.forEach((r: any) => {
+        if (r.source_lead_id) map[r.source_lead_id] = {
+          status: r.accounts_approval_status || "pending",
+          reason: r.accounts_rejection_reason,
+        };
+      });
+      setApprovalByLead(map);
+    })();
+    return () => { cancelled = true; };
+  }, [leads]);
 
   const setQuickDate = (from: string, to: string) => { setFromDate(from); setToDate(to); };
 
@@ -322,6 +348,15 @@ const SalesDashboard = () => {
                     </div>
                   )}
                   {lead.delivery_date && <p className="text-xs text-success">🚚 Delivery: {lead.delivery_date}</p>}
+                  {approvalByLead[lead.id] && (
+                    <Badge variant="outline" className={`text-[10px] ${
+                      approvalByLead[lead.id].status === "approved" ? "bg-success/10 text-success border-success/30" :
+                      approvalByLead[lead.id].status === "rejected" ? "bg-destructive/10 text-destructive border-destructive/30" :
+                      "bg-warning/10 text-warning border-warning/30"
+                    }`} title={approvalByLead[lead.id].reason || undefined}>
+                      Accounts: {approvalByLead[lead.id].status}
+                    </Badge>
+                  )}
                 </div>
               </div>
             </CardContent>
