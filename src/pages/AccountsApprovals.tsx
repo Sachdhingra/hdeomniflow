@@ -43,13 +43,16 @@ const AccountsApprovals = () => {
   const { user } = useAuth();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"pending" | "approved" | "rejected">("pending");
+  const [tab, setTab] = useState<"pending" | "approved" | "rejected" | "audit" | "dues">("pending");
   const [actionJob, setActionJob] = useState<Job | null>(null);
   const [actionType, setActionType] = useState<"approve" | "reject">("approve");
   const [notes, setNotes] = useState("");
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [duesByPhone, setDuesByPhone] = useState<Record<string, { total: number; count: number }>>({});
+  const [auditLog, setAuditLog] = useState<any[]>([]);
+  const [dues, setDues] = useState<any[]>([]);
+  const [newDue, setNewDue] = useState({ customer_name: "", customer_phone: "", amount: "", description: "" });
 
   const load = useCallback(async () => {
     setLoading(true);
