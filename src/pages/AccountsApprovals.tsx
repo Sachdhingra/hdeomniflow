@@ -126,13 +126,21 @@ const AccountsApprovals = () => {
     }
     setSaving(true);
     try {
+      const isSelfDelivery = actionJob.type === "self_delivery";
+      const nowIso = new Date().toISOString();
       const updates: any = {
         accounts_approval_status: actionType === "approve" ? "approved" : "rejected",
         accounts_approved_by: user.id,
-        accounts_approved_at: new Date().toISOString(),
+        accounts_approved_at: nowIso,
         accounts_notes: notes || null,
         accounts_rejection_reason: actionType === "reject" ? reason : null,
-        status: actionType === "approve" ? "pending" : "accounts_rejected",
+        // Self-delivery is closed on approve (no service dispatch needed).
+        // Other dispatches go back to 'pending' so service head can assign.
+        status:
+          actionType === "approve"
+            ? (isSelfDelivery ? "completed" : "pending")
+            : "accounts_rejected",
+        ...(actionType === "approve" && isSelfDelivery ? { completed_at: nowIso } : {}),
       };
       const { error: jErr } = await supabase
         .from("service_jobs")
