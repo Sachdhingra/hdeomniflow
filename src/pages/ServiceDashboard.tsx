@@ -73,7 +73,9 @@ const ServiceDashboard = () => {
     // Service Head can only see jobs that have passed Accounts Approval.
     // Admin sees everything (including pending approval) for visibility.
     if (isServiceHead && !isAdmin) {
-      jobs = jobs.filter(j => (j as any).accounts_approval_status === "approved");
+      jobs = jobs.filter(
+        j => (j as any).accounts_approval_status === "approved" && j.type === "delivery"
+      );
     }
     if (dateFilter) jobs = jobs.filter(j => j.date_received >= dateFilter);
     if (tab === "deliveries") jobs = jobs.filter(j => j.type === "delivery");
