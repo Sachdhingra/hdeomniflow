@@ -349,20 +349,22 @@ const AdminDashboard = () => {
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="flex-wrap">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="leads" className="gap-1"><Search className="w-3 h-3" />Leads</TabsTrigger>
-          <TabsTrigger value="sales">Sales Team</TabsTrigger>
-          <TabsTrigger value="service">Service</TabsTrigger>
-          <TabsTrigger value="field">Field Agents</TabsTrigger>
-          <TabsTrigger value="site">Site Agents</TabsTrigger>
-          <TabsTrigger value="targets" className="gap-1"><Target className="w-3 h-3" />Targets</TabsTrigger>
-          <TabsTrigger value="staff">User Mgmt</TabsTrigger>
-          <TabsTrigger value="export" className="gap-1"><Download className="w-3 h-3" />Export</TabsTrigger>
-          <TabsTrigger value="deleted" className="gap-1"><Archive className="w-3 h-3" />Deleted</TabsTrigger>
-          <TabsTrigger value="messages" className="gap-1"><MessageSquare className="w-3 h-3" />Messages</TabsTrigger>
-          <TabsTrigger value="audit" className="gap-1"><ShieldAlert className="w-3 h-3" />Audit</TabsTrigger>
-        </TabsList>
+        <div className="w-full overflow-x-auto -mx-1 px-1 pb-1">
+          <TabsList className="inline-flex h-auto w-max flex-nowrap gap-1 p-1">
+            <TabsTrigger value="overview" className="whitespace-nowrap">Overview</TabsTrigger>
+            <TabsTrigger value="leads" className="gap-1 whitespace-nowrap"><Search className="w-3 h-3" />Leads</TabsTrigger>
+            <TabsTrigger value="sales" className="whitespace-nowrap">Sales Team</TabsTrigger>
+            <TabsTrigger value="service" className="whitespace-nowrap">Service</TabsTrigger>
+            <TabsTrigger value="field" className="whitespace-nowrap">Field Agents</TabsTrigger>
+            <TabsTrigger value="site" className="whitespace-nowrap">Site Agents</TabsTrigger>
+            <TabsTrigger value="targets" className="gap-1 whitespace-nowrap"><Target className="w-3 h-3" />Targets</TabsTrigger>
+            <TabsTrigger value="staff" className="whitespace-nowrap">User Mgmt</TabsTrigger>
+            <TabsTrigger value="export" className="gap-1 whitespace-nowrap"><Download className="w-3 h-3" />Export</TabsTrigger>
+            <TabsTrigger value="deleted" className="gap-1 whitespace-nowrap"><Archive className="w-3 h-3" />Deleted</TabsTrigger>
+            <TabsTrigger value="messages" className="gap-1 whitespace-nowrap"><MessageSquare className="w-3 h-3" />Messages</TabsTrigger>
+            <TabsTrigger value="audit" className="gap-1 whitespace-nowrap"><ShieldAlert className="w-3 h-3" />Audit</TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="overview" className="space-y-4 mt-4">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
