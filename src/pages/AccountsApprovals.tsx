@@ -148,6 +148,17 @@ const AccountsApprovals = () => {
         .eq("id", actionJob.id);
       if (jErr) throw jErr;
 
+      if (actionType === "approve" && isSelfDelivery && actionJob.source_lead_id) {
+        const { error: leadErr } = await supabase
+          .from("leads")
+          .update({
+            status: "converted",
+            updated_by: user.id,
+          } as any)
+          .eq("id", actionJob.source_lead_id);
+        if (leadErr) throw leadErr;
+      }
+
       const { error: lErr } = await supabase.from("accounts_approvals_log" as any).insert({
         service_job_id: actionJob.id,
         action: actionType === "approve" ? "approved" : "rejected",
