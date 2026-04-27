@@ -142,7 +142,7 @@ const SalesDashboard = () => {
     if (!resubmitJobId) return;
     setResubmitting(true);
     try {
-      const { error } = await supabase
+      const { data: updated, error } = await supabase
         .from("service_jobs")
         .update({
           accounts_approval_status: "pending",
@@ -152,8 +152,12 @@ const SalesDashboard = () => {
           accounts_approved_at: null,
           status: "pending_accounts_approval",
         } as any)
-        .eq("id", resubmitJobId);
+        .eq("id", resubmitJobId)
+        .select("id");
       if (error) throw error;
+      if (!updated || updated.length === 0) {
+        throw new Error("Resubmit blocked — you may not have permission, or the dispatch was already approved/assigned.");
+      }
       // Audit log entry
       await supabase.from("accounts_approvals_log" as any).insert({
         service_job_id: resubmitJobId,
