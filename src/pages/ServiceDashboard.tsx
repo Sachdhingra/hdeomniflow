@@ -75,9 +75,16 @@ const ServiceDashboard = () => {
     // Service Head can only see jobs that have passed Accounts Approval.
     // Admin sees everything (including pending approval) for visibility.
     if (isServiceHead && !isAdmin) {
-      jobs = jobs.filter(
-        j => (j as any).accounts_approval_status === "approved" && j.type === "delivery"
-      );
+      // Service Head sees: all service jobs + accounts-approved deliveries.
+      // Self-delivery is fully closed by Accounts and never shown here.
+      jobs = jobs.filter(j => {
+        if (j.type === "self_delivery") return false;
+        if (j.type === "service") return true;
+        if (j.type === "delivery") {
+          return (j as any).accounts_approval_status === "approved";
+        }
+        return false;
+      });
     }
     if (dateFilter) jobs = jobs.filter(j => j.date_received >= dateFilter);
     if (tab === "deliveries") jobs = jobs.filter(j => j.type === "delivery");
