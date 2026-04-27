@@ -56,7 +56,7 @@ const SalesDashboard = () => {
   const [editLead, setEditLead] = useState<Lead | null>(null);
   const [recentlyUpdatedId, setRecentlyUpdatedId] = useState<string | null>(null);
   const [phoneSearch, setPhoneSearch] = useState("");
-  const [approvalByLead, setApprovalByLead] = useState<Record<string, { jobId: string; status: string; reason: string | null; notes: string | null; customer: string }>>({});
+  const [approvalByLead, setApprovalByLead] = useState<Record<string, { jobId: string; status: string; reason: string | null; notes: string | null; customer: string; assignedAgent: string | null; jobType: string }>>({});
   const [resubmitJobId, setResubmitJobId] = useState<string | null>(null);
   const [resubmitNote, setResubmitNote] = useState("");
   const [resubmitting, setResubmitting] = useState(false);
