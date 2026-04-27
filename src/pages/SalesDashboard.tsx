@@ -94,11 +94,11 @@ const SalesDashboard = () => {
     if (ids.length === 0) { setApprovalByLead({}); return; }
     const { data } = await supabase
       .from("service_jobs")
-      .select("id,source_lead_id,customer_name,accounts_approval_status,accounts_rejection_reason,accounts_notes")
+      .select("id,source_lead_id,customer_name,accounts_approval_status,accounts_rejection_reason,accounts_notes,assigned_agent,type")
       .in("source_lead_id", ids)
       .is("deleted_at", null);
     if (!data) return;
-    const map: Record<string, { jobId: string; status: string; reason: string | null; notes: string | null; customer: string }> = {};
+    const map: Record<string, { jobId: string; status: string; reason: string | null; notes: string | null; customer: string; assignedAgent: string | null; jobType: string }> = {};
     data.forEach((r: any) => {
       if (r.source_lead_id) map[r.source_lead_id] = {
         jobId: r.id,
@@ -106,21 +106,37 @@ const SalesDashboard = () => {
         reason: r.accounts_rejection_reason,
         notes: r.accounts_notes,
         customer: r.customer_name,
+        assignedAgent: r.assigned_agent,
+        jobType: r.type,
       };
     });
     setApprovalByLead(map);
   };
   useEffect(() => { loadApprovals(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [leads]);
 
-  // Build list of rejected dispatches owned by current sales user
-  const myRejectedDispatches = useMemo(() => {
+  // Dispatches owned by current sales user that are still in the accounts/service pipeline.
+  // Visible until the job has been approved AND assigned to a field agent (then it's locked).
+  // Self-delivery jobs are closed on approval, so we exclude them once approved.
+  const myActiveDispatches = useMemo(() => {
     const myLeadIds = new Set(
       leads.filter(l => l.created_by === user?.id || l.assigned_to === user?.id).map(l => l.id)
     );
     return Object.entries(approvalByLead)
-      .filter(([leadId, a]) => a.status === "rejected" && myLeadIds.has(leadId))
+      .filter(([leadId, a]) => {
+        if (!myLeadIds.has(leadId)) return false;
+        // Locked once approved + assigned to field agent (delivery flow complete handoff)
+        if (a.status === "approved" && a.assignedAgent) return false;
+        // Self-delivery is auto-closed on approval — nothing to show after approval
+        if (a.status === "approved" && a.jobType === "self_delivery") return false;
+        return a.status === "rejected" || a.status === "pending" || a.status === "approved";
+      })
       .map(([leadId, a]) => ({ leadId, ...a }));
   }, [approvalByLead, leads, user]);
+
+  const myRejectedDispatches = useMemo(
+    () => myActiveDispatches.filter(a => a.status === "rejected"),
+    [myActiveDispatches]
+  );
 
   const handleResubmit = async () => {
     if (!resubmitJobId) return;
