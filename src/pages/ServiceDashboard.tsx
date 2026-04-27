@@ -4,6 +4,7 @@ import { useData, LEAD_CATEGORIES, LeadCategory } from "@/contexts/DataContext";
 import StatCard from "@/components/StatCard";
 import DeleteButton from "@/components/DeleteButton";
 import EditJobDialog from "@/components/EditJobDialog";
+import ServiceDetailModal from "@/components/ServiceDetailModal";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -57,6 +58,7 @@ const ServiceDashboard = () => {
   const [rescheduleAgent, setRescheduleAgent] = useState("");
   const [photoViewJob, setPhotoViewJob] = useState<string | null>(null);
   const [editJob, setEditJob] = useState<ServiceJob | null>(null);
+  const [detailJob, setDetailJob] = useState<ServiceJob | null>(null);
   const [form, setForm] = useState({
     customerName: "", customerPhone: "", address: "", category: "" as LeadCategory | "",
     description: "", dateToAttend: "", value: "", isFOC: false,
@@ -274,7 +276,7 @@ const ServiceDashboard = () => {
         {filteredJobs.map(job => {
           const photos = getJobPhotos(job);
           return (
-            <Card key={job.id} className={`shadow-card cursor-pointer ${job.status === "pending" ? "border-warning/30" : job.status === "completed" ? "border-success/30" : ""}`} onClick={() => setEditJob(job)}>
+            <Card key={job.id} className={`shadow-card cursor-pointer hover:border-primary/40 hover:shadow-md transition-all ${job.status === "pending" ? "border-warning/30" : job.status === "completed" ? "border-success/30" : ""}`} onClick={() => setDetailJob(job)}>
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
@@ -440,6 +442,20 @@ const ServiceDashboard = () => {
 
       {/* Edit job dialog */}
       <EditJobDialog job={editJob} open={!!editJob} onOpenChange={open => { if (!open) setEditJob(null); }} />
+
+      {/* Service detail modal (opens on card click) */}
+      <ServiceDetailModal
+        job={detailJob}
+        open={!!detailJob}
+        onOpenChange={(open) => { if (!open) setDetailJob(null); }}
+        onEdit={(j) => { setDetailJob(null); setEditJob(j); }}
+        onAssign={(jobId) => { setDetailJob(null); setAssignOpen(jobId); }}
+        onReschedule={(jobId, currentAgent) => {
+          setDetailJob(null);
+          setRescheduleOpen(jobId);
+          setRescheduleAgent(currentAgent || "");
+        }}
+      />
     </div>
   );
 };
