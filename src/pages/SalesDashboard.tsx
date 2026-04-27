@@ -238,44 +238,79 @@ const SalesDashboard = () => {
         <LeadForm source={user?.role === "site_agent" ? "site_agent" : "sales"} />
       </div>
 
-      {myRejectedDispatches.length > 0 && (
-        <div className="rounded-lg border-2 border-destructive/40 bg-destructive/5 p-4 space-y-3">
+      {myActiveDispatches.length > 0 && (
+        <div className="rounded-lg border-2 border-destructive/30 bg-destructive/5 p-4 space-y-3">
           <div>
             <h3 className="font-bold text-destructive flex items-center gap-2">
               <AlertCircle className="w-5 h-5 shrink-0" />
-              {myRejectedDispatches.length} Dispatch{myRejectedDispatches.length > 1 ? "es" : ""} Rejected by Accounts
+              Dispatches needing your attention ({myActiveDispatches.length})
             </h3>
             <p className="text-xs text-destructive/80 mt-1">
-              Review the reason, fix the issue, then resubmit for approval.
+              You can resubmit a rejected dispatch any time — until accounts approves it and service head assigns a field agent. After that it's locked.
             </p>
           </div>
           <div className="space-y-2">
-            {myRejectedDispatches.slice(0, 5).map(r => (
-              <div key={r.jobId} className="bg-background rounded-md p-2.5 border border-destructive/20">
-                <div className="flex items-start justify-between gap-2 flex-wrap">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium text-sm">{r.customer}</p>
-                    {r.reason && (
-                      <p className="text-xs text-destructive mt-0.5">
-                        <span className="font-semibold">Reason: </span>{r.reason}
-                      </p>
-                    )}
-                    {r.notes && (
-                      <p className="text-xs text-muted-foreground mt-0.5">📝 {r.notes}</p>
+            {myActiveDispatches.slice(0, 8).map(r => {
+              const isRejected = r.status === "rejected";
+              const isPending = r.status === "pending";
+              const isApproved = r.status === "approved"; // approved but not yet assigned
+              const borderCls = isRejected
+                ? "border-destructive/30"
+                : isApproved
+                ? "border-success/30"
+                : "border-warning/30";
+              return (
+                <div key={r.jobId} className={`bg-background rounded-md p-2.5 border ${borderCls}`}>
+                  <div className="flex items-start justify-between gap-2 flex-wrap">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-medium text-sm">{r.customer}</p>
+                        {isRejected && (
+                          <Badge variant="outline" className="bg-destructive/15 text-destructive border-destructive/30 text-[10px]">REJECTED</Badge>
+                        )}
+                        {isPending && (
+                          <Badge variant="outline" className="bg-warning/15 text-warning border-warning/30 text-[10px]">AWAITING ACCOUNTS</Badge>
+                        )}
+                        {isApproved && (
+                          <Badge variant="outline" className="bg-success/15 text-success border-success/30 text-[10px]">APPROVED — AWAITING SERVICE</Badge>
+                        )}
+                      </div>
+                      {isRejected && r.reason && (
+                        <p className="text-xs text-destructive mt-0.5">
+                          <span className="font-semibold">Reason: </span>{r.reason}
+                        </p>
+                      )}
+                      {r.notes && (
+                        <p className="text-xs text-muted-foreground mt-0.5">📝 {r.notes}</p>
+                      )}
+                      {isPending && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Submitted to accounts — waiting for review. No further action needed.
+                        </p>
+                      )}
+                      {isApproved && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Approved by accounts — waiting for service head to assign a field agent.
+                        </p>
+                      )}
+                    </div>
+                    {isRejected ? (
+                      <Button
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => { setResubmitJobId(r.jobId); setResubmitNote(""); }}
+                      >
+                        Resubmit →
+                      </Button>
+                    ) : (
+                      <Badge variant="outline" className="text-[10px] opacity-70">Locked from edits</Badge>
                     )}
                   </div>
-                  <Button
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => { setResubmitJobId(r.jobId); setResubmitNote(""); }}
-                  >
-                    Resubmit →
-                  </Button>
                 </div>
-              </div>
-            ))}
-            {myRejectedDispatches.length > 5 && (
-              <p className="text-xs text-destructive/80">+ {myRejectedDispatches.length - 5} more rejections</p>
+              );
+            })}
+            {myActiveDispatches.length > 8 && (
+              <p className="text-xs text-destructive/80">+ {myActiveDispatches.length - 8} more</p>
             )}
           </div>
         </div>
