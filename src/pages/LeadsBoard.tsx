@@ -64,11 +64,39 @@ const LeadsBoard = () => {
     }
   };
 
+  const handleSendMessage = async (lead: Lead) => {
+    const template = `Hi ${lead.customer_name}, this is HD Eomni Furniture. Following up on your interest in ${lead.product_viewed || lead.liked_product || (lead.category as string).replace("_", " ")}. Can we help with anything specific?`;
+    try {
+      const { data, error } = await supabase.functions.invoke("send-whatsapp", {
+        body: {
+          phone: lead.customer_phone,
+          message: template,
+          user_id: user?.id,
+          user_name: user?.name,
+        },
+      });
+      if (error) throw error;
+      // Log inside lead_messages so card stats update
+      await supabase.from("lead_messages").insert({
+        lead_id: lead.id,
+        message_type: "outbound",
+        message_body: template,
+        template_used: "follow_up_default",
+        status: data?.success ? "sent" : "failed",
+        created_by: user?.id,
+      } as any);
+      toast.success("Message sent via WhatsApp");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to send");
+    }
+  };
+
   return (
+    <TooltipProvider delayDuration={150}>
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold">Leads Board</h1>
-        <p className="text-sm text-muted-foreground">Drag stages manually. Tap a card for details & history.</p>
+        <p className="text-sm text-muted-foreground">Drag stages manually. Tap a card for full details.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
@@ -85,7 +113,12 @@ const LeadsBoard = () => {
                   <p className="text-xs text-muted-foreground text-center py-6">No leads</p>
                 )}
                 {items.map(lead => {
+                  const l: any = lead;
                   const prob = lead.conversion_probability ?? 30;
+                  const styleLabel = PREFERRED_STYLES.find(s => s.value === l.preferred_style)?.label;
+                  const budgetLabel = BUDGET_RANGES.find(b => b.value === l.budget_range)?.label;
+                  const categoryLabel = LEAD_CATEGORIES.find(c => c.value === lead.category)?.label;
+                  const respMins = l.response_time_minutes;
                   return (
                     <Card
                       key={lead.id}
@@ -93,23 +126,81 @@ const LeadsBoard = () => {
                       onClick={() => setSelected(lead)}
                     >
                       <CardContent className="p-3 space-y-2">
+                        {/* Header: name + quality */}
                         <div className="flex items-start justify-between gap-2">
-                          <p className="font-medium text-sm line-clamp-1">{lead.customer_name}</p>
-                          <Badge variant="outline" className={`${probColor(prob)} text-[10px] shrink-0`}>
-                            <Sparkles className="w-2.5 h-2.5 mr-0.5" />{prob}%
-                          </Badge>
+                          <p className="font-semibold text-sm line-clamp-1 uppercase">{lead.customer_name}</p>
+                          <Tooltip>
+                            <TooltipTrigger asChild onClick={e => e.stopPropagation()}>
+                              <Badge variant="outline" className={`${probColor(prob)} text-[10px] shrink-0 gap-0.5`}>
+                                <Sparkles className="w-2.5 h-2.5" />{prob}%
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent side="left" className="max-w-[220px] text-xs">
+                              <p className="font-semibold mb-1">Quality score</p>
+                              <p className="text-muted-foreground">Based on visit recency, message engagement, family involvement, decision timeline, budget filled, response speed, and barriers addressed.</p>
+                            </TooltipContent>
+                          </Tooltip>
                         </div>
-                        <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Phone className="w-3 h-3" />{lead.customer_phone}
-                        </p>
-                        {lead.liked_product && (
-                          <p className="text-xs text-muted-foreground line-clamp-1">❤ {lead.liked_product}</p>
+
+                        {/* Neighborhood + product */}
+                        {(l.neighborhood || categoryLabel) && (
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {l.neighborhood && (
+                              <Badge className={`${neighborhoodColor(l.neighborhood)} text-[10px] gap-0.5 border-0`}>
+                                <MapPin className="w-2.5 h-2.5" />{l.neighborhood}
+                              </Badge>
+                            )}
+                            {categoryLabel && (
+                              <Badge variant="outline" className="text-[10px]">{categoryLabel}</Badge>
+                            )}
+                          </div>
                         )}
-                        <div className="flex items-center justify-between pt-1" onClick={e => e.stopPropagation()}>
-                          <p className="text-xs font-semibold">₹{Number(lead.value_in_rupees).toLocaleString("en-IN")}</p>
+
+                        {/* Phone + value */}
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="flex items-center gap-1 text-muted-foreground">
+                            <Phone className="w-3 h-3" />{lead.customer_phone}
+                          </span>
+                          <span className="font-semibold">₹{Number(lead.value_in_rupees).toLocaleString("en-IN")}</span>
+                        </div>
+
+                        {/* Style + budget */}
+                        {(styleLabel || budgetLabel) && (
+                          <p className="text-[11px] text-muted-foreground">
+                            {styleLabel && <span>{styleLabel} style</span>}
+                            {styleLabel && budgetLabel && <span> · </span>}
+                            {budgetLabel && <span>Budget: {budgetLabel}</span>}
+                          </p>
+                        )}
+
+                        {/* Message stats */}
+                        <div className="border-t pt-1.5 space-y-0.5 text-[11px]">
+                          <div className="flex items-center justify-between text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <MessageCircle className="w-3 h-3" />
+                              {l.last_message_at ? `Last msg: ${formatRelativeTime(l.last_message_at)}` : "No messages yet"}
+                            </span>
+                            {l.last_response_at && <span>✅</span>}
+                          </div>
+                          {respMins != null && (
+                            <div className={`flex items-center gap-1 ${responseTimeColor(respMins)}`}>
+                              <Zap className="w-3 h-3" />Response: {respMins}m
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center gap-1.5 pt-1" onClick={e => e.stopPropagation()}>
+                          <Button
+                            size="sm"
+                            className="h-7 flex-1 text-xs gap-1 gradient-primary"
+                            onClick={() => handleSendMessage(lead)}
+                          >
+                            <MessageCircle className="w-3 h-3" />Send
+                          </Button>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-6 px-2 text-xs gap-1">
+                              <Button variant="outline" size="sm" className="h-7 px-2 text-xs gap-1">
                                 <MoveHorizontal className="w-3 h-3" />Move
                               </Button>
                             </DropdownMenuTrigger>
@@ -140,6 +231,7 @@ const LeadsBoard = () => {
         onOpenChange={open => { if (!open) setSelected(null); }}
       />
     </div>
+    </TooltipProvider>
   );
 };
 
