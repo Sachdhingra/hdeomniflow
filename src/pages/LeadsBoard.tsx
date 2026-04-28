@@ -171,7 +171,7 @@ const LeadsBoard = () => {
                           <Button
                             size="sm"
                             className="h-7 flex-1 text-xs gap-1 gradient-primary"
-                            onClick={() => handleSendMessage(lead)}
+                            onClick={() => handleOpenTemplates(lead)}
                           >
                             <MessageCircle className="w-3 h-3" />Send
                           </Button>
