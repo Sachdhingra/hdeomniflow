@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Phone, MoveHorizontal, Sparkles, MessageCircle, MapPin, Zap, Info } from "lucide-react";
 import { toast } from "sonner";
 import LeadDetailsDrawer from "@/components/LeadDetailsDrawer";
+import SendTemplateDialog from "@/components/SendTemplateDialog";
 import { neighborhoodColor, responseTimeColor, formatRelativeTime, PREFERRED_STYLES, BUDGET_RANGES } from "@/lib/leadConstants";
 
 const COLUMNS: { status: LeadStatus; label: string; accent: string }[] = [
