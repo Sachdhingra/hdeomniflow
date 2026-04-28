@@ -46,6 +46,7 @@ const probabilityColor = (p: number) => {
 
 const LeadDetailsDrawer = ({ lead, open, onOpenChange }: Props) => {
   const [history, setHistory] = useState<StageHistoryRow[]>([]);
+  const [messages, setMessages] = useState<LeadMessage[]>([]);
   const [probability, setProbability] = useState<number>(0);
   const [loading, setLoading] = useState(false);
 
@@ -53,25 +54,37 @@ const LeadDetailsDrawer = ({ lead, open, onOpenChange }: Props) => {
     if (!lead || !open) return;
     setLoading(true);
     (async () => {
-      const [{ data: hist }, { data: prob }] = await Promise.all([
+      const [{ data: hist }, { data: prob }, { data: msgs }] = await Promise.all([
         supabase.from("lead_stage_history")
           .select("id, old_stage, new_stage, changed_at, reason")
           .eq("lead_id", lead.id)
           .order("changed_at", { ascending: false }),
         supabase.rpc("calculate_conversion_probability", { _lead_id: lead.id }),
+        supabase.from("lead_messages")
+          .select("id, message_type, message_body, status, sent_at, template_used")
+          .eq("lead_id", lead.id)
+          .order("sent_at", { ascending: false })
+          .limit(20),
       ]);
       setHistory((hist as StageHistoryRow[]) || []);
+      setMessages((msgs as LeadMessage[]) || []);
       setProbability(typeof prob === "number" ? prob : (lead.conversion_probability ?? 30));
       setLoading(false);
     })();
   }, [lead, open]);
 
   if (!lead) return null;
+  const l: any = lead;
 
   const products = Array.isArray(lead.products_viewed) ? (lead.products_viewed as string[]) : [];
   const daysInStage = Math.floor(
     (Date.now() - new Date(lead.stage_changed_at || lead.created_at).getTime()) / 86400000
   );
+  const styleLabel = PREFERRED_STYLES.find(s => s.value === l.preferred_style)?.label;
+  const budgetLabel = BUDGET_RANGES.find(b => b.value === l.budget_range)?.label;
+  const familyLabel = FAMILY_SITUATIONS.find(f => f.value === l.family_situation)?.label;
+  const timelineLabel = DECISION_TIMELINES.find(t => t.value === l.decision_timeline)?.label;
+  const needLabel = STATED_NEEDS.find(n => n.value === l.stated_need)?.label;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
