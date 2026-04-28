@@ -4,9 +4,19 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { Phone, Mail, Calendar, Package, History, Sparkles } from "lucide-react";
+import { Phone, Mail, Calendar, Package, History, Sparkles, MapPin, MessageCircle, Zap, Home, Users, Clock } from "lucide-react";
 import type { Lead, LeadStatus } from "@/contexts/DataContext";
 import { LEAD_CATEGORIES } from "@/contexts/DataContext";
+import { neighborhoodColor, responseTimeColor, formatRelativeTime, PREFERRED_STYLES, BUDGET_RANGES, FAMILY_SITUATIONS, DECISION_TIMELINES, STATED_NEEDS } from "@/lib/leadConstants";
+
+interface LeadMessage {
+  id: string;
+  message_type: string;
+  message_body: string;
+  status: string;
+  sent_at: string;
+  template_used: string | null;
+}
 
 interface StageHistoryRow {
   id: string;
