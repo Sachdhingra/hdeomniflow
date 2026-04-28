@@ -40,6 +40,7 @@ const LeadsBoard = () => {
   const { user } = useAuth();
   const { leads, updateLead } = useData();
   const [selected, setSelected] = useState<Lead | null>(null);
+  const [templateLead, setTemplateLead] = useState<Lead | null>(null);
 
   const visibleLeads = useMemo(() => {
     if (user?.role === "admin") return leads;
