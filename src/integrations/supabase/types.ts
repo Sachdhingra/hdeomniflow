@@ -349,6 +349,7 @@ export type Database = {
           created_by: string | null
           delivered_at: string | null
           id: string
+          journey_stage: string | null
           lead_id: string
           message_body: string
           message_type: string
@@ -356,6 +357,7 @@ export type Database = {
           response_received: boolean
           sent_at: string
           status: string
+          template_id: string | null
           template_used: string | null
         }
         Insert: {
@@ -363,6 +365,7 @@ export type Database = {
           created_by?: string | null
           delivered_at?: string | null
           id?: string
+          journey_stage?: string | null
           lead_id: string
           message_body: string
           message_type: string
@@ -370,6 +373,7 @@ export type Database = {
           response_received?: boolean
           sent_at?: string
           status?: string
+          template_id?: string | null
           template_used?: string | null
         }
         Update: {
@@ -377,6 +381,7 @@ export type Database = {
           created_by?: string | null
           delivered_at?: string | null
           id?: string
+          journey_stage?: string | null
           lead_id?: string
           message_body?: string
           message_type?: string
@@ -384,6 +389,7 @@ export type Database = {
           response_received?: boolean
           sent_at?: string
           status?: string
+          template_id?: string | null
           template_used?: string | null
         }
         Relationships: [
@@ -392,6 +398,13 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_messages_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "message_templates"
             referencedColumns: ["id"]
           },
         ]
@@ -638,6 +651,45 @@ export type Database = {
           retry_count?: number
           sent_at?: string | null
           status?: string
+        }
+        Relationships: []
+      }
+      message_templates: {
+        Row: {
+          body: string
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          sort_order: number
+          stage: string
+          title: string
+          updated_at: string
+          variables: string[]
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          sort_order?: number
+          stage: string
+          title: string
+          updated_at?: string
+          variables?: string[]
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          sort_order?: number
+          stage?: string
+          title?: string
+          updated_at?: string
+          variables?: string[]
         }
         Relationships: []
       }
