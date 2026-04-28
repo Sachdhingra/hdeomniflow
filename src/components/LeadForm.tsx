@@ -10,6 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, AlertTriangle, UserCheck } from "lucide-react";
 import { toast } from "sonner";
+import {
+  DEHRADUN_NEIGHBORHOODS, PREFERRED_STYLES, FAMILY_SITUATIONS,
+  DECISION_TIMELINES, BUDGET_RANGES, STATED_NEEDS,
+} from "@/lib/leadConstants";
 
 const LeadForm = ({ source = "sales" }: { source?: string }) => {
   const { user } = useAuth();
@@ -18,6 +22,9 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
   const [form, setForm] = useState({
     customerName: "", customerPhone: "", category: "" as LeadCategory | "",
     valueInRupees: "", notes: "", nextFollowUpDate: "", nextFollowUpTime: "",
+    neighborhood: "", neighborhoodOther: "",
+    productViewed: "", statedNeed: "", preferredStyle: "",
+    familySituation: "", decisionTimeline: "", budgetRange: "",
   });
   const [duplicateCheck, setDuplicateCheck] = useState<{
     checking: boolean;
@@ -86,6 +93,9 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
       } catch { /* ignore */ }
     }
     try {
+      const finalNeighborhood = form.neighborhood === "__other__"
+        ? form.neighborhoodOther.trim() || null
+        : form.neighborhood || null;
       await addLead({
         customer_name: form.customerName,
         customer_phone: form.customerPhone,
@@ -102,9 +112,22 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
         updated_by: user?.id || "",
         created_from_lat: gps.lat,
         created_from_lng: gps.lng,
+        neighborhood: finalNeighborhood,
+        product_viewed: form.productViewed.trim() || null,
+        stated_need: form.statedNeed || null,
+        preferred_style: form.preferredStyle || null,
+        family_situation: form.familySituation || null,
+        decision_timeline: form.decisionTimeline || null,
+        budget_range: form.budgetRange || null,
       } as any);
       toast.success("Lead added successfully!");
-      setForm({ customerName: "", customerPhone: "", category: "", valueInRupees: "", notes: "", nextFollowUpDate: "", nextFollowUpTime: "" });
+      setForm({
+        customerName: "", customerPhone: "", category: "", valueInRupees: "",
+        notes: "", nextFollowUpDate: "", nextFollowUpTime: "",
+        neighborhood: "", neighborhoodOther: "",
+        productViewed: "", statedNeed: "", preferredStyle: "",
+        familySituation: "", decisionTimeline: "", budgetRange: "",
+      });
       setDuplicateCheck({ checking: false, exists: false });
       setOpen(false);
     } catch (err: any) {
@@ -171,10 +194,69 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
             <div className="space-y-1.5"><Label>Value (₹) *</Label><Input type="number" value={form.valueInRupees} onChange={e => setForm(f => ({ ...f, valueInRupees: e.target.value }))} placeholder="85000" /></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Neighborhood</Label>
+              <Select value={form.neighborhood} onValueChange={v => setForm(f => ({ ...f, neighborhood: v }))}>
+                <SelectTrigger><SelectValue placeholder="Area" /></SelectTrigger>
+                <SelectContent>
+                  {DEHRADUN_NEIGHBORHOODS.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}
+                  <SelectItem value="__other__">Other…</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Product Viewed</Label>
+              <Input value={form.productViewed} onChange={e => setForm(f => ({ ...f, productViewed: e.target.value }))} placeholder="e.g. L-shape sofa" />
+            </div>
+          </div>
+          {form.neighborhood === "__other__" && (
+            <Input value={form.neighborhoodOther} onChange={e => setForm(f => ({ ...f, neighborhoodOther: e.target.value }))} placeholder="Type neighborhood name" />
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Stated Need</Label>
+              <Select value={form.statedNeed} onValueChange={v => setForm(f => ({ ...f, statedNeed: v }))}>
+                <SelectTrigger><SelectValue placeholder="Why now?" /></SelectTrigger>
+                <SelectContent>{STATED_NEEDS.map(n => <SelectItem key={n.value} value={n.value}>{n.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Style</Label>
+              <Select value={form.preferredStyle} onValueChange={v => setForm(f => ({ ...f, preferredStyle: v }))}>
+                <SelectTrigger><SelectValue placeholder="Style" /></SelectTrigger>
+                <SelectContent>{PREFERRED_STYLES.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Family Situation</Label>
+              <Select value={form.familySituation} onValueChange={v => setForm(f => ({ ...f, familySituation: v }))}>
+                <SelectTrigger><SelectValue placeholder="Household" /></SelectTrigger>
+                <SelectContent>{FAMILY_SITUATIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Decision Timeline</Label>
+              <Select value={form.decisionTimeline} onValueChange={v => setForm(f => ({ ...f, decisionTimeline: v }))}>
+                <SelectTrigger><SelectValue placeholder="When?" /></SelectTrigger>
+                <SelectContent>{DECISION_TIMELINES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Budget Range</Label>
+            <Select value={form.budgetRange} onValueChange={v => setForm(f => ({ ...f, budgetRange: v }))}>
+              <SelectTrigger><SelectValue placeholder="Budget bracket" /></SelectTrigger>
+              <SelectContent>{BUDGET_RANGES.map(b => <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5"><Label>Next Follow-up Date *</Label><Input type="date" value={form.nextFollowUpDate} onChange={e => setForm(f => ({ ...f, nextFollowUpDate: e.target.value }))} /></div>
             <div className="space-y-1.5"><Label>Next Follow-up Time *</Label><Input type="time" value={form.nextFollowUpTime} onChange={e => setForm(f => ({ ...f, nextFollowUpTime: e.target.value }))} /></div>
           </div>
-          <div className="space-y-1.5"><Label>Notes</Label><Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Additional details..." rows={2} /></div>
+          <div className="space-y-1.5"><Label>Custom Notes — what did they specifically ask?</Label><Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Specific questions, concerns, requests..." rows={2} /></div>
+
           <Button type="submit" className="w-full gradient-primary" disabled={duplicateCheck.exists || duplicateCheck.checking}>
             {duplicateCheck.exists ? "Duplicate — Cannot Save" : "Save Lead"}
           </Button>
