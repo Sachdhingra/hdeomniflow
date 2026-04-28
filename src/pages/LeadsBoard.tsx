@@ -1,15 +1,18 @@
 import { useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useData, LeadStatus, type Lead } from "@/contexts/DataContext";
+import { useData, LeadStatus, LEAD_CATEGORIES, type Lead } from "@/contexts/DataContext";
+import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { Phone, MoveHorizontal, Sparkles } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Phone, MoveHorizontal, Sparkles, MessageCircle, MapPin, Zap, Info } from "lucide-react";
 import { toast } from "sonner";
 import LeadDetailsDrawer from "@/components/LeadDetailsDrawer";
+import { neighborhoodColor, responseTimeColor, formatRelativeTime, PREFERRED_STYLES, BUDGET_RANGES } from "@/lib/leadConstants";
 
 const COLUMNS: { status: LeadStatus; label: string; accent: string }[] = [
   { status: "new", label: "New", accent: "border-t-primary" },
