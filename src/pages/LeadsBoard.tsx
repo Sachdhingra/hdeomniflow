@@ -66,32 +66,7 @@ const LeadsBoard = () => {
     }
   };
 
-  const handleSendMessage = async (lead: Lead) => {
-    const template = `Hi ${lead.customer_name}, this is HD Eomni Furniture. Following up on your interest in ${lead.product_viewed || lead.liked_product || (lead.category as string).replace("_", " ")}. Can we help with anything specific?`;
-    try {
-      const { data, error } = await supabase.functions.invoke("send-whatsapp", {
-        body: {
-          phone: lead.customer_phone,
-          message: template,
-          user_id: user?.id,
-          user_name: user?.name,
-        },
-      });
-      if (error) throw error;
-      // Log inside lead_messages so card stats update
-      await supabase.from("lead_messages").insert({
-        lead_id: lead.id,
-        message_type: "outbound",
-        message_body: template,
-        template_used: "follow_up_default",
-        status: data?.success ? "sent" : "failed",
-        created_by: user?.id,
-      } as any);
-      toast.success("Message sent via WhatsApp");
-    } catch (e: any) {
-      toast.error(e.message || "Failed to send");
-    }
-  };
+  const handleOpenTemplates = (lead: Lead) => setTemplateLead(lead);
 
   return (
     <TooltipProvider delayDuration={150}>
