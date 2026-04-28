@@ -75,6 +75,7 @@ const AppRoutes = () => {
             <Route path="/admin/products" element={<AdminProducts />} />
             <Route path="/leads/board" element={<LeadsBoard />} />
             <Route path="/admin/automation" element={<AdminAutomation />} />
+            <Route path="/admin/templates" element={<AdminMessageTemplates />} />
             <Route path="/accounts/approvals" element={<AccountsApprovals />} />
           </>
         );
