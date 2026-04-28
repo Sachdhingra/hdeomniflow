@@ -343,6 +343,59 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_messages: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          delivered_at: string | null
+          id: string
+          lead_id: string
+          message_body: string
+          message_type: string
+          read_at: string | null
+          response_received: boolean
+          sent_at: string
+          status: string
+          template_used: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          delivered_at?: string | null
+          id?: string
+          lead_id: string
+          message_body: string
+          message_type: string
+          read_at?: string | null
+          response_received?: boolean
+          sent_at?: string
+          status?: string
+          template_used?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          delivered_at?: string | null
+          id?: string
+          lead_id?: string
+          message_body?: string
+          message_type?: string
+          read_at?: string | null
+          response_received?: boolean
+          sent_at?: string
+          status?: string
+          template_used?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_messages_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_stage_history: {
         Row: {
           changed_at: string
@@ -384,6 +437,8 @@ export type Database = {
       leads: {
         Row: {
           assigned_to: string | null
+          barrier_addressed: boolean
+          budget_range: string | null
           category: Database["public"]["Enums"]["lead_category"]
           concern_type: string | null
           conversion_probability: number | null
@@ -396,25 +451,36 @@ export type Database = {
           customer_email: string | null
           customer_name: string
           customer_phone: string
+          decision_timeline: string | null
           deleted_at: string | null
           deleted_by: string | null
           delivery_assigned_to: string | null
           delivery_date: string | null
           delivery_notes: string | null
+          family_situation: string | null
           family_visit_date: string | null
           has_family: boolean | null
           id: string
           last_follow_up: string
+          last_message_at: string | null
+          last_response_at: string | null
           liked_product: string | null
+          messages_sent: number
+          neighborhood: string | null
           next_action_suggested: string | null
           next_follow_up_date: string | null
           next_follow_up_time: string | null
           notes: string | null
+          objection_type: string | null
+          preferred_style: string | null
           price_sensitivity: string | null
+          product_viewed: string | null
           products_viewed: Json | null
+          response_time_minutes: number | null
           source: string
           source_type: string | null
           stage_changed_at: string | null
+          stated_need: string | null
           status: Database["public"]["Enums"]["lead_status"]
           updated_at: string
           updated_by: string
@@ -425,6 +491,8 @@ export type Database = {
         }
         Insert: {
           assigned_to?: string | null
+          barrier_addressed?: boolean
+          budget_range?: string | null
           category: Database["public"]["Enums"]["lead_category"]
           concern_type?: string | null
           conversion_probability?: number | null
@@ -437,25 +505,36 @@ export type Database = {
           customer_email?: string | null
           customer_name: string
           customer_phone: string
+          decision_timeline?: string | null
           deleted_at?: string | null
           deleted_by?: string | null
           delivery_assigned_to?: string | null
           delivery_date?: string | null
           delivery_notes?: string | null
+          family_situation?: string | null
           family_visit_date?: string | null
           has_family?: boolean | null
           id?: string
           last_follow_up?: string
+          last_message_at?: string | null
+          last_response_at?: string | null
           liked_product?: string | null
+          messages_sent?: number
+          neighborhood?: string | null
           next_action_suggested?: string | null
           next_follow_up_date?: string | null
           next_follow_up_time?: string | null
           notes?: string | null
+          objection_type?: string | null
+          preferred_style?: string | null
           price_sensitivity?: string | null
+          product_viewed?: string | null
           products_viewed?: Json | null
+          response_time_minutes?: number | null
           source?: string
           source_type?: string | null
           stage_changed_at?: string | null
+          stated_need?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
           updated_at?: string
           updated_by: string
@@ -466,6 +545,8 @@ export type Database = {
         }
         Update: {
           assigned_to?: string | null
+          barrier_addressed?: boolean
+          budget_range?: string | null
           category?: Database["public"]["Enums"]["lead_category"]
           concern_type?: string | null
           conversion_probability?: number | null
@@ -478,25 +559,36 @@ export type Database = {
           customer_email?: string | null
           customer_name?: string
           customer_phone?: string
+          decision_timeline?: string | null
           deleted_at?: string | null
           deleted_by?: string | null
           delivery_assigned_to?: string | null
           delivery_date?: string | null
           delivery_notes?: string | null
+          family_situation?: string | null
           family_visit_date?: string | null
           has_family?: boolean | null
           id?: string
           last_follow_up?: string
+          last_message_at?: string | null
+          last_response_at?: string | null
           liked_product?: string | null
+          messages_sent?: number
+          neighborhood?: string | null
           next_action_suggested?: string | null
           next_follow_up_date?: string | null
           next_follow_up_time?: string | null
           notes?: string | null
+          objection_type?: string | null
+          preferred_style?: string | null
           price_sensitivity?: string | null
+          product_viewed?: string | null
           products_viewed?: Json | null
+          response_time_minutes?: number | null
           source?: string
           source_type?: string | null
           stage_changed_at?: string | null
+          stated_need?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
           updated_at?: string
           updated_by?: string
