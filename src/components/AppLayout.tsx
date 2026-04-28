@@ -51,6 +51,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/categories", label: "Categories", icon: <FolderTree className="w-5 h-5" /> },
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
       { to: "/admin/automation", label: "Automation", icon: <Bot className="w-5 h-5" /> },
+      { to: "/admin/templates", label: "WhatsApp Templates", icon: <MessageSquare className="w-5 h-5" /> },
     ],
     sales: [
       { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" />, badge: overdueCount || undefined },
