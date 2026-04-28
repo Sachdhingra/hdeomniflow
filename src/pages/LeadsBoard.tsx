@@ -207,6 +207,12 @@ const LeadsBoard = () => {
         open={!!selected}
         onOpenChange={open => { if (!open) setSelected(null); }}
       />
+
+      <SendTemplateDialog
+        lead={templateLead}
+        open={!!templateLead}
+        onOpenChange={open => { if (!open) setTemplateLead(null); }}
+      />
     </div>
     </TooltipProvider>
   );
