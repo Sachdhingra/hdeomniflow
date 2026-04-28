@@ -10,6 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, AlertTriangle, UserCheck } from "lucide-react";
 import { toast } from "sonner";
+import {
+  DEHRADUN_NEIGHBORHOODS, PREFERRED_STYLES, FAMILY_SITUATIONS,
+  DECISION_TIMELINES, BUDGET_RANGES, STATED_NEEDS,
+} from "@/lib/leadConstants";
 
 const LeadForm = ({ source = "sales" }: { source?: string }) => {
   const { user } = useAuth();
@@ -18,6 +22,9 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
   const [form, setForm] = useState({
     customerName: "", customerPhone: "", category: "" as LeadCategory | "",
     valueInRupees: "", notes: "", nextFollowUpDate: "", nextFollowUpTime: "",
+    neighborhood: "", neighborhoodOther: "",
+    productViewed: "", statedNeed: "", preferredStyle: "",
+    familySituation: "", decisionTimeline: "", budgetRange: "",
   });
   const [duplicateCheck, setDuplicateCheck] = useState<{
     checking: boolean;
