@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Phone, MoveHorizontal, Sparkles, MessageCircle, MapPin, Zap, Info } from "lucide-react";
 import { toast } from "sonner";
 import LeadDetailsDrawer from "@/components/LeadDetailsDrawer";
+import SendTemplateDialog from "@/components/SendTemplateDialog";
 import { neighborhoodColor, responseTimeColor, formatRelativeTime, PREFERRED_STYLES, BUDGET_RANGES } from "@/lib/leadConstants";
 
 const COLUMNS: { status: LeadStatus; label: string; accent: string }[] = [
@@ -39,6 +40,7 @@ const LeadsBoard = () => {
   const { user } = useAuth();
   const { leads, updateLead } = useData();
   const [selected, setSelected] = useState<Lead | null>(null);
+  const [templateLead, setTemplateLead] = useState<Lead | null>(null);
 
   const visibleLeads = useMemo(() => {
     if (user?.role === "admin") return leads;
@@ -64,32 +66,7 @@ const LeadsBoard = () => {
     }
   };
 
-  const handleSendMessage = async (lead: Lead) => {
-    const template = `Hi ${lead.customer_name}, this is HD Eomni Furniture. Following up on your interest in ${lead.product_viewed || lead.liked_product || (lead.category as string).replace("_", " ")}. Can we help with anything specific?`;
-    try {
-      const { data, error } = await supabase.functions.invoke("send-whatsapp", {
-        body: {
-          phone: lead.customer_phone,
-          message: template,
-          user_id: user?.id,
-          user_name: user?.name,
-        },
-      });
-      if (error) throw error;
-      // Log inside lead_messages so card stats update
-      await supabase.from("lead_messages").insert({
-        lead_id: lead.id,
-        message_type: "outbound",
-        message_body: template,
-        template_used: "follow_up_default",
-        status: data?.success ? "sent" : "failed",
-        created_by: user?.id,
-      } as any);
-      toast.success("Message sent via WhatsApp");
-    } catch (e: any) {
-      toast.error(e.message || "Failed to send");
-    }
-  };
+  const handleOpenTemplates = (lead: Lead) => setTemplateLead(lead);
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -194,7 +171,7 @@ const LeadsBoard = () => {
                           <Button
                             size="sm"
                             className="h-7 flex-1 text-xs gap-1 gradient-primary"
-                            onClick={() => handleSendMessage(lead)}
+                            onClick={() => handleOpenTemplates(lead)}
                           >
                             <MessageCircle className="w-3 h-3" />Send
                           </Button>
@@ -229,6 +206,12 @@ const LeadsBoard = () => {
         lead={selected}
         open={!!selected}
         onOpenChange={open => { if (!open) setSelected(null); }}
+      />
+
+      <SendTemplateDialog
+        lead={templateLead}
+        open={!!templateLead}
+        onOpenChange={open => { if (!open) setTemplateLead(null); }}
       />
     </div>
     </TooltipProvider>

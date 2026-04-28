@@ -25,6 +25,7 @@ const AdminProducts = lazy(() => import("@/pages/AdminProducts"));
 const ProductsView = lazy(() => import("@/pages/ProductsView"));
 const LeadsBoard = lazy(() => import("@/pages/LeadsBoard"));
 const AdminAutomation = lazy(() => import("@/pages/AdminAutomation"));
+const AdminMessageTemplates = lazy(() => import("@/pages/AdminMessageTemplates"));
 const AccountsApprovals = lazy(() => import("@/pages/AccountsApprovals"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
@@ -74,6 +75,7 @@ const AppRoutes = () => {
             <Route path="/admin/products" element={<AdminProducts />} />
             <Route path="/leads/board" element={<LeadsBoard />} />
             <Route path="/admin/automation" element={<AdminAutomation />} />
+            <Route path="/admin/templates" element={<AdminMessageTemplates />} />
             <Route path="/accounts/approvals" element={<AccountsApprovals />} />
           </>
         );
