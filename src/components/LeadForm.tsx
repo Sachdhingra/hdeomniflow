@@ -93,6 +93,9 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
       } catch { /* ignore */ }
     }
     try {
+      const finalNeighborhood = form.neighborhood === "__other__"
+        ? form.neighborhoodOther.trim() || null
+        : form.neighborhood || null;
       await addLead({
         customer_name: form.customerName,
         customer_phone: form.customerPhone,
@@ -109,9 +112,22 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
         updated_by: user?.id || "",
         created_from_lat: gps.lat,
         created_from_lng: gps.lng,
+        neighborhood: finalNeighborhood,
+        product_viewed: form.productViewed.trim() || null,
+        stated_need: form.statedNeed || null,
+        preferred_style: form.preferredStyle || null,
+        family_situation: form.familySituation || null,
+        decision_timeline: form.decisionTimeline || null,
+        budget_range: form.budgetRange || null,
       } as any);
       toast.success("Lead added successfully!");
-      setForm({ customerName: "", customerPhone: "", category: "", valueInRupees: "", notes: "", nextFollowUpDate: "", nextFollowUpTime: "" });
+      setForm({
+        customerName: "", customerPhone: "", category: "", valueInRupees: "",
+        notes: "", nextFollowUpDate: "", nextFollowUpTime: "",
+        neighborhood: "", neighborhoodOther: "",
+        productViewed: "", statedNeed: "", preferredStyle: "",
+        familySituation: "", decisionTimeline: "", budgetRange: "",
+      });
       setDuplicateCheck({ checking: false, exists: false });
       setOpen(false);
     } catch (err: any) {
