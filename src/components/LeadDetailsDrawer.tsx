@@ -133,6 +133,111 @@ const LeadDetailsDrawer = ({ lead, open, onOpenChange }: Props) => {
             )}
           </section>
 
+          <Separator />
+
+          {/* Psychology profile */}
+          <section className="space-y-2 text-sm">
+            <h4 className="font-semibold flex items-center gap-1.5"><Home className="w-4 h-4" />Buyer Profile</h4>
+            <div className="grid grid-cols-2 gap-2">
+              {l.neighborhood && (
+                <div className="space-y-0.5">
+                  <p className="text-[10px] uppercase text-muted-foreground">Neighborhood</p>
+                  <Badge className={`${neighborhoodColor(l.neighborhood)} text-[11px] gap-0.5 border-0`}>
+                    <MapPin className="w-3 h-3" />{l.neighborhood}
+                  </Badge>
+                </div>
+              )}
+              {l.product_viewed && (
+                <div className="space-y-0.5">
+                  <p className="text-[10px] uppercase text-muted-foreground">Product viewed</p>
+                  <p className="text-foreground">{l.product_viewed}</p>
+                </div>
+              )}
+              {needLabel && (
+                <div className="space-y-0.5">
+                  <p className="text-[10px] uppercase text-muted-foreground">Stated need</p>
+                  <p className="text-foreground">{needLabel}</p>
+                </div>
+              )}
+              {styleLabel && (
+                <div className="space-y-0.5">
+                  <p className="text-[10px] uppercase text-muted-foreground">Style</p>
+                  <p className="text-foreground">{styleLabel}</p>
+                </div>
+              )}
+              {familyLabel && (
+                <div className="space-y-0.5">
+                  <p className="text-[10px] uppercase text-muted-foreground">Family</p>
+                  <p className="text-foreground flex items-center gap-1"><Users className="w-3 h-3" />{familyLabel}</p>
+                </div>
+              )}
+              {timelineLabel && (
+                <div className="space-y-0.5">
+                  <p className="text-[10px] uppercase text-muted-foreground">Timeline</p>
+                  <p className="text-foreground flex items-center gap-1"><Clock className="w-3 h-3" />{timelineLabel}</p>
+                </div>
+              )}
+              {budgetLabel && (
+                <div className="space-y-0.5">
+                  <p className="text-[10px] uppercase text-muted-foreground">Budget</p>
+                  <p className="text-foreground">{budgetLabel}</p>
+                </div>
+              )}
+              <div className="space-y-0.5">
+                <p className="text-[10px] uppercase text-muted-foreground">Days in stage</p>
+                <p className="text-foreground">{daysInStage}d</p>
+              </div>
+            </div>
+            {l.objection_type && (
+              <p className="text-xs">
+                <span className="text-muted-foreground">Objection:</span>{" "}
+                <Badge variant={l.barrier_addressed ? "secondary" : "destructive"} className="text-[10px]">
+                  {l.objection_type}{l.barrier_addressed ? " · addressed" : " · open"}
+                </Badge>
+              </p>
+            )}
+          </section>
+
+          <Separator />
+
+          {/* Messaging */}
+          <section className="space-y-2 text-sm">
+            <h4 className="font-semibold flex items-center gap-1.5"><MessageCircle className="w-4 h-4" />Messaging</h4>
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <div className="bg-muted rounded p-2 text-center">
+                <p className="text-[10px] text-muted-foreground">Sent</p>
+                <p className="font-bold">{l.messages_sent ?? 0}</p>
+              </div>
+              <div className="bg-muted rounded p-2 text-center">
+                <p className="text-[10px] text-muted-foreground">Last msg</p>
+                <p className="font-medium">{formatRelativeTime(l.last_message_at)}</p>
+              </div>
+              <div className="bg-muted rounded p-2 text-center">
+                <p className="text-[10px] text-muted-foreground">Response</p>
+                <p className={`font-medium ${responseTimeColor(l.response_time_minutes)} flex items-center justify-center gap-1`}>
+                  <Zap className="w-3 h-3" />{l.response_time_minutes != null ? `${l.response_time_minutes}m` : "—"}
+                </p>
+              </div>
+            </div>
+            {messages.length === 0 && (
+              <p className="text-xs text-muted-foreground">No messages exchanged yet.</p>
+            )}
+            {messages.length > 0 && (
+              <ol className="space-y-1.5 max-h-48 overflow-y-auto">
+                {messages.map(m => (
+                  <li key={m.id} className={`text-xs rounded p-2 border-l-2 ${m.message_type === "outbound" ? "border-primary bg-primary/5" : "border-success bg-success/5"}`}>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <Badge variant="outline" className="text-[9px]">{m.message_type}</Badge>
+                      <span className="text-muted-foreground text-[10px]">{formatRelativeTime(m.sent_at)}</span>
+                    </div>
+                    <p className="whitespace-pre-wrap">{m.message_body}</p>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+
+
           {(products.length > 0 || lead.liked_product || lead.price_sensitivity) && (
             <>
               <Separator />
