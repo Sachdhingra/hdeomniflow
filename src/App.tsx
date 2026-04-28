@@ -25,6 +25,7 @@ const AdminProducts = lazy(() => import("@/pages/AdminProducts"));
 const ProductsView = lazy(() => import("@/pages/ProductsView"));
 const LeadsBoard = lazy(() => import("@/pages/LeadsBoard"));
 const AdminAutomation = lazy(() => import("@/pages/AdminAutomation"));
+const AdminMessageTemplates = lazy(() => import("@/pages/AdminMessageTemplates"));
 const AccountsApprovals = lazy(() => import("@/pages/AccountsApprovals"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
