@@ -14,6 +14,41 @@ Deno.serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  // Auth: shared internal secret (cron) OR authenticated admin user
+  const internalSecret = Deno.env.get("DAILY_SUMMARY_SECRET");
+  const headerSecret = req.headers.get("x-internal-secret");
+  let authorized = false;
+
+  if (internalSecret && headerSecret && headerSecret === internalSecret) {
+    authorized = true;
+  } else {
+    const authHeader = req.headers.get("Authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+      const token = authHeader.replace("Bearer ", "");
+      const userClient = createClient(supabaseUrl, anonKey, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: claimsData } = await userClient.auth.getClaims(token);
+      const userId = claimsData?.claims?.sub;
+      if (userId) {
+        const adminClient = createClient(supabaseUrl, serviceRoleKey);
+        const { data: isAdmin } = await adminClient.rpc("has_role", {
+          _user_id: userId,
+          _role: "admin",
+        });
+        if (isAdmin === true) authorized = true;
+      }
+    }
+  }
+
+  if (!authorized) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   try {
     const supabase = createClient(supabaseUrl, serviceRoleKey);
     const today = new Date().toISOString().split("T")[0];
@@ -128,9 +163,20 @@ Deno.serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ success: true, sent: messages.length, messages }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    // Do not leak phone numbers or message bodies in the response
+    const sentCount = messages.filter((m) => m.status === "sent").length;
+    const failedCount = messages.filter((m) => m.status === "failed").length;
+    const skippedCount = messages.filter((m) => m.status === "skipped_no_phone").length;
+    return new Response(
+      JSON.stringify({
+        success: true,
+        total: messages.length,
+        sent: sentCount,
+        failed: failedCount,
+        skipped: skippedCount,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   } catch (error: any) {
     console.error("Daily summary error:", error);
     return new Response(JSON.stringify({ error: error.message }), {

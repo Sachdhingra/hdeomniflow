@@ -92,6 +92,42 @@ Deno.serve(async (req) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+  const internalSecret = Deno.env.get("NURTURE_ENGINE_SECRET");
+
+  // Auth: allow either a shared internal secret (for cron) OR an authenticated admin user.
+  const headerSecret = req.headers.get("x-internal-secret");
+  let authorized = false;
+
+  if (internalSecret && headerSecret && headerSecret === internalSecret) {
+    authorized = true;
+  } else {
+    const authHeader = req.headers.get("Authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.replace("Bearer ", "");
+      const userClient = createClient(supabaseUrl, anonKey, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: claimsData } = await userClient.auth.getClaims(token);
+      const userId = claimsData?.claims?.sub;
+      if (userId) {
+        const adminClient = createClient(supabaseUrl, serviceKey);
+        const { data: isAdmin } = await adminClient.rpc("has_role", {
+          _user_id: userId,
+          _role: "admin",
+        });
+        if (isAdmin === true) authorized = true;
+      }
+    }
+  }
+
+  if (!authorized) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   const supabase = createClient(supabaseUrl, serviceKey);
 
   const summary = {
