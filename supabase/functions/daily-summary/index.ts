@@ -128,9 +128,20 @@ Deno.serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ success: true, sent: messages.length, messages }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    // Do not leak phone numbers or message bodies in the response
+    const sentCount = messages.filter((m) => m.status === "sent").length;
+    const failedCount = messages.filter((m) => m.status === "failed").length;
+    const skippedCount = messages.filter((m) => m.status === "skipped_no_phone").length;
+    return new Response(
+      JSON.stringify({
+        success: true,
+        total: messages.length,
+        sent: sentCount,
+        failed: failedCount,
+        skipped: skippedCount,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   } catch (error: any) {
     console.error("Daily summary error:", error);
     return new Response(JSON.stringify({ error: error.message }), {
