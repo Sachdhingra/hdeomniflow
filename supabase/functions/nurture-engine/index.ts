@@ -1,9 +1,12 @@
 // Autonomous lead nurture engine — runs daily.
 // Responsibilities:
-//   1. Refresh conversion_probability for all active leads
-//   2. Auto-move FOLLOW_UP / NEGOTIATION leads idle 30+ days into OVERDUE
-//   3. Queue stage-based WhatsApp templates into auto_nurture_messages (status='pending', no send)
-//   4. Log every action to automation_logs
+//   1. Refresh conversion_probability + score breakdown for all active leads
+//   2. Detect psychology journey stage (problem/exploration/evaluation/reassurance/decision/cold)
+//      and move the lead automatically (logged to lead_journey_history via trigger)
+//   3. Auto-send a stage-appropriate template (logs to lead_messages, calls send-whatsapp)
+//   4. Generate alerts (fast_response, site_visit_needed, payment_unread, cold_reengage)
+//   5. Auto-move FOLLOW_UP / NEGOTIATION leads idle 30+ days into OVERDUE
+//   6. Log every action to automation_logs
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
@@ -18,54 +21,70 @@ const SHOWROOM = {
 };
 
 type Stage = "new" | "contacted" | "follow_up" | "negotiation" | "overdue" | "won" | "lost" | "converted";
+type JourneyStage = "problem" | "exploration" | "evaluation" | "reassurance" | "decision" | "cold";
 
 interface Lead {
   id: string;
   customer_name: string;
   customer_phone: string;
   status: Stage;
+  journey_stage: JourneyStage | null;
   liked_product: string | null;
+  product_viewed: string | null;
+  neighborhood: string | null;
+  budget_range: string | null;
+  decision_timeline: string | null;
+  family_situation: string | null;
+  stated_need: string | null;
   value_in_rupees: number;
   concern_type: string | null;
+  objection_type: string | null;
+  barrier_addressed: boolean | null;
+  response_time_minutes: number | null;
+  last_message_at: string | null;
+  last_response_at: string | null;
+  last_payment_link_sent_at: string | null;
   stage_changed_at: string | null;
+  journey_stage_changed_at: string | null;
   created_at: string;
+  created_by: string | null;
+  assigned_to: string | null;
 }
 
 const daysBetween = (iso: string | null, now: Date) => {
   if (!iso) return 0;
   return Math.floor((now.getTime() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24));
 };
+const minsBetween = (iso: string | null, now: Date) => {
+  if (!iso) return 0;
+  return Math.floor((now.getTime() - new Date(iso).getTime()) / 60000);
+};
 
-function buildMessage(lead: Lead, stage: Stage, days: number, concern: string | null): { type: string; body: string } | null {
-  const name = lead.customer_name;
-  const product = lead.liked_product || "the piece you liked";
-  const sig = `\n\n📍 ${SHOWROOM.address}\n🕐 ${SHOWROOM.hours}\n\n${SHOWROOM.name}`;
+// Map journey stage -> kanban status (so existing flow stays in sync)
+const journeyToStatus = (j: JourneyStage): Stage | null => {
+  switch (j) {
+    case "problem": return "new";
+    case "exploration": return "contacted";
+    case "evaluation": return "follow_up";
+    case "reassurance": return "negotiation";
+    case "decision": return "negotiation";
+    case "cold": return "overdue";
+    default: return null;
+  }
+};
 
-  if (stage === "new" && days === 0) {
-    return { type: "welcome", body: `Hi ${name}! 👋\n\nThanks for visiting ${SHOWROOM.name}!\n\nWe loved that you checked out ${product}. Whenever you're ready to discuss, we're here.${sig}` };
-  }
-  if (stage === "follow_up") {
-    if (days === 1) return { type: "followup_day_1", body: `Hi ${name}! 👋\n\nDiscussed with family yet? 😊\n${product} is still available. When can you bring them by?${sig}` };
-    if (days === 7) return { type: "followup_day_7", body: `Hi ${name}! 👋\n\nYour ${product} is getting popular — stock is limited. Don't delay if you're interested!${sig}` };
-    if (days === 14) return { type: "followup_day_14", body: `Hi ${name}! 👋\n\nSpecial this weekend: family deal on ${product}. Bring family to decide together!${sig}` };
-    if (days === 21) return { type: "followup_day_21", body: `Hi ${name}! 👋\n\nStill interested in ${product}? We're ready whenever you are — how can we help?${sig}` };
-  }
-  if (stage === "negotiation") {
-    if (days === 1) return { type: "negotiation_diagnose", body: `Hi ${name}! 👋\n\nI sense ₹${Number(lead.value_in_rupees).toLocaleString("en-IN")} feels like a lot, and that's okay.\n\nWhat's holding you back?\nA) Budget feels tight\nB) Want to see other designs\nC) Need to discuss with family\nD) Better timing later\nE) Something else\n\nReply A, B, C, D, or E.${sig}` };
-    if (days === 5) {
-      if (concern === "budget") return { type: "negotiation_budget", body: `Hi ${name}! 👋\n\nLet's make this work!\n✅ Pay 50% now, 50% later\n✅ 0% EMI available\n\nReply 1 or 2 — our team will prepare exact plan for ${product}.${sig}` };
-      if (concern === "design") return { type: "negotiation_design", body: `Hi ${name}! 👋\n\nWe have options:\nBUDGET — similar design, lower price\nMID — your original (most popular)\nPREMIUM — best in class\n\nWhich appeals? A, B, or C?${sig}` };
-      if (concern === "family") return { type: "negotiation_family", body: `Hi ${name}! 👋\n\nSmart — bring your family to decide together. ${product} is on display. When can you visit?${sig}` };
-      if (concern === "timing") return { type: "negotiation_timing", body: `Hi ${name}! 👋\n\nNo rush! When would be ideal — 3 months, 6 months, end of year? We'll reach out then. (Prices only go up 📈)${sig}` };
-      return { type: "negotiation_day_5_generic", body: `Hi ${name}! 👋\n\nAny update on ${product}? Happy to help with payment, design, or family-visit options.${sig}` };
-    }
-    if (days === 10) return { type: "negotiation_day_10", body: `Hi ${name}! 👋\n\nFollowing up on ${product}. Anything I can clarify to help you decide?${sig}` };
-    if (days === 20) return { type: "negotiation_final", body: `Hi ${name}! 👋\n\nFinal check-in: anything I missed? Payment, design, delivery, warranty — let's finalize!${sig}` };
-  }
-  if (stage === "overdue" && days === 0) {
-    return { type: "overdue_reengage", body: `Hi ${name}! 👋\n\nWe miss you! ❤️\n\nWhat's holding you back?\nA) Not the right design\nB) Price still high\nC) Family not interested\nD) Better timing later\nE) Not interested anymore\n\nReply A–E and we'll help!${sig}` };
-  }
-  return null;
+function fillVars(body: string, lead: Lead): string {
+  const map: Record<string, string> = {
+    name: lead.customer_name,
+    phone: lead.customer_phone,
+    neighborhood: lead.neighborhood || "",
+    product: lead.product_viewed || lead.liked_product || "the piece you liked",
+    budget_range: lead.budget_range || "",
+    stated_need: lead.stated_need || "",
+    family_type: lead.family_situation || "",
+    amount: Number(lead.value_in_rupees || 0).toLocaleString("en-IN"),
+  };
+  return body.replace(/{{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*}}/g, (_, n) => map[n] ?? "");
 }
 
 Deno.serve(async (req) => {
@@ -75,15 +94,38 @@ Deno.serve(async (req) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, serviceKey);
 
-  const summary = { processed: 0, scored: 0, moved_to_overdue: 0, queued: 0, errors: 0 };
+  const summary = {
+    processed: 0,
+    scored: 0,
+    moved_to_overdue: 0,
+    journey_moved: 0,
+    auto_sent: 0,
+    alerts_created: 0,
+    queued: 0,
+    errors: 0,
+  };
   const now = new Date();
 
   try {
+    // Pre-load active templates by stage
+    const { data: tplRows } = await supabase
+      .from("message_templates")
+      .select("id, stage, body, title, sort_order")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true });
+
+    const templatesByStage = new Map<string, { id: string; body: string; title: string }[]>();
+    for (const t of tplRows ?? []) {
+      const arr = templatesByStage.get(t.stage) ?? [];
+      arr.push({ id: t.id, body: t.body, title: t.title });
+      templatesByStage.set(t.stage, arr);
+    }
+
     const { data: leads, error: fetchErr } = await supabase
       .from("leads")
-      .select("id, customer_name, customer_phone, status, liked_product, value_in_rupees, concern_type, stage_changed_at, created_at")
+      .select("id, customer_name, customer_phone, status, journey_stage, liked_product, product_viewed, neighborhood, budget_range, decision_timeline, family_situation, stated_need, value_in_rupees, concern_type, objection_type, barrier_addressed, response_time_minutes, last_message_at, last_response_at, last_payment_link_sent_at, stage_changed_at, journey_stage_changed_at, created_at, created_by, assigned_to")
       .is("deleted_at", null)
-      .in("status", ["new", "contacted", "follow_up", "negotiation", "overdue"])
+      .not("status", "in", "(won,lost,converted)")
       .limit(2000);
 
     if (fetchErr) throw fetchErr;
@@ -91,63 +133,166 @@ Deno.serve(async (req) => {
 
     for (const lead of (leads ?? []) as Lead[]) {
       try {
-        // 1. Refresh score
+        // 1. Refresh score + breakdown
         const { data: scoreData } = await supabase.rpc("calculate_conversion_probability", { _lead_id: lead.id });
-        if (typeof scoreData === "number") {
-          await supabase.from("leads").update({ conversion_probability: scoreData }).eq("id", lead.id);
-          summary.scored++;
+        const { data: breakdown } = await supabase.rpc("calculate_score_breakdown", { _lead_id: lead.id });
+        await supabase.from("leads").update({
+          conversion_probability: typeof scoreData === "number" ? scoreData : null,
+          score_breakdown: breakdown ?? {},
+        }).eq("id", lead.id);
+        summary.scored++;
+
+        // 2. Detect journey stage
+        const { data: detected } = await supabase.rpc("detect_journey_stage", { _lead_id: lead.id });
+        const newJourney = (detected as JourneyStage) ?? lead.journey_stage ?? "exploration";
+
+        if (newJourney !== lead.journey_stage) {
+          const mappedStatus = journeyToStatus(newJourney);
+          const updates: Record<string, unknown> = {
+            journey_stage: newJourney,
+            journey_stage_auto: true,
+          };
+          if (newJourney === "cold") updates.cold_at = now.toISOString();
+          if (mappedStatus && mappedStatus !== lead.status) {
+            updates.status = mappedStatus;
+          }
+          await supabase.from("leads").update(updates).eq("id", lead.id);
+          summary.journey_moved++;
+
+          // 3. Auto-send a stage template (first active one for that stage)
+          const tpls = templatesByStage.get(newJourney) ?? [];
+          if (tpls.length > 0) {
+            const tpl = tpls[0];
+            const body = fillVars(tpl.body, lead);
+
+            // Skip if same template sent in last 24h
+            const { data: recentSent } = await supabase
+              .from("lead_messages")
+              .select("id")
+              .eq("lead_id", lead.id)
+              .eq("template_id", tpl.id)
+              .gte("created_at", new Date(now.getTime() - 24 * 3600 * 1000).toISOString())
+              .limit(1);
+
+            if (!recentSent || recentSent.length === 0) {
+              // Insert as outbound (RLS bypassed via service role)
+              const { data: inserted } = await supabase.from("lead_messages").insert({
+                lead_id: lead.id,
+                message_type: "outbound",
+                message_body: body,
+                template_id: tpl.id,
+                template_used: tpl.title,
+                journey_stage: newJourney,
+                status: "pending",
+                created_by: lead.assigned_to || lead.created_by,
+              }).select("id").single();
+
+              // Fire send-whatsapp
+              try {
+                const sendRes = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceKey}` },
+                  body: JSON.stringify({ phone: lead.customer_phone, message: body }),
+                });
+                const ok = sendRes.ok;
+                if (inserted?.id) {
+                  await supabase.from("lead_messages").update({
+                    status: ok ? "sent" : "failed",
+                    sent_at: ok ? now.toISOString() : null,
+                  }).eq("id", inserted.id);
+                }
+                if (ok) summary.auto_sent++;
+              } catch (sendErr) {
+                if (inserted?.id) {
+                  await supabase.from("lead_messages").update({ status: "failed" }).eq("id", inserted.id);
+                }
+                console.error("send-whatsapp failed:", sendErr);
+              }
+            }
+          }
         }
 
-        // 2. Auto-move to OVERDUE
-        const daysInStage = daysBetween(lead.stage_changed_at ?? lead.created_at, now);
-        let effectiveStage: Stage = lead.status;
-        let effectiveDays = daysInStage;
+        // 4. Alerts
+        const alerts: { alert_type: string; severity: string; message: string }[] = [];
 
-        if ((lead.status === "follow_up" || lead.status === "negotiation") && daysInStage >= 30) {
-          await supabase.from("leads").update({ status: "overdue" }).eq("id", lead.id);
-          effectiveStage = "overdue";
-          effectiveDays = 0;
-          summary.moved_to_overdue++;
-          await supabase.from("automation_logs").insert({
-            lead_id: lead.id,
-            event_type: "stage_changed",
-            details: { from: lead.status, to: "overdue", reason: "auto_30_day_idle" },
-            success: true,
+        // Fast response: outbound message > 30 min ago, no inbound after
+        if (lead.last_message_at && minsBetween(lead.last_message_at, now) > 30 &&
+            (!lead.last_response_at || new Date(lead.last_response_at) < new Date(lead.last_message_at))) {
+          alerts.push({
+            alert_type: "fast_response",
+            severity: "warning",
+            message: `${lead.customer_name} — fast response needed (${minsBetween(lead.last_message_at, now)}m)`,
           });
         }
 
-        // 3. Queue stage-based message
-        const tpl = buildMessage(lead, effectiveStage, effectiveDays, lead.concern_type);
-        if (tpl) {
-          // Skip if same message_type already queued/sent in last 24h
-          const { data: recent } = await supabase
-            .from("auto_nurture_messages")
+        // Site visit needed: in reassurance, no recent inbound
+        if (newJourney === "reassurance" && (!lead.last_response_at || daysBetween(lead.last_response_at, now) >= 2)) {
+          alerts.push({
+            alert_type: "site_visit_needed",
+            severity: "info",
+            message: `Schedule site visit or call for ${lead.customer_name}`,
+          });
+        }
+
+        // Payment link unread: sent 24h+ ago with no response
+        if (lead.last_payment_link_sent_at && daysBetween(lead.last_payment_link_sent_at, now) >= 1 &&
+            (!lead.last_response_at || new Date(lead.last_response_at) < new Date(lead.last_payment_link_sent_at))) {
+          alerts.push({
+            alert_type: "payment_unread",
+            severity: "warning",
+            message: `Payment link unread by ${lead.customer_name} — send a gentle reminder`,
+          });
+        }
+
+        // Cold re-engagement
+        if (newJourney === "cold") {
+          alerts.push({
+            alert_type: "cold_reengage",
+            severity: "info",
+            message: `${lead.customer_name} went cold — try a "we miss you" message`,
+          });
+        }
+
+        // Objection unhandled
+        if (lead.objection_type && !lead.barrier_addressed) {
+          alerts.push({
+            alert_type: "objection_unhandled",
+            severity: "warning",
+            message: `Address ${lead.objection_type} objection for ${lead.customer_name}`,
+          });
+        }
+
+        for (const a of alerts) {
+          // Only one open alert of each type per lead
+          const { data: existing } = await supabase
+            .from("lead_alerts")
             .select("id")
             .eq("lead_id", lead.id)
-            .eq("message_type", tpl.type)
-            .gte("created_at", new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString())
+            .eq("alert_type", a.alert_type)
+            .eq("resolved", false)
             .limit(1);
-
-          if (!recent || recent.length === 0) {
-            await supabase.from("auto_nurture_messages").insert({
-              lead_id: lead.id,
-              trigger_stage: effectiveStage,
-              days_in_stage: effectiveDays,
-              concern_type: lead.concern_type,
-              message_type: tpl.type,
-              message_body: tpl.body,
-              status: "pending",
-              scheduled_for: now.toISOString(),
-            });
-            summary.queued++;
+          if (!existing || existing.length === 0) {
+            await supabase.from("lead_alerts").insert({ lead_id: lead.id, ...a });
+            summary.alerts_created++;
           }
+        }
+
+        if (alerts.length > 0) {
+          await supabase.from("leads").update({ last_alert_at: now.toISOString() }).eq("id", lead.id);
+        }
+
+        // 5. Legacy: auto-move idle FOLLOW_UP/NEGOTIATION → OVERDUE
+        const daysInStage = daysBetween(lead.stage_changed_at ?? lead.created_at, now);
+        if ((lead.status === "follow_up" || lead.status === "negotiation") && daysInStage >= 30) {
+          await supabase.from("leads").update({ status: "overdue", journey_stage: "cold", journey_stage_auto: true }).eq("id", lead.id);
+          summary.moved_to_overdue++;
         }
       } catch (e) {
         summary.errors++;
         await supabase.from("automation_logs").insert({
           lead_id: lead.id,
           event_type: "error",
-          details: { stage: lead.status },
+          details: { stage: lead.status, journey: lead.journey_stage },
           success: false,
           error_message: (e as Error).message,
         });
