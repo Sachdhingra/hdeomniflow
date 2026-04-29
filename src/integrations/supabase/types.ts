@@ -343,6 +343,75 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_alerts: {
+        Row: {
+          alert_type: string
+          created_at: string
+          id: string
+          lead_id: string
+          message: string
+          resolved: boolean
+          resolved_at: string | null
+          resolved_by: string | null
+          severity: string
+        }
+        Insert: {
+          alert_type: string
+          created_at?: string
+          id?: string
+          lead_id: string
+          message: string
+          resolved?: boolean
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: string
+        }
+        Update: {
+          alert_type?: string
+          created_at?: string
+          id?: string
+          lead_id?: string
+          message?: string
+          resolved?: boolean
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: string
+        }
+        Relationships: []
+      }
+      lead_journey_history: {
+        Row: {
+          auto: boolean
+          changed_at: string
+          changed_by: string | null
+          from_stage: string | null
+          id: string
+          lead_id: string
+          reason: string | null
+          to_stage: string
+        }
+        Insert: {
+          auto?: boolean
+          changed_at?: string
+          changed_by?: string | null
+          from_stage?: string | null
+          id?: string
+          lead_id: string
+          reason?: string | null
+          to_stage: string
+        }
+        Update: {
+          auto?: boolean
+          changed_at?: string
+          changed_by?: string | null
+          from_stage?: string | null
+          id?: string
+          lead_id?: string
+          reason?: string | null
+          to_stage?: string
+        }
+        Relationships: []
+      }
       lead_messages: {
         Row: {
           created_at: string
@@ -453,6 +522,7 @@ export type Database = {
           barrier_addressed: boolean
           budget_range: string | null
           category: Database["public"]["Enums"]["lead_category"]
+          cold_at: string | null
           concern_type: string | null
           conversion_probability: number | null
           created_at: string
@@ -474,8 +544,13 @@ export type Database = {
           family_visit_date: string | null
           has_family: boolean | null
           id: string
+          journey_stage: string | null
+          journey_stage_auto: boolean
+          journey_stage_changed_at: string | null
+          last_alert_at: string | null
           last_follow_up: string
           last_message_at: string | null
+          last_payment_link_sent_at: string | null
           last_response_at: string | null
           liked_product: string | null
           messages_sent: number
@@ -490,6 +565,7 @@ export type Database = {
           product_viewed: string | null
           products_viewed: Json | null
           response_time_minutes: number | null
+          score_breakdown: Json | null
           source: string
           source_type: string | null
           stage_changed_at: string | null
@@ -507,6 +583,7 @@ export type Database = {
           barrier_addressed?: boolean
           budget_range?: string | null
           category: Database["public"]["Enums"]["lead_category"]
+          cold_at?: string | null
           concern_type?: string | null
           conversion_probability?: number | null
           created_at?: string
@@ -528,8 +605,13 @@ export type Database = {
           family_visit_date?: string | null
           has_family?: boolean | null
           id?: string
+          journey_stage?: string | null
+          journey_stage_auto?: boolean
+          journey_stage_changed_at?: string | null
+          last_alert_at?: string | null
           last_follow_up?: string
           last_message_at?: string | null
+          last_payment_link_sent_at?: string | null
           last_response_at?: string | null
           liked_product?: string | null
           messages_sent?: number
@@ -544,6 +626,7 @@ export type Database = {
           product_viewed?: string | null
           products_viewed?: Json | null
           response_time_minutes?: number | null
+          score_breakdown?: Json | null
           source?: string
           source_type?: string | null
           stage_changed_at?: string | null
@@ -561,6 +644,7 @@ export type Database = {
           barrier_addressed?: boolean
           budget_range?: string | null
           category?: Database["public"]["Enums"]["lead_category"]
+          cold_at?: string | null
           concern_type?: string | null
           conversion_probability?: number | null
           created_at?: string
@@ -582,8 +666,13 @@ export type Database = {
           family_visit_date?: string | null
           has_family?: boolean | null
           id?: string
+          journey_stage?: string | null
+          journey_stage_auto?: boolean
+          journey_stage_changed_at?: string | null
+          last_alert_at?: string | null
           last_follow_up?: string
           last_message_at?: string | null
+          last_payment_link_sent_at?: string | null
           last_response_at?: string | null
           liked_product?: string | null
           messages_sent?: number
@@ -598,6 +687,7 @@ export type Database = {
           product_viewed?: string | null
           products_viewed?: Json | null
           response_time_minutes?: number | null
+          score_breakdown?: Json | null
           source?: string
           source_type?: string | null
           stage_changed_at?: string | null
@@ -1110,6 +1200,7 @@ export type Database = {
         Args: { _lead_id: string }
         Returns: number
       }
+      calculate_score_breakdown: { Args: { _lead_id: string }; Returns: Json }
       check_customer_dues: {
         Args: { p_customer_phone: string }
         Returns: {
@@ -1119,6 +1210,7 @@ export type Database = {
           total_pending: number
         }[]
       }
+      detect_journey_stage: { Args: { _lead_id: string }; Returns: string }
       get_dashboard_summary: { Args: never; Returns: Json }
       get_pending_approvals_count: { Args: never; Returns: number }
       get_user_role: {
