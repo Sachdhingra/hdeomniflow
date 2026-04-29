@@ -14,6 +14,41 @@ Deno.serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  // Auth: shared internal secret (cron) OR authenticated admin user
+  const internalSecret = Deno.env.get("DAILY_SUMMARY_SECRET");
+  const headerSecret = req.headers.get("x-internal-secret");
+  let authorized = false;
+
+  if (internalSecret && headerSecret && headerSecret === internalSecret) {
+    authorized = true;
+  } else {
+    const authHeader = req.headers.get("Authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+      const token = authHeader.replace("Bearer ", "");
+      const userClient = createClient(supabaseUrl, anonKey, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: claimsData } = await userClient.auth.getClaims(token);
+      const userId = claimsData?.claims?.sub;
+      if (userId) {
+        const adminClient = createClient(supabaseUrl, serviceRoleKey);
+        const { data: isAdmin } = await adminClient.rpc("has_role", {
+          _user_id: userId,
+          _role: "admin",
+        });
+        if (isAdmin === true) authorized = true;
+      }
+    }
+  }
+
+  if (!authorized) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   try {
     const supabase = createClient(supabaseUrl, serviceRoleKey);
     const today = new Date().toISOString().split("T")[0];
