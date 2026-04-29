@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, TrendingDown, MessageSquare, MapPin, Package, Users } from "lucide-react";
 import { toast } from "sonner";
-import { STAGE_META, type JourneyStage } from "@/lib/messageTemplates";
+import { type JourneyStage } from "@/lib/messageTemplates";
 
 const STAGE_ORDER: (JourneyStage | "cold")[] = ["problem", "exploration", "evaluation", "reassurance", "decision", "cold"];
 const STAGE_LABELS: Record<string, string> = {

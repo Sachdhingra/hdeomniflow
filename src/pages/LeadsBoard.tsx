@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import LeadDetailsDrawer from "@/components/LeadDetailsDrawer";
 import SendTemplateDialog from "@/components/SendTemplateDialog";
 import { neighborhoodColor, responseTimeColor, formatRelativeTime, PREFERRED_STYLES, BUDGET_RANGES } from "@/lib/leadConstants";
-import { STAGE_META, type JourneyStage, statusToStage } from "@/lib/messageTemplates";
+import { type JourneyStage, statusToStage } from "@/lib/messageTemplates";
 
 type LeadAlert = { id: string; lead_id: string; alert_type: string; severity: string; message: string };
 
