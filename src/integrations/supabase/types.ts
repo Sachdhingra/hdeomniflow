@@ -1225,6 +1225,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      verify_daily_report_secret: { Args: { _token: string }; Returns: boolean }
     }
     Enums: {
       app_role:
