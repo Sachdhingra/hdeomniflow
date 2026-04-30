@@ -1196,6 +1196,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _invoke_daily_excel_report: { Args: never; Returns: number }
       calculate_conversion_probability: {
         Args: { _lead_id: string }
         Returns: number
