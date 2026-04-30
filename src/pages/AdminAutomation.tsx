@@ -148,13 +148,7 @@ const AdminAutomation = () => {
           </Button>
         </div>
       </div>
-          <p className="text-sm text-muted-foreground">Autonomous nurture engine — daily scoring, stage moves, and message queue.</p>
-        </div>
-        <Button onClick={runNow} disabled={running} className="gradient-primary gap-2">
-          {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlayCircle className="w-4 h-4" />}
-          Run engine now
-        </Button>
-      </div>
+
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card><CardContent className="p-4">
