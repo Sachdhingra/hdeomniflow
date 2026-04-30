@@ -353,9 +353,14 @@ Deno.serve(async (req) => {
   const headerSecret = req.headers.get("x-internal-secret");
   let authorized = false;
 
-  if (DAILY_REPORT_SECRET && headerSecret && headerSecret === DAILY_REPORT_SECRET) {
+  if (headerSecret) {
+    const { data: ok } = await supabase.rpc("verify_daily_report_secret", { _token: headerSecret });
+    if (ok === true) authorized = true;
+  }
+  if (!authorized && DAILY_REPORT_SECRET && headerSecret && headerSecret === DAILY_REPORT_SECRET) {
     authorized = true;
-  } else {
+  }
+  if (!authorized) {
     const authHeader = req.headers.get("Authorization");
     if (authHeader?.startsWith("Bearer ")) {
       const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
