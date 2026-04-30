@@ -113,6 +113,19 @@ const AdminAutomation = () => {
     }
   };
 
+  const sendReportNow = async () => {
+    setRunning(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("daily-excel-report");
+      if (error) throw error;
+      toast.success(`Daily report sent: ${data?.sent ?? 0}/${data?.total ?? 0} recipients`);
+    } catch (e: any) {
+      toast.error(e.message || "Report failed");
+    } finally {
+      setRunning(false);
+    }
+  };
+
   if (loading) {
     return <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
   }
@@ -122,6 +135,19 @@ const AdminAutomation = () => {
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold">Automation Monitor</h1>
+          <p className="text-sm text-muted-foreground">Autonomous nurture engine — daily scoring, stage moves, and message queue.</p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <Button onClick={sendReportNow} disabled={running} variant="outline" className="gap-2">
+            {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
+            Send daily report now
+          </Button>
+          <Button onClick={runNow} disabled={running} className="gradient-primary gap-2">
+            {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlayCircle className="w-4 h-4" />}
+            Run engine now
+          </Button>
+        </div>
+      </div>
           <p className="text-sm text-muted-foreground">Autonomous nurture engine — daily scoring, stage moves, and message queue.</p>
         </div>
         <Button onClick={runNow} disabled={running} className="gradient-primary gap-2">
