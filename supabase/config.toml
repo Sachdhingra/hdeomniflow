@@ -2,3 +2,6 @@ project_id = "cdrgbhnntonyofqkhzpm"
 
 [functions.nurture-engine]
 verify_jwt = false
+
+[functions.interakt-webhook]
+verify_jwt = false
