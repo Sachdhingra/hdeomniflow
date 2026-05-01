@@ -58,7 +58,6 @@ async function sendViaInterakt(params: {
     countryCode: `+${countryCode}`,
     phoneNumber,
     callbackData: "omniflow",
-    fullPhoneNumber: `+${countryCode}${phoneNumber}`,
   };
 
   if (params.user_name) {
