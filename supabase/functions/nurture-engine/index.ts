@@ -108,8 +108,8 @@ Deno.serve(async (req) => {
       const userClient = createClient(supabaseUrl, anonKey, {
         global: { headers: { Authorization: authHeader } },
       });
-      const { data: claimsData } = await userClient.auth.getClaims(token);
-      const userId = claimsData?.claims?.sub;
+      const { data: userData } = await userClient.auth.getUser(token);
+      const userId = userData?.user?.id;
       if (userId) {
         const adminClient = createClient(supabaseUrl, serviceKey);
         const { data: isAdmin } = await adminClient.rpc("has_role", {
