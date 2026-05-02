@@ -343,6 +343,96 @@ export type Database = {
         }
         Relationships: []
       }
+      godrej_products: {
+        Row: {
+          active: boolean
+          category: string
+          created_at: string
+          description: string | null
+          id: string
+          image_url: string | null
+          name: string
+          price: string | null
+          price_numeric: number | null
+          product_code: string | null
+          product_url: string
+          scraped_at: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          category: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          name: string
+          price?: string | null
+          price_numeric?: number | null
+          product_code?: string | null
+          product_url: string
+          scraped_at?: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          category?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          name?: string
+          price?: string | null
+          price_numeric?: number | null
+          product_code?: string | null
+          product_url?: string
+          scraped_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      godrej_scrape_runs: {
+        Row: {
+          categories_processed: number
+          details: Json | null
+          error_message: string | null
+          finished_at: string | null
+          id: string
+          mode: string
+          products_skipped: number
+          products_upserted: number
+          started_at: string
+          status: string
+          urls_discovered: number
+        }
+        Insert: {
+          categories_processed?: number
+          details?: Json | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          mode?: string
+          products_skipped?: number
+          products_upserted?: number
+          started_at?: string
+          status?: string
+          urls_discovered?: number
+        }
+        Update: {
+          categories_processed?: number
+          details?: Json | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          mode?: string
+          products_skipped?: number
+          products_upserted?: number
+          started_at?: string
+          status?: string
+          urls_discovered?: number
+        }
+        Relationships: []
+      }
       lead_alerts: {
         Row: {
           alert_type: string
@@ -1193,7 +1283,23 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      unified_products: {
+        Row: {
+          active: boolean | null
+          category: string | null
+          description: string | null
+          id: string | null
+          image_url: string | null
+          name: string | null
+          price: string | null
+          price_numeric: number | null
+          product_code: string | null
+          product_url: string | null
+          scraped_at: string | null
+          source: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       _invoke_daily_excel_report: { Args: never; Returns: number }
