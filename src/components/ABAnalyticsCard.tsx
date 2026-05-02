@@ -29,7 +29,7 @@ const ABAnalyticsCard = () => {
         .from("template_variant_performance" as any)
         .select("*")
         .order("template_title");
-      setRows((data as Row[]) || []);
+      setRows(((data as unknown) as Row[]) || []);
       setLoading(false);
     })();
   }, [user]);
