@@ -1,0 +1,1 @@
+ALTER VIEW public.unified_products SET (security_invoker = true);

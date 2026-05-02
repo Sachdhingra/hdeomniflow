@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, AlertTriangle, UserCheck } from "lucide-react";
 import { toast } from "sonner";
+import GodrejProductPicker from "@/components/GodrejProductPicker";
 import {
   DEHRADUN_NEIGHBORHOODS, PREFERRED_STYLES, FAMILY_SITUATIONS,
   DECISION_TIMELINES, BUDGET_RANGES, STATED_NEEDS,
@@ -206,7 +207,11 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
             </div>
             <div className="space-y-1.5">
               <Label>Product Viewed</Label>
-              <Input value={form.productViewed} onChange={e => setForm(f => ({ ...f, productViewed: e.target.value }))} placeholder="e.g. L-shape sofa" />
+              <GodrejProductPicker
+                value={form.productViewed}
+                onChange={(text) => setForm(f => ({ ...f, productViewed: text }))}
+                placeholder="e.g. L-shape sofa"
+              />
             </div>
           </div>
           {form.neighborhood === "__other__" && (
