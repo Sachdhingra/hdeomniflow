@@ -504,52 +504,73 @@ export type Database = {
       }
       lead_messages: {
         Row: {
+          concern: string | null
           created_at: string
           created_by: string | null
           delivered_at: string | null
           id: string
+          intent: string | null
           journey_stage: string | null
           lead_id: string
+          length_category: string | null
           message_body: string
+          message_kind: string | null
           message_type: string
           read_at: string | null
           response_received: boolean
           sent_at: string
+          sentiment: string | null
+          sequence_number: number | null
           status: string
           template_id: string | null
           template_used: string | null
+          variant: string | null
         }
         Insert: {
+          concern?: string | null
           created_at?: string
           created_by?: string | null
           delivered_at?: string | null
           id?: string
+          intent?: string | null
           journey_stage?: string | null
           lead_id: string
+          length_category?: string | null
           message_body: string
+          message_kind?: string | null
           message_type: string
           read_at?: string | null
           response_received?: boolean
           sent_at?: string
+          sentiment?: string | null
+          sequence_number?: number | null
           status?: string
           template_id?: string | null
           template_used?: string | null
+          variant?: string | null
         }
         Update: {
+          concern?: string | null
           created_at?: string
           created_by?: string | null
           delivered_at?: string | null
           id?: string
+          intent?: string | null
           journey_stage?: string | null
           lead_id?: string
+          length_category?: string | null
           message_body?: string
+          message_kind?: string | null
           message_type?: string
           read_at?: string | null
           response_received?: boolean
           sent_at?: string
+          sentiment?: string | null
+          sequence_number?: number | null
           status?: string
           template_id?: string | null
           template_used?: string | null
+          variant?: string | null
         }
         Relationships: [
           {
@@ -614,6 +635,7 @@ export type Database = {
           category: Database["public"]["Enums"]["lead_category"]
           cold_at: string | null
           concern_type: string | null
+          conversation_message_count: number
           conversion_probability: number | null
           created_at: string
           created_by: string
@@ -624,6 +646,7 @@ export type Database = {
           customer_email: string | null
           customer_name: string
           customer_phone: string
+          dead_lead: boolean
           decision_timeline: string | null
           deleted_at: string | null
           deleted_by: string | null
@@ -639,11 +662,16 @@ export type Database = {
           journey_stage_changed_at: string | null
           last_alert_at: string | null
           last_follow_up: string
+          last_inbound_concern: string | null
+          last_inbound_intent: string | null
+          last_inbound_sentiment: string | null
           last_message_at: string | null
           last_payment_link_sent_at: string | null
+          last_recommended_message_type: string | null
           last_response_at: string | null
           liked_product: string | null
           messages_sent: number
+          needs_personal_call: boolean
           neighborhood: string | null
           next_action_suggested: string | null
           next_follow_up_date: string | null
@@ -661,6 +689,7 @@ export type Database = {
           stage_changed_at: string | null
           stated_need: string | null
           status: Database["public"]["Enums"]["lead_status"]
+          unanswered_outbound_count: number
           updated_at: string
           updated_by: string
           value_in_rupees: number
@@ -675,6 +704,7 @@ export type Database = {
           category: Database["public"]["Enums"]["lead_category"]
           cold_at?: string | null
           concern_type?: string | null
+          conversation_message_count?: number
           conversion_probability?: number | null
           created_at?: string
           created_by: string
@@ -685,6 +715,7 @@ export type Database = {
           customer_email?: string | null
           customer_name: string
           customer_phone: string
+          dead_lead?: boolean
           decision_timeline?: string | null
           deleted_at?: string | null
           deleted_by?: string | null
@@ -700,11 +731,16 @@ export type Database = {
           journey_stage_changed_at?: string | null
           last_alert_at?: string | null
           last_follow_up?: string
+          last_inbound_concern?: string | null
+          last_inbound_intent?: string | null
+          last_inbound_sentiment?: string | null
           last_message_at?: string | null
           last_payment_link_sent_at?: string | null
+          last_recommended_message_type?: string | null
           last_response_at?: string | null
           liked_product?: string | null
           messages_sent?: number
+          needs_personal_call?: boolean
           neighborhood?: string | null
           next_action_suggested?: string | null
           next_follow_up_date?: string | null
@@ -722,6 +758,7 @@ export type Database = {
           stage_changed_at?: string | null
           stated_need?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
+          unanswered_outbound_count?: number
           updated_at?: string
           updated_by: string
           value_in_rupees?: number
@@ -736,6 +773,7 @@ export type Database = {
           category?: Database["public"]["Enums"]["lead_category"]
           cold_at?: string | null
           concern_type?: string | null
+          conversation_message_count?: number
           conversion_probability?: number | null
           created_at?: string
           created_by?: string
@@ -746,6 +784,7 @@ export type Database = {
           customer_email?: string | null
           customer_name?: string
           customer_phone?: string
+          dead_lead?: boolean
           decision_timeline?: string | null
           deleted_at?: string | null
           deleted_by?: string | null
@@ -761,11 +800,16 @@ export type Database = {
           journey_stage_changed_at?: string | null
           last_alert_at?: string | null
           last_follow_up?: string
+          last_inbound_concern?: string | null
+          last_inbound_intent?: string | null
+          last_inbound_sentiment?: string | null
           last_message_at?: string | null
           last_payment_link_sent_at?: string | null
+          last_recommended_message_type?: string | null
           last_response_at?: string | null
           liked_product?: string | null
           messages_sent?: number
+          needs_personal_call?: boolean
           neighborhood?: string | null
           next_action_suggested?: string | null
           next_follow_up_date?: string | null
@@ -783,6 +827,7 @@ export type Database = {
           stage_changed_at?: string | null
           stated_need?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
+          unanswered_outbound_count?: number
           updated_at?: string
           updated_by?: string
           value_in_rupees?: number
@@ -833,6 +878,50 @@ export type Database = {
           status?: string
         }
         Relationships: []
+      }
+      message_template_variants: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          is_active: boolean
+          reply_count: number
+          sent_count: number
+          template_id: string
+          updated_at: string
+          variant_label: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          reply_count?: number
+          sent_count?: number
+          template_id: string
+          updated_at?: string
+          variant_label: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          reply_count?: number
+          sent_count?: number
+          template_id?: string
+          updated_at?: string
+          variant_label?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_template_variants_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "message_templates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       message_templates: {
         Row: {
@@ -1283,6 +1372,28 @@ export type Database = {
       }
     }
     Views: {
+      template_variant_performance: {
+        Row: {
+          is_active: boolean | null
+          reply_count: number | null
+          reply_rate_pct: number | null
+          sent_count: number | null
+          stage: string | null
+          template_id: string | null
+          template_title: string | null
+          variant_id: string | null
+          variant_label: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_template_variants_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "message_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       unified_products: {
         Row: {
           active: boolean | null
@@ -1303,6 +1414,8 @@ export type Database = {
     }
     Functions: {
       _invoke_daily_excel_report: { Args: never; Returns: number }
+      bump_variant_reply: { Args: { _variant_id: string }; Returns: undefined }
+      bump_variant_sent: { Args: { _variant_id: string }; Returns: undefined }
       calculate_conversion_probability: {
         Args: { _lead_id: string }
         Returns: number
