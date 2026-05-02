@@ -8,6 +8,7 @@ import { Phone, Mail, Calendar, Package, History, Sparkles, MapPin, MessageCircl
 import type { Lead, LeadStatus } from "@/contexts/DataContext";
 import { LEAD_CATEGORIES } from "@/contexts/DataContext";
 import { neighborhoodColor, responseTimeColor, formatRelativeTime, PREFERRED_STYLES, BUDGET_RANGES, FAMILY_SITUATIONS, DECISION_TIMELINES, STATED_NEEDS } from "@/lib/leadConstants";
+import ConversationProgress from "@/components/ConversationProgress";
 
 interface LeadMessage {
   id: string;
@@ -16,6 +17,12 @@ interface LeadMessage {
   status: string;
   sent_at: string;
   template_used: string | null;
+  message_kind?: string | null;
+  sentiment?: string | null;
+  intent?: string | null;
+  concern?: string | null;
+  variant?: string | null;
+  sequence_number?: number | null;
 }
 
 interface StageHistoryRow {
@@ -61,7 +68,7 @@ const LeadDetailsDrawer = ({ lead, open, onOpenChange }: Props) => {
           .order("changed_at", { ascending: false }),
         supabase.rpc("calculate_conversion_probability", { _lead_id: lead.id }),
         supabase.from("lead_messages")
-          .select("id, message_type, message_body, status, sent_at, template_used")
+          .select("id, message_type, message_body, status, sent_at, template_used, message_kind, sentiment, intent, concern, variant, sequence_number")
           .eq("lead_id", lead.id)
           .order("sent_at", { ascending: false })
           .limit(20),
