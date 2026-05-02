@@ -116,6 +116,8 @@ const AdminMessageTemplates = () => {
         </Button>
       </div>
 
+      <ABAnalyticsCard />
+
       {loading ? (
         <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
       ) : (
