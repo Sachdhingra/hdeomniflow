@@ -244,6 +244,17 @@ const LeadDetailsDrawer = ({ lead, open, onOpenChange }: Props) => {
             )}
           </section>
 
+          <Separator />
+
+          <ConversationProgress
+            messages={messages}
+            unansweredCount={(l.unanswered_outbound_count as number) ?? 0}
+            needsPersonalCall={Boolean(l.needs_personal_call)}
+            deadLead={Boolean(l.dead_lead)}
+            lastInboundSentiment={(l.last_inbound_sentiment as string) ?? null}
+            lastInboundConcern={(l.last_inbound_concern as string) ?? null}
+            lastRecommendedKind={(l.last_recommended_message_type as string) ?? null}
+          />
 
           {(products.length > 0 || lead.liked_product || lead.price_sensitivity) && (
             <>
