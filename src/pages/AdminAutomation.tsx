@@ -10,6 +10,7 @@ import { toast } from "sonner";
 type StageRow = { stage: string; count: number; avg_days: number };
 type LogRow = { id: string; event_type: string; success: boolean; details: any; error_message: string | null; executed_at: string; lead_id: string | null };
 type MsgRow = { id: string; lead_id: string; message_type: string; trigger_stage: string; status: string; created_at: string; sent_at: string | null; error_message: string | null };
+type FailRow = { id: string; lead_id: string | null; error_message: string | null; executed_at: string; details: any };
 
 const STAGES = ["new", "contacted", "follow_up", "negotiation", "overdue"] as const;
 type ActiveStage = typeof STAGES[number];
@@ -21,6 +22,7 @@ const AdminAutomation = () => {
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [msgs, setMsgs] = useState<MsgRow[]>([]);
   const [counts, setCounts] = useState({ pending: 0, sent_today: 0, failed_today: 0, queued_today: 0 });
+  const [failures, setFailures] = useState<FailRow[]>([]);
 
   const load = async () => {
     setLoading(true);
@@ -64,6 +66,14 @@ const AdminAutomation = () => {
         .order("created_at", { ascending: false })
         .limit(50);
       setMsgs((msgsData ?? []) as MsgRow[]);
+
+      const { data: failData } = await supabase
+        .from("automation_logs")
+        .select("id, lead_id, error_message, executed_at, details")
+        .eq("event_type", "send_failed")
+        .order("executed_at", { ascending: false })
+        .limit(25);
+      setFailures((failData ?? []) as FailRow[]);
 
       const { count: pendingCount } = await supabase
         .from("auto_nurture_messages")
@@ -202,6 +212,33 @@ const AdminAutomation = () => {
                 {l.error_message && <p className="text-xs text-destructive">{l.error_message}</p>}
                 {l.details && <pre className="text-[11px] text-muted-foreground truncate">{JSON.stringify(l.details)}</pre>}
               </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-destructive" />
+            Recent send failures
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 max-h-96 overflow-y-auto">
+          {failures.length === 0 && <p className="text-sm text-muted-foreground">No send failures 🎉</p>}
+          {failures.map(f => (
+            <div key={f.id} className="border-l-2 border-destructive pl-3 py-1.5">
+              <div className="flex items-start justify-between gap-2 flex-wrap">
+                <p className="text-sm font-medium">
+                  {f.details?.customer_name || "Unknown lead"}
+                  {f.details?.phone && <span className="text-xs text-muted-foreground ml-2">{f.details.phone}</span>}
+                </p>
+                <p className="text-[11px] text-muted-foreground">{new Date(f.executed_at).toLocaleString()}</p>
+              </div>
+              <p className="text-xs text-destructive break-words">{f.error_message || "Unknown error"}</p>
+              {f.details?.template && (
+                <p className="text-[11px] text-muted-foreground">Template: {f.details.template}</p>
+              )}
             </div>
           ))}
         </CardContent>
