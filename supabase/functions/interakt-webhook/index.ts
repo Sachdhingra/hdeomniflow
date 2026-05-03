@@ -1,20 +1,40 @@
-// Public webhook endpoint that receives Interakt events:
-//  - Inbound customer messages (analysed for sentiment/concern/intent)
-//  - Outbound delivery / read status updates
+// Webhook endpoint for Meta Cloud API (WhatsApp Business).
+// Handles:
+//   GET  — hub verification challenge required by Meta when registering a webhook
+//   POST — inbound customer messages and delivery/read status updates
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 import { analyzeInbound } from "../_shared/conversation-analysis.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-interakt-secret",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-hub-signature-256",
 };
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const WEBHOOK_SECRET = Deno.env.get("INTERAKT_WEBHOOK_SECRET");
+// Set META_WEBHOOK_VERIFY_TOKEN to the same token you enter in Meta's webhook settings.
+const META_WEBHOOK_VERIFY_TOKEN = Deno.env.get("META_WEBHOOK_VERIFY_TOKEN");
+// Set META_APP_SECRET to your Meta App secret for payload signature verification.
+const META_APP_SECRET = Deno.env.get("META_APP_SECRET");
 
 function normalizePhone(raw: string | undefined | null): string {
   return (raw || "").replace(/\D/g, "");
+}
+
+async function verifyMetaSignature(rawBody: string, sigHeader: string | null): Promise<boolean> {
+  if (!META_APP_SECRET) return true; // verification skipped when secret not configured
+  if (!sigHeader?.startsWith("sha256=")) return false;
+  const expected = sigHeader.slice(7); // strip "sha256="
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(META_APP_SECRET),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody));
+  const actual = Array.from(new Uint8Array(mac)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  return actual === expected;
 }
 
 async function findLeadByPhone(supabase: any, phone: string): Promise<{ id: string; sequence: number } | null> {
@@ -34,111 +54,165 @@ async function findLeadByPhone(supabase: any, phone: string): Promise<{ id: stri
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-  if (WEBHOOK_SECRET) {
-    const got = req.headers.get("x-interakt-secret");
-    if (got !== WEBHOOK_SECRET) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+  // Meta webhook verification: GET with hub.mode=subscribe
+  if (req.method === "GET") {
+    const url = new URL(req.url);
+    const mode = url.searchParams.get("hub.mode");
+    const token = url.searchParams.get("hub.verify_token");
+    const challenge = url.searchParams.get("hub.challenge");
+    if (mode === "subscribe" && META_WEBHOOK_VERIFY_TOKEN && token === META_WEBHOOK_VERIFY_TOKEN && challenge) {
+      return new Response(challenge, { status: 200 });
     }
+    return new Response("Forbidden", { status: 403 });
   }
 
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
   try {
-    const payload = await req.json();
-    const eventType: string = payload.type || payload.event || "unknown";
-    const data = payload.data || payload;
+    const rawBody = await req.text();
 
-    const phone = normalizePhone(
-      data.customer?.phone_number || data.phone_number || data.from || data.recipient || data.to,
-    );
-
-    if (eventType === "message_received" || eventType === "message" || data.message) {
-      const text =
-        data.message?.message || data.message?.text || data.text || data.body || "[non-text message]";
-
-      const lead = await findLeadByPhone(supabase, phone);
-      if (lead) {
-        const analysis = analyzeInbound(String(text));
-        const seq = (lead.sequence ?? 0) + 1;
-
-        await supabase.from("lead_messages").insert({
-          lead_id: lead.id,
-          message_type: "inbound",
-          message_body: String(text).slice(0, 4000),
-          status: "delivered",
-          sent_at: new Date().toISOString(),
-          response_received: true,
-          sentiment: analysis.sentiment,
-          intent: analysis.intent,
-          concern: analysis.concern,
-          length_category: analysis.length_category,
-          sequence_number: seq,
-        });
-
-        // Update lead conversation context. An inbound = customer responded, so
-        // reset the unanswered counter and "needs personal call" flag.
-        await supabase.from("leads").update({
-          last_inbound_sentiment: analysis.sentiment,
-          last_inbound_concern: analysis.concern,
-          last_inbound_intent: analysis.intent,
-          conversation_message_count: seq,
-          unanswered_outbound_count: 0,
-          needs_personal_call: false,
-          dead_lead: false,
-          // store concern in the existing column too so legacy UI still surfaces it
-          concern_type: analysis.concern ?? undefined,
-          // mark objection as addressed = false if they're now objecting
-          ...(analysis.intent === "objection" ? { barrier_addressed: false, objection_type: analysis.concern ?? "general" } : {}),
-        }).eq("id", lead.id);
-
-        // Increment reply_count on the most recent outbound variant (A/B tracking)
-        const { data: lastOut } = await supabase
-          .from("lead_messages")
-          .select("id, variant, template_id")
-          .eq("lead_id", lead.id)
-          .eq("message_type", "outbound")
-          .order("sent_at", { ascending: false })
-          .limit(1);
-        if (lastOut && lastOut.length && lastOut[0].variant && lastOut[0].template_id) {
-          const { data: v } = await supabase
-            .from("message_template_variants")
-            .select("id")
-            .eq("template_id", lastOut[0].template_id)
-            .eq("variant_label", lastOut[0].variant)
-            .maybeSingle();
-          if (v?.id) await supabase.rpc("bump_variant_reply", { _variant_id: v.id });
-          await supabase.from("lead_messages").update({ response_received: true }).eq("id", lastOut[0].id);
-        }
-      } else {
-        await supabase.from("automation_logs").insert({
-          event_type: "interakt_inbound_unmatched",
-          success: true,
-          details: { phone, text: String(text).slice(0, 500) },
+    // Verify Meta payload signature when APP_SECRET is configured
+    if (META_APP_SECRET) {
+      const sig = req.headers.get("x-hub-signature-256");
+      if (!(await verifyMetaSignature(rawBody, sig))) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-    } else if (
-      eventType === "message_delivered" || eventType === "message_read" ||
-      eventType === "message_sent" || eventType === "message_failed"
-    ) {
-      const lead = await findLeadByPhone(supabase, phone);
-      if (lead) {
-        const updates: Record<string, unknown> = {};
-        if (eventType === "message_delivered") { updates.status = "delivered"; updates.delivered_at = new Date().toISOString(); }
-        else if (eventType === "message_read") { updates.status = "read"; updates.read_at = new Date().toISOString(); }
-        else if (eventType === "message_failed") { updates.status = "failed"; }
-        if (Object.keys(updates).length) {
-          const { data: msgs } = await supabase
-            .from("lead_messages")
-            .select("id")
-            .eq("lead_id", lead.id)
-            .eq("message_type", "outbound")
-            .order("sent_at", { ascending: false })
-            .limit(1);
-          if (msgs && msgs.length) {
-            await supabase.from("lead_messages").update(updates).eq("id", msgs[0].id);
+    }
+
+    let payload: any;
+    try {
+      payload = JSON.parse(rawBody);
+    } catch (_) {
+      return new Response(JSON.stringify({ received: true }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Meta Cloud API webhook envelope: { object, entry: [{ changes: [{ value }] }] }
+    if (payload.object === "whatsapp_business_account") {
+      for (const entry of (payload.entry || [])) {
+        for (const change of (entry.changes || [])) {
+          const value = change.value || {};
+
+          // ── Inbound messages ──────────────────────────────────────────────
+          for (const msg of (value.messages || [])) {
+            const phone = normalizePhone(msg.from);
+            let text = "[non-text message]";
+            switch (msg.type) {
+              case "text":       text = msg.text?.body || ""; break;
+              case "image":      text = "[image]"; break;
+              case "audio":      text = "[audio]"; break;
+              case "video":      text = "[video]"; break;
+              case "document":   text = "[document]"; break;
+              case "sticker":    text = "[sticker]"; break;
+              case "location":   text = "[location]"; break;
+              case "interactive":
+                text = msg.interactive?.button_reply?.title
+                  || msg.interactive?.list_reply?.title
+                  || "[interactive]";
+                break;
+              case "button":     text = msg.button?.text || "[button]"; break;
+            }
+
+            const lead = await findLeadByPhone(supabase, phone);
+            if (lead) {
+              const analysis = analyzeInbound(String(text));
+              const seq = (lead.sequence ?? 0) + 1;
+
+              await supabase.from("lead_messages").insert({
+                lead_id: lead.id,
+                message_type: "inbound",
+                message_body: String(text).slice(0, 4000),
+                status: "delivered",
+                sent_at: msg.timestamp
+                  ? new Date(Number(msg.timestamp) * 1000).toISOString()
+                  : new Date().toISOString(),
+                response_received: true,
+                sentiment: analysis.sentiment,
+                intent: analysis.intent,
+                concern: analysis.concern,
+                length_category: analysis.length_category,
+                sequence_number: seq,
+              });
+
+              await supabase.from("leads").update({
+                last_inbound_sentiment: analysis.sentiment,
+                last_inbound_concern: analysis.concern,
+                last_inbound_intent: analysis.intent,
+                conversation_message_count: seq,
+                unanswered_outbound_count: 0,
+                needs_personal_call: false,
+                dead_lead: false,
+                concern_type: analysis.concern ?? undefined,
+                ...(analysis.intent === "objection"
+                  ? { barrier_addressed: false, objection_type: analysis.concern ?? "general" }
+                  : {}),
+              }).eq("id", lead.id);
+
+              // Increment reply_count on the most recent outbound variant (A/B tracking)
+              const { data: lastOut } = await supabase
+                .from("lead_messages")
+                .select("id, variant, template_id")
+                .eq("lead_id", lead.id)
+                .eq("message_type", "outbound")
+                .order("sent_at", { ascending: false })
+                .limit(1);
+              if (lastOut?.length && lastOut[0].variant && lastOut[0].template_id) {
+                const { data: v } = await supabase
+                  .from("message_template_variants")
+                  .select("id")
+                  .eq("template_id", lastOut[0].template_id)
+                  .eq("variant_label", lastOut[0].variant)
+                  .maybeSingle();
+                if (v?.id) await supabase.rpc("bump_variant_reply", { _variant_id: v.id });
+                await supabase.from("lead_messages").update({ response_received: true }).eq("id", lastOut[0].id);
+              }
+            } else {
+              await supabase.from("automation_logs").insert({
+                event_type: "whatsapp_inbound_unmatched",
+                success: true,
+                details: { phone, text: String(text).slice(0, 500) },
+              });
+            }
+          }
+
+          // ── Delivery / read status updates ────────────────────────────────
+          for (const statusObj of (value.statuses || [])) {
+            const phone = normalizePhone(statusObj.recipient_id);
+            const lead = await findLeadByPhone(supabase, phone);
+            if (!lead) continue;
+
+            const updates: Record<string, unknown> = {};
+            const ts = statusObj.timestamp
+              ? new Date(Number(statusObj.timestamp) * 1000).toISOString()
+              : new Date().toISOString();
+
+            if (statusObj.status === "delivered") {
+              updates.status = "delivered";
+              updates.delivered_at = ts;
+            } else if (statusObj.status === "read") {
+              updates.status = "read";
+              updates.read_at = ts;
+            } else if (statusObj.status === "failed") {
+              updates.status = "failed";
+            }
+
+            if (Object.keys(updates).length) {
+              const { data: msgs } = await supabase
+                .from("lead_messages")
+                .select("id")
+                .eq("lead_id", lead.id)
+                .eq("message_type", "outbound")
+                .order("sent_at", { ascending: false })
+                .limit(1);
+              if (msgs?.length) {
+                await supabase.from("lead_messages").update(updates).eq("id", msgs[0].id);
+              }
+            }
           }
         }
       }
@@ -149,10 +223,10 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err: unknown) {
-    console.error("interakt-webhook error:", err);
+    console.error("whatsapp-webhook error:", err);
     const msg = err instanceof Error ? err.message : String(err);
     await supabase.from("automation_logs").insert({
-      event_type: "interakt_webhook_error",
+      event_type: "whatsapp_webhook_error",
       success: false,
       error_message: msg,
     });

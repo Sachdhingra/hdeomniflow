@@ -115,6 +115,7 @@ const SendTemplateDialog = ({ lead, open, onOpenChange }: Props) => {
         template_id: picked.id,
         journey_stage: picked.stage,
         status: data?.success ? "sent" : "failed",
+        sent_at: new Date().toISOString(),
         created_by: user.id,
       } as any);
       toast.success(`Sent: ${picked.title}`);
