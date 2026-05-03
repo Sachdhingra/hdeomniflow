@@ -218,6 +218,33 @@ const AdminAutomation = () => {
       </Card>
 
       <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-destructive" />
+            Recent send failures
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 max-h-96 overflow-y-auto">
+          {failures.length === 0 && <p className="text-sm text-muted-foreground">No send failures 🎉</p>}
+          {failures.map(f => (
+            <div key={f.id} className="border-l-2 border-destructive pl-3 py-1.5">
+              <div className="flex items-start justify-between gap-2 flex-wrap">
+                <p className="text-sm font-medium">
+                  {f.details?.customer_name || "Unknown lead"}
+                  {f.details?.phone && <span className="text-xs text-muted-foreground ml-2">{f.details.phone}</span>}
+                </p>
+                <p className="text-[11px] text-muted-foreground">{new Date(f.executed_at).toLocaleString()}</p>
+              </div>
+              <p className="text-xs text-destructive break-words">{f.error_message || "Unknown error"}</p>
+              {f.details?.template && (
+                <p className="text-[11px] text-muted-foreground">Template: {f.details.template}</p>
+              )}
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardHeader><CardTitle className="text-base">Recent messages queued</CardTitle></CardHeader>
         <CardContent>
           <div className="max-h-96 overflow-y-auto">
