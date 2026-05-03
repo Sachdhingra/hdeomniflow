@@ -268,7 +268,9 @@ Deno.serve(async (req) => {
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceKey}` },
                 body: JSON.stringify({ phone: lead.customer_phone, message: body }),
               });
-              const ok = sendRes.ok;
+              const sendJson = await sendRes.json().catch(() => ({}));
+              const ok = sendRes.ok && sendJson?.success === true;
+              const errMsg = ok ? null : (sendJson?.error || `HTTP ${sendRes.status}`);
               if (inserted?.id) {
                 await supabase.from("lead_messages").update({
                   status: ok ? "sent" : "failed",
@@ -278,18 +280,38 @@ Deno.serve(async (req) => {
               if (ok) {
                 summary.auto_sent++;
                 if (variantId) await supabase.rpc("bump_variant_sent", { _variant_id: variantId });
-                // Update lead conversation context: increment unanswered, set last recommendation
                 await supabase.from("leads").update({
                   conversation_message_count: seq,
                   unanswered_outbound_count: unanswered + 1,
                   last_recommended_message_type: pick.messageKind,
                 }).eq("id", lead.id);
+              } else {
+                await supabase.from("automation_logs").insert({
+                  lead_id: lead.id,
+                  event_type: "send_failed",
+                  success: false,
+                  error_message: errMsg,
+                  details: {
+                    customer_name: lead.customer_name,
+                    phone: lead.customer_phone,
+                    template: tpl.title,
+                    journey_stage: newJourney,
+                  },
+                });
               }
             } catch (sendErr) {
+              const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
               if (inserted?.id) {
                 await supabase.from("lead_messages").update({ status: "failed" }).eq("id", inserted.id);
               }
-              console.error("send-whatsapp failed:", sendErr);
+              await supabase.from("automation_logs").insert({
+                lead_id: lead.id,
+                event_type: "send_failed",
+                success: false,
+                error_message: msg,
+                details: { customer_name: lead.customer_name, phone: lead.customer_phone, template: tpl.title },
+              });
+              console.error("send-whatsapp failed:", msg);
             }
           }
         }
