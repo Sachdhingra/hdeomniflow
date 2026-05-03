@@ -22,6 +22,7 @@ const AdminAutomation = () => {
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [msgs, setMsgs] = useState<MsgRow[]>([]);
   const [counts, setCounts] = useState({ pending: 0, sent_today: 0, failed_today: 0, queued_today: 0 });
+  const [failures, setFailures] = useState<FailRow[]>([]);
 
   const load = async () => {
     setLoading(true);
