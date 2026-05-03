@@ -53,16 +53,17 @@ export default function GodrejScraperCard() {
 
   useEffect(() => { refresh(); }, []);
 
-  const trigger = async () => {
+  const run = async (mode: "map" | "discover" | "scrape") => {
     setRunning(true);
     try {
-      const { data, error } = await supabase.functions.invoke("godrej-scrape", {
-        body: { mode: "map", limit: 100 },
-      });
+      const body: any = { mode };
+      if (mode === "scrape") body.product_limit = 25;
+      else body.limit = 100;
+      const { data, error } = await supabase.functions.invoke("godrej-scrape", { body });
       if (error) throw error;
       if (data?.success === false) throw new Error(data.error || "Scrape failed");
       toast.success(
-        `Scraped ${data?.urls_discovered ?? 0} URLs · ${data?.products_upserted ?? 0} saved`,
+        `${mode}: ${data?.urls_discovered ?? 0} URLs · ${data?.products_upserted ?? 0} saved`,
       );
       await refresh();
     } catch (e: any) {
@@ -80,10 +81,18 @@ export default function GodrejScraperCard() {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <Button onClick={trigger} disabled={running} size="sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={() => run("map")} disabled={running} size="sm" variant="outline">
             {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            {running ? "Scraping…" : "Scrape Godrej Products"}
+            Map URLs
+          </Button>
+          <Button onClick={() => run("discover")} disabled={running} size="sm" variant="outline">
+            {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Discover (JS render)
+          </Button>
+          <Button onClick={() => run("scrape")} disabled={running} size="sm">
+            {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Scrape Details (25)
           </Button>
           <span className="text-sm text-muted-foreground">
             {counts.total} active products
@@ -109,8 +118,7 @@ export default function GodrejScraperCard() {
         )}
 
         <p className="text-xs text-muted-foreground">
-          Pilot mode: Firecrawl /map only — discovers product URLs & names. Run again later to
-          enrich with prices/images.
+          1) <b>Map</b>: cheap sitemap-based URL discovery. 2) <b>Discover</b>: JS-rendered scrape if Map misses products. 3) <b>Scrape Details</b>: enriches 25 pending products with name, price, image, description.
         </p>
       </CardContent>
     </Card>
