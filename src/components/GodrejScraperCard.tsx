@@ -53,16 +53,17 @@ export default function GodrejScraperCard() {
 
   useEffect(() => { refresh(); }, []);
 
-  const trigger = async () => {
+  const run = async (mode: "map" | "discover" | "scrape") => {
     setRunning(true);
     try {
-      const { data, error } = await supabase.functions.invoke("godrej-scrape", {
-        body: { mode: "map", limit: 100 },
-      });
+      const body: any = { mode };
+      if (mode === "scrape") body.product_limit = 25;
+      else body.limit = 100;
+      const { data, error } = await supabase.functions.invoke("godrej-scrape", { body });
       if (error) throw error;
       if (data?.success === false) throw new Error(data.error || "Scrape failed");
       toast.success(
-        `Scraped ${data?.urls_discovered ?? 0} URLs · ${data?.products_upserted ?? 0} saved`,
+        `${mode}: ${data?.urls_discovered ?? 0} URLs · ${data?.products_upserted ?? 0} saved`,
       );
       await refresh();
     } catch (e: any) {
