@@ -147,7 +147,6 @@ Deno.serve(async (req) => {
                 unanswered_outbound_count: 0,
                 needs_personal_call: false,
                 dead_lead: false,
-                concern_type: analysis.concern ?? undefined,
                 ...(analysis.intent === "objection"
                   ? { barrier_addressed: false, objection_type: analysis.concern ?? "general" }
                   : {}),
