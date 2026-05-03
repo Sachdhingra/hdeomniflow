@@ -67,6 +67,14 @@ const AdminAutomation = () => {
         .limit(50);
       setMsgs((msgsData ?? []) as MsgRow[]);
 
+      const { data: failData } = await supabase
+        .from("automation_logs")
+        .select("id, lead_id, error_message, executed_at, details")
+        .eq("event_type", "send_failed")
+        .order("executed_at", { ascending: false })
+        .limit(25);
+      setFailures((failData ?? []) as FailRow[]);
+
       const { count: pendingCount } = await supabase
         .from("auto_nurture_messages")
         .select("*", { count: "exact", head: true })
