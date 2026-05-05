@@ -13,6 +13,7 @@ import { Phone, MoveHorizontal, Sparkles, MessageCircle, MapPin, Zap, AlertTrian
 import { toast } from "sonner";
 import LeadDetailsDrawer from "@/components/LeadDetailsDrawer";
 import SendTemplateDialog from "@/components/SendTemplateDialog";
+import RepeatBadge from "@/components/RepeatBadge";
 import { neighborhoodColor, responseTimeColor, formatRelativeTime, PREFERRED_STYLES, BUDGET_RANGES } from "@/lib/leadConstants";
 import { type JourneyStage, statusToStage } from "@/lib/messageTemplates";
 
@@ -187,7 +188,16 @@ const LeadsBoard = () => {
                         )}
 
                         <div className="flex items-start justify-between gap-2">
-                          <p className="font-semibold text-sm line-clamp-1 uppercase">{lead.customer_name}</p>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-sm line-clamp-1 uppercase">{lead.customer_name}</p>
+                            {(l.repeat_count ?? 0) > 0 && (
+                              <RepeatBadge
+                                repeatCount={l.repeat_count}
+                                totalSales={l.total_sales}
+                                className="mt-1"
+                              />
+                            )}
+                          </div>
                           <Tooltip>
                             <TooltipTrigger asChild onClick={e => e.stopPropagation()}>
                               <Badge variant="outline" className={`${probColor(prob)} text-[10px] shrink-0 gap-0.5`}>
