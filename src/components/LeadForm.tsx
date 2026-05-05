@@ -44,15 +44,21 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
     try {
       const { data } = await supabase
         .from("leads")
-        .select("customer_name, customer_phone")
+        .select("customer_name, customer_phone, repeat_count, total_sales")
         .eq("customer_phone", phone)
         .is("deleted_at", null)
         .limit(1);
 
       if (data && data.length > 0) {
-        setDuplicateCheck({ checking: false, exists: true, existingName: data[0].customer_name });
-        // Auto-fill customer name
-        setForm(f => ({ ...f, customerName: data[0].customer_name }));
+        const row: any = data[0];
+        setDuplicateCheck({
+          checking: false,
+          exists: true,
+          existingName: row.customer_name,
+          repeatCount: row.repeat_count ?? 0,
+          totalSales: row.total_sales ?? 0,
+        });
+        setForm(f => ({ ...f, customerName: row.customer_name }));
       } else {
         setDuplicateCheck({ checking: false, exists: false });
       }
