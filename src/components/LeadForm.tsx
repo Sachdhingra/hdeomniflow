@@ -31,6 +31,8 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
     checking: boolean;
     exists: boolean;
     existingName?: string;
+    repeatCount?: number;
+    totalSales?: number;
   }>({ checking: false, exists: false });
 
   const checkDuplicate = useCallback(async (phone: string) => {
@@ -42,15 +44,21 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
     try {
       const { data } = await supabase
         .from("leads")
-        .select("customer_name, customer_phone")
+        .select("customer_name, customer_phone, repeat_count, total_sales")
         .eq("customer_phone", phone)
         .is("deleted_at", null)
         .limit(1);
 
       if (data && data.length > 0) {
-        setDuplicateCheck({ checking: false, exists: true, existingName: data[0].customer_name });
-        // Auto-fill customer name
-        setForm(f => ({ ...f, customerName: data[0].customer_name }));
+        const row: any = data[0];
+        setDuplicateCheck({
+          checking: false,
+          exists: true,
+          existingName: row.customer_name,
+          repeatCount: row.repeat_count ?? 0,
+          totalSales: row.total_sales ?? 0,
+        });
+        setForm(f => ({ ...f, customerName: row.customer_name }));
       } else {
         setDuplicateCheck({ checking: false, exists: false });
       }
@@ -149,6 +157,24 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
       <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>New Lead</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {duplicateCheck.exists && (duplicateCheck.repeatCount ?? 0) > 0 && (
+            <div className="rounded-md border border-success/40 bg-success/10 p-3 text-sm">
+              <p className="font-semibold text-success flex items-center gap-1.5">
+                {"⭐".repeat(Math.min(3, duplicateCheck.repeatCount ?? 0))} Repeat customer
+              </p>
+              <p className="text-xs text-foreground/80 mt-0.5">
+                {duplicateCheck.existingName} · ₹{Number(duplicateCheck.totalSales ?? 0).toLocaleString("en-IN")} lifetime
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Open the existing lead to add a new order — don't create a duplicate.
+              </p>
+            </div>
+          )}
+          {duplicateCheck.exists && (duplicateCheck.repeatCount ?? 0) === 0 && (
+            <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs text-foreground">
+              Existing customer (first sale): <span className="font-semibold">{duplicateCheck.existingName}</span>. Use the existing lead and add an order from there.
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Phone * (10 digits)</Label>

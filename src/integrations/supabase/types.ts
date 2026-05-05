@@ -655,6 +655,7 @@ export type Database = {
           delivery_notes: string | null
           family_situation: string | null
           family_visit_date: string | null
+          first_purchase_date: string | null
           has_family: boolean | null
           id: string
           journey_stage: string | null
@@ -667,6 +668,7 @@ export type Database = {
           last_inbound_sentiment: string | null
           last_message_at: string | null
           last_payment_link_sent_at: string | null
+          last_purchase_date: string | null
           last_recommended_message_type: string | null
           last_response_at: string | null
           liked_product: string | null
@@ -678,10 +680,13 @@ export type Database = {
           next_follow_up_time: string | null
           notes: string | null
           objection_type: string | null
+          orders: Json
           preferred_style: string | null
           price_sensitivity: string | null
           product_viewed: string | null
           products_viewed: Json | null
+          repeat_count: number
+          repeat_customer: boolean
           response_time_minutes: number | null
           score_breakdown: Json | null
           source: string
@@ -689,6 +694,7 @@ export type Database = {
           stage_changed_at: string | null
           stated_need: string | null
           status: Database["public"]["Enums"]["lead_status"]
+          total_sales: number
           unanswered_outbound_count: number
           updated_at: string
           updated_by: string
@@ -724,6 +730,7 @@ export type Database = {
           delivery_notes?: string | null
           family_situation?: string | null
           family_visit_date?: string | null
+          first_purchase_date?: string | null
           has_family?: boolean | null
           id?: string
           journey_stage?: string | null
@@ -736,6 +743,7 @@ export type Database = {
           last_inbound_sentiment?: string | null
           last_message_at?: string | null
           last_payment_link_sent_at?: string | null
+          last_purchase_date?: string | null
           last_recommended_message_type?: string | null
           last_response_at?: string | null
           liked_product?: string | null
@@ -747,10 +755,13 @@ export type Database = {
           next_follow_up_time?: string | null
           notes?: string | null
           objection_type?: string | null
+          orders?: Json
           preferred_style?: string | null
           price_sensitivity?: string | null
           product_viewed?: string | null
           products_viewed?: Json | null
+          repeat_count?: number
+          repeat_customer?: boolean
           response_time_minutes?: number | null
           score_breakdown?: Json | null
           source?: string
@@ -758,6 +769,7 @@ export type Database = {
           stage_changed_at?: string | null
           stated_need?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
+          total_sales?: number
           unanswered_outbound_count?: number
           updated_at?: string
           updated_by: string
@@ -793,6 +805,7 @@ export type Database = {
           delivery_notes?: string | null
           family_situation?: string | null
           family_visit_date?: string | null
+          first_purchase_date?: string | null
           has_family?: boolean | null
           id?: string
           journey_stage?: string | null
@@ -805,6 +818,7 @@ export type Database = {
           last_inbound_sentiment?: string | null
           last_message_at?: string | null
           last_payment_link_sent_at?: string | null
+          last_purchase_date?: string | null
           last_recommended_message_type?: string | null
           last_response_at?: string | null
           liked_product?: string | null
@@ -816,10 +830,13 @@ export type Database = {
           next_follow_up_time?: string | null
           notes?: string | null
           objection_type?: string | null
+          orders?: Json
           preferred_style?: string | null
           price_sensitivity?: string | null
           product_viewed?: string | null
           products_viewed?: Json | null
+          repeat_count?: number
+          repeat_customer?: boolean
           response_time_minutes?: number | null
           score_breakdown?: Json | null
           source?: string
@@ -827,6 +844,7 @@ export type Database = {
           stage_changed_at?: string | null
           stated_need?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
+          total_sales?: number
           unanswered_outbound_count?: number
           updated_at?: string
           updated_by?: string
