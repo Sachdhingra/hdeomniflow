@@ -150,7 +150,49 @@ const LeadDetailsDrawer = ({ lead, open, onOpenChange }: Props) => {
 
           <Separator />
 
-          {/* Psychology profile */}
+          {/* Orders History */}
+          <section className="space-y-2 text-sm">
+            <div className="flex items-center justify-between">
+              <h4 className="font-semibold flex items-center gap-1.5">
+                <ShoppingBag className="w-4 h-4" />Orders History
+                {Array.isArray(l.orders) && l.orders.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 text-[10px]">{l.orders.length}</Badge>
+                )}
+              </h4>
+              <AddOrderDialog
+                leadId={lead.id}
+                customerName={lead.customer_name}
+                existingOrders={Array.isArray(l.orders) ? l.orders : []}
+                onAdded={() => onOpenChange(false)}
+              />
+            </div>
+            {(!Array.isArray(l.orders) || l.orders.length === 0) ? (
+              <p className="text-xs text-muted-foreground">No orders yet.</p>
+            ) : (
+              <ol className="space-y-1.5">
+                {l.orders.map((o: any, i: number) => (
+                  <li key={o.order_id || i} className="rounded border p-2 text-xs space-y-0.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium">{o.product || "—"}</span>
+                      <span className="font-semibold">₹{Number(o.amount || 0).toLocaleString("en-IN")}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-muted-foreground">
+                      <span>{o.date || ""}</span>
+                      <Badge variant="outline" className="text-[9px]">{o.status || "—"}</Badge>
+                    </div>
+                    {o.order_id && <p className="text-[10px] text-muted-foreground">{o.order_id}</p>}
+                  </li>
+                ))}
+              </ol>
+            )}
+            {(l.total_sales ?? 0) > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Lifetime value: <span className="font-semibold text-foreground">₹{Number(l.total_sales).toLocaleString("en-IN")}</span>
+              </p>
+            )}
+          </section>
+
+          <Separator />
           <section className="space-y-2 text-sm">
             <h4 className="font-semibold flex items-center gap-1.5"><Home className="w-4 h-4" />Buyer Profile</h4>
             <div className="grid grid-cols-2 gap-2">
