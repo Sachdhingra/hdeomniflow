@@ -28,6 +28,7 @@ const AdminAutomation = lazy(() => import("@/pages/AdminAutomation"));
 const AdminMessageTemplates = lazy(() => import("@/pages/AdminMessageTemplates"));
 const AdminFunnelAnalytics = lazy(() => import("@/pages/AdminFunnelAnalytics"));
 const AccountsApprovals = lazy(() => import("@/pages/AccountsApprovals"));
+const AdminOrdersDashboard = lazy(() => import("@/pages/AdminOrdersDashboard"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
 const PageLoader = () => (
@@ -79,6 +80,7 @@ const AppRoutes = () => {
             <Route path="/admin/templates" element={<AdminMessageTemplates />} />
             <Route path="/admin/funnel-analytics" element={<AdminFunnelAnalytics />} />
             <Route path="/accounts/approvals" element={<AccountsApprovals />} />
+            <Route path="/admin/orders" element={<AdminOrdersDashboard />} />
           </>
         );
       case "accounts":
