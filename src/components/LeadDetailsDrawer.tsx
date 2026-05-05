@@ -100,7 +100,12 @@ const LeadDetailsDrawer = ({ lead, open, onOpenChange }: Props) => {
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-md overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>{lead.customer_name}</SheetTitle>
+          <SheetTitle className="flex items-center gap-2 flex-wrap">
+            <span>{lead.customer_name}</span>
+            {(l.repeat_count ?? 0) > 0 && (
+              <RepeatBadge repeatCount={l.repeat_count} totalSales={l.total_sales} />
+            )}
+          </SheetTitle>
           <SheetDescription className="flex items-center gap-2 flex-wrap">
             <Badge variant="outline">{STAGE_LABEL[lead.status]}</Badge>
             <Badge variant="outline">{LEAD_CATEGORIES.find(c => c.value === lead.category)?.label}</Badge>
