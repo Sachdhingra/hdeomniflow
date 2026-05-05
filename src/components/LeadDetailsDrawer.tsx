@@ -9,6 +9,9 @@ import type { Lead, LeadStatus } from "@/contexts/DataContext";
 import { LEAD_CATEGORIES } from "@/contexts/DataContext";
 import { neighborhoodColor, responseTimeColor, formatRelativeTime, PREFERRED_STYLES, BUDGET_RANGES, FAMILY_SITUATIONS, DECISION_TIMELINES, STATED_NEEDS } from "@/lib/leadConstants";
 import ConversationProgress from "@/components/ConversationProgress";
+import RepeatBadge from "@/components/RepeatBadge";
+import AddOrderDialog from "@/components/AddOrderDialog";
+import { ShoppingBag } from "lucide-react";
 
 interface LeadMessage {
   id: string;
