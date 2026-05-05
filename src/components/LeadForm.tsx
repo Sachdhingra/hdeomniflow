@@ -31,6 +31,8 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
     checking: boolean;
     exists: boolean;
     existingName?: string;
+    repeatCount?: number;
+    totalSales?: number;
   }>({ checking: false, exists: false });
 
   const checkDuplicate = useCallback(async (phone: string) => {
