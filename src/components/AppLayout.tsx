@@ -5,7 +5,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import {
   Building2, LayoutDashboard, Users, Wrench, Navigation, MapPin,
   LogOut, Menu, X, ChevronRight, CalendarDays, BarChart3,
-  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot, ShieldCheck, MessageSquare, TrendingUp, ShoppingBag
+  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot, ShieldCheck, MessageSquare, TrendingUp, ShoppingBag, MessagesSquare, Sparkles
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -54,6 +54,8 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/admin/templates", label: "WhatsApp Templates", icon: <MessageSquare className="w-5 h-5" /> },
       { to: "/admin/funnel-analytics", label: "Funnel Analytics", icon: <TrendingUp className="w-5 h-5" /> },
       { to: "/admin/orders", label: "Orders", icon: <ShoppingBag className="w-5 h-5" /> },
+      { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" /> },
+      { to: "/ai-assistant", label: "AI Assistant", icon: <Sparkles className="w-5 h-5" /> },
     ],
     sales: [
       { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" />, badge: overdueCount || undefined },
@@ -61,12 +63,16 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/leads/board", label: "Leads Board", icon: <KanbanSquare className="w-5 h-5" /> },
       { to: "/pipeline", label: "Pipeline", icon: <BarChart3 className="w-5 h-5" /> },
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
+      { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" /> },
+      { to: "/ai-assistant", label: "AI Assistant", icon: <Sparkles className="w-5 h-5" /> },
     ],
     service_head: [
       { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" />, badge: pendingJobCount || undefined },
       { to: "/service-jobs", label: "Service Jobs", icon: <Wrench className="w-5 h-5" /> },
       { to: "/claims", label: "Claims", icon: <FileText className="w-5 h-5" /> },
       { to: "/calendar", label: "Calendar", icon: <CalendarDays className="w-5 h-5" /> },
+      { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" /> },
+      { to: "/ai-assistant", label: "AI Assistant", icon: <Sparkles className="w-5 h-5" /> },
     ],
     field_agent: [
       { to: "/", label: "My Jobs", icon: <Wrench className="w-5 h-5" /> },
@@ -81,6 +87,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
     accounts: [
       { to: "/", label: "Approvals", icon: <ShieldCheck className="w-5 h-5" /> },
       { to: "/accounts/approvals", label: "All Approvals", icon: <ClipboardList className="w-5 h-5" /> },
+      { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" /> },
     ],
   };
 
