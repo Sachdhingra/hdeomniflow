@@ -83,6 +83,8 @@ const AppRoutes = () => {
             <Route path="/admin/funnel-analytics" element={<AdminFunnelAnalytics />} />
             <Route path="/accounts/approvals" element={<AccountsApprovals />} />
             <Route path="/admin/orders" element={<AdminOrdersDashboard />} />
+            <Route path="/chat" element={<ChatPage />} />
+            <Route path="/ai-assistant" element={<AIAssistantPage />} />
           </>
         );
       case "accounts":
@@ -90,6 +92,7 @@ const AppRoutes = () => {
           <>
             <Route path="/" element={<AccountsApprovals />} />
             <Route path="/accounts/approvals" element={<AccountsApprovals />} />
+            <Route path="/chat" element={<ChatPage />} />
           </>
         );
       case "sales":
@@ -100,6 +103,8 @@ const AppRoutes = () => {
             <Route path="/leads/board" element={<LeadsBoard />} />
             <Route path="/pipeline" element={<SalesPipeline />} />
             <Route path="/products" element={<ProductsView />} />
+            <Route path="/chat" element={<ChatPage />} />
+            <Route path="/ai-assistant" element={<AIAssistantPage />} />
           </>
         );
       case "service_head":
@@ -109,6 +114,8 @@ const AppRoutes = () => {
             <Route path="/service-jobs" element={<ServiceDashboard />} />
             <Route path="/claims" element={<ServiceClaims />} />
             <Route path="/calendar" element={<ServiceCalendar />} />
+            <Route path="/chat" element={<ChatPage />} />
+            <Route path="/ai-assistant" element={<AIAssistantPage />} />
           </>
         );
       case "field_agent":
