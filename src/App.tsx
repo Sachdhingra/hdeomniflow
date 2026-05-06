@@ -29,6 +29,8 @@ const AdminMessageTemplates = lazy(() => import("@/pages/AdminMessageTemplates")
 const AdminFunnelAnalytics = lazy(() => import("@/pages/AdminFunnelAnalytics"));
 const AccountsApprovals = lazy(() => import("@/pages/AccountsApprovals"));
 const AdminOrdersDashboard = lazy(() => import("@/pages/AdminOrdersDashboard"));
+const ChatPage = lazy(() => import("@/pages/ChatPage"));
+const AIAssistantPage = lazy(() => import("@/pages/AIAssistantPage"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
 const PageLoader = () => (
