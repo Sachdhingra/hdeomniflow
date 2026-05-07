@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.interakt-webhook]
 verify_jwt = false
+
+[functions.twilio-status]
+verify_jwt = false
