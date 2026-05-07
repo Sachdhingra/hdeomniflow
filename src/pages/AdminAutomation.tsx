@@ -181,6 +181,10 @@ const AdminAutomation = () => {
           <p className="text-sm text-muted-foreground">Autonomous nurture engine — daily scoring, stage moves, and message queue.</p>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <Button onClick={() => setTestOpen(true)} variant="outline" className="gap-2">
+            <Send className="w-4 h-4" />
+            Test Twilio Send
+          </Button>
           <Button onClick={sendReportNow} disabled={running} variant="outline" className="gap-2">
             {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
             Send daily report now
