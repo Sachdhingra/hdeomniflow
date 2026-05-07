@@ -19,6 +19,10 @@ interface LeadMessage {
   message_body: string;
   status: string;
   sent_at: string;
+  delivered_at?: string | null;
+  read_at?: string | null;
+  failed_at?: string | null;
+  error_message?: string | null;
   template_used: string | null;
   message_kind?: string | null;
   sentiment?: string | null;
