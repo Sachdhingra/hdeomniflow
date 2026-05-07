@@ -168,6 +168,7 @@ Deno.serve(async (req) => {
       recipient_user_id: user_id || null,
       message: storedBody,
       provider: "twilio",
+      provider_message_id: result.message_id || null,
       status: result.success ? "sent" : "failed",
       retry_count: retryCount,
       error_message: result.error || null,
@@ -182,6 +183,7 @@ Deno.serve(async (req) => {
         template_used: template_name || (content_sid ? `twilio:${content_sid}` : null),
         template_id: template_id || null,
         status: "sent",
+        provider_message_id: result.message_id || null,
         sent_at: new Date().toISOString(),
         created_by: user_id || null,
       });
