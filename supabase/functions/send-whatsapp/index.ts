@@ -63,6 +63,11 @@ async function sendViaTwilio(params: {
   const body = new URLSearchParams();
   body.set("To", `whatsapp:${e164}`);
   body.set("From", from);
+  // Twilio will POST delivery status updates here.
+  const statusCallback = `${supabaseUrl}/functions/v1/twilio-status`;
+  if (statusCallback && /^https?:\/\//.test(statusCallback)) {
+    body.set("StatusCallback", statusCallback);
+  }
   if (params.content_sid) {
     body.set("ContentSid", params.content_sid);
     if (params.content_variables && Object.keys(params.content_variables).length > 0) {
