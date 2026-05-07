@@ -4,7 +4,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, PlayCircle, MessageSquare, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
+import { Loader2, PlayCircle, MessageSquare, AlertTriangle, CheckCircle2, Clock, Send } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 type StageRow = { stage: string; count: number; avg_days: number };
@@ -16,6 +19,7 @@ const STAGES = ["new", "contacted", "follow_up", "negotiation", "overdue"] as co
 type ActiveStage = typeof STAGES[number];
 
 const AdminAutomation = () => {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [stages, setStages] = useState<StageRow[]>([]);
@@ -23,6 +27,9 @@ const AdminAutomation = () => {
   const [msgs, setMsgs] = useState<MsgRow[]>([]);
   const [counts, setCounts] = useState({ pending: 0, sent_today: 0, failed_today: 0, queued_today: 0 });
   const [failures, setFailures] = useState<FailRow[]>([]);
+  const [testOpen, setTestOpen] = useState(false);
+  const [testPhone, setTestPhone] = useState("");
+  const [testing, setTesting] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -136,6 +143,32 @@ const AdminAutomation = () => {
     }
   };
 
+  const sendTestMessage = async () => {
+    if (!testPhone.trim()) { toast.error("Enter a phone number"); return; }
+    setTesting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("send-whatsapp", {
+        body: {
+          phone: testPhone.trim(),
+          message: `✅ Twilio WhatsApp test from Omni at ${new Date().toLocaleString()}`,
+          user_id: user?.id,
+          user_name: user?.name,
+        },
+      });
+      if (error) throw error;
+      if (data?.success) {
+        toast.success(`Test sent! Message SID: ${data.message_id}`);
+        setTestOpen(false);
+      } else {
+        toast.error(`Failed: ${data?.error || "unknown error"}`);
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Test failed");
+    } finally {
+      setTesting(false);
+    }
+  };
+
   if (loading) {
     return <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
   }
@@ -148,6 +181,10 @@ const AdminAutomation = () => {
           <p className="text-sm text-muted-foreground">Autonomous nurture engine — daily scoring, stage moves, and message queue.</p>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <Button onClick={() => setTestOpen(true)} variant="outline" className="gap-2">
+            <Send className="w-4 h-4" />
+            Test Twilio Send
+          </Button>
           <Button onClick={sendReportNow} disabled={running} variant="outline" className="gap-2">
             {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
             Send daily report now
@@ -272,6 +309,33 @@ const AdminAutomation = () => {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={testOpen} onOpenChange={setTestOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Test Twilio WhatsApp Send</DialogTitle>
+            <DialogDescription>
+              Sends a test WhatsApp message via Twilio. Use your own number (with country code) to verify delivery.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Input
+              placeholder="+919876543210"
+              value={testPhone}
+              onChange={(e) => setTestPhone(e.target.value)}
+              disabled={testing}
+            />
+            <p className="text-xs text-muted-foreground">10-digit Indian numbers auto-prefixed with +91.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTestOpen(false)} disabled={testing}>Cancel</Button>
+            <Button onClick={sendTestMessage} disabled={testing} className="gap-2">
+              {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              Send test
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
