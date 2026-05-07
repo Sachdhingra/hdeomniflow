@@ -309,6 +309,33 @@ const AdminAutomation = () => {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={testOpen} onOpenChange={setTestOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Test Twilio WhatsApp Send</DialogTitle>
+            <DialogDescription>
+              Sends a test WhatsApp message via Twilio. Use your own number (with country code) to verify delivery.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Input
+              placeholder="+919876543210"
+              value={testPhone}
+              onChange={(e) => setTestPhone(e.target.value)}
+              disabled={testing}
+            />
+            <p className="text-xs text-muted-foreground">10-digit Indian numbers auto-prefixed with +91.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTestOpen(false)} disabled={testing}>Cancel</Button>
+            <Button onClick={sendTestMessage} disabled={testing} className="gap-2">
+              {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              Send test
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
