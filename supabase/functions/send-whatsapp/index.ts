@@ -1,6 +1,8 @@
-// Send WhatsApp messages via Twilio (through the Lovable connector gateway).
-// Replaces the previous Meta Cloud API integration. Same input contract so all
-// existing callers (nurture-engine, SendTemplateDialog, etc.) keep working.
+// Send WhatsApp messages via Twilio REST API (direct, no third-party gateway).
+// Required Supabase secrets:
+//   TWILIO_ACCOUNT_SID   — starts with "AC", from console.twilio.com
+//   TWILIO_AUTH_TOKEN    — Auth Token from console.twilio.com
+//   TWILIO_WHATSAPP_FROM — e.g. "+14155238886" for sandbox, or your approved WA number
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 
 const corsHeaders = {
@@ -11,12 +13,9 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-const TWILIO_API_KEY = Deno.env.get("TWILIO_API_KEY");
-// e.g. "whatsapp:+14155238886" (sandbox) or your approved WA-enabled number
+const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID");
+const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN");
 const TWILIO_WHATSAPP_FROM = Deno.env.get("TWILIO_WHATSAPP_FROM");
-
-const GATEWAY_URL = "https://connector-gateway.lovable.dev/twilio";
 
 interface SendResult {
   success: boolean;
@@ -26,34 +25,38 @@ interface SendResult {
   providerResponse?: unknown;
 }
 
-// Normalize a phone string into E.164 form. Default country code is 91 (India).
-function normalizePhone(raw: string): { e164: string } {
+// Normalize to E.164. Adds +91 only for bare 10-digit Indian numbers.
+function normalizePhone(raw: string): string {
   const digits = (raw || "").replace(/\D/g, "");
-  if (!digits) return { e164: "" };
-  if (digits.length > 10) return { e164: `+${digits}` };
-  return { e164: `+91${digits}` };
+  if (!digits) return "";
+  if (digits.startsWith("91") && digits.length === 12) return `+${digits}`;
+  if (digits.length === 10) return `+91${digits}`;
+  return `+${digits}`; // already has country code
 }
 
 function waFrom(): string {
   const f = (TWILIO_WHATSAPP_FROM || "").trim();
   if (!f) return "";
-  return f.startsWith("whatsapp:") ? f : `whatsapp:${f}`;
+  // Strip any existing "whatsapp:" prefix so we control exactly one
+  const num = f.startsWith("whatsapp:") ? f.slice(9) : f;
+  return `whatsapp:${normalizePhone(num) || num}`;
 }
 
 async function sendViaTwilio(params: {
   phone: string;
   message?: string;
-  // Twilio uses content templates (HX...) rather than Meta's named templates.
+  // Twilio Content API template support (HX... sid)
   content_sid?: string;
   content_variables?: Record<string, string>;
 }): Promise<SendResult> {
-  const { e164 } = normalizePhone(params.phone);
-  if (!e164) return { success: false, error: "Invalid phone number", phone: e164 };
-  if (!LOVABLE_API_KEY) {
-    return { success: false, error: "LOVABLE_API_KEY not configured", phone: e164 };
+  const e164 = normalizePhone(params.phone);
+  if (!e164) return { success: false, error: "Invalid phone number", phone: params.phone };
+
+  if (!TWILIO_ACCOUNT_SID) {
+    return { success: false, error: "TWILIO_ACCOUNT_SID not configured", phone: e164 };
   }
-  if (!TWILIO_API_KEY) {
-    return { success: false, error: "TWILIO_API_KEY not configured (Twilio connector not linked)", phone: e164 };
+  if (!TWILIO_AUTH_TOKEN) {
+    return { success: false, error: "TWILIO_AUTH_TOKEN not configured", phone: e164 };
   }
   const from = waFrom();
   if (!from) {
@@ -72,28 +75,37 @@ async function sendViaTwilio(params: {
     body.set("Body", params.message || "");
   }
 
-  const url = `${GATEWAY_URL}/Messages.json`;
-  console.log("[send-whatsapp] →", { url, to: e164, kind: params.content_sid ? "template" : "text" });
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
+  // Basic auth: AccountSid:AuthToken
+  const credentials = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
+
+  console.log("[send-whatsapp] →", {
+    to: `whatsapp:${e164}`,
+    from,
+    kind: params.content_sid ? "template" : "text",
+  });
 
   try {
     const res = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "X-Connection-Api-Key": TWILIO_API_KEY,
+        Authorization: `Basic ${credentials}`,
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body,
     });
+
     const text = await res.text();
     let parsed: any = text;
     try { parsed = JSON.parse(text); } catch (_) { /* keep raw */ }
 
     if (!res.ok) {
+      // Twilio error format: { code, message, more_info, status }
       const err = parsed?.message || parsed?.error_message || `HTTP ${res.status}`;
-      console.error("[send-whatsapp] Twilio error:", err, parsed);
+      console.error("[send-whatsapp] Twilio error:", parsed?.code, err);
       return { success: false, error: err, phone: e164, providerResponse: parsed };
     }
+
     const message_id = parsed?.sid;
     console.log("[send-whatsapp] ✓ sent", { message_id, status: parsed?.status });
     return { success: true, message_id, phone: e164, providerResponse: parsed };
@@ -117,20 +129,19 @@ Deno.serve(async (req) => {
       user_id,
       user_name,
       lead_id,
-      // Twilio template (Content API) support — optional
       content_sid,
       content_variables,
-      // Back-compat: callers may still pass Meta-style template_name. We can't
-      // map that to a Twilio ContentSid automatically, so we fall back to text
-      // when a plain `message` is also provided.
+      // Back-compat: callers may still pass Meta-style template_name; use plain message fallback
       template_name,
       template_body_values,
       template_id,
+      journey_stage,
     } = body || {};
 
     if (!phone) {
       return new Response(JSON.stringify({ success: false, error: "phone is required" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     if (!content_sid && !message) {
@@ -142,7 +153,7 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // First attempt + one retry
+    // First attempt + one retry on failure
     let result = await sendViaTwilio({ phone, message, content_sid, content_variables });
     let retryCount = 0;
     if (!result.success) {
@@ -157,6 +168,7 @@ Deno.serve(async (req) => {
         ? `[template:${template_name}] ${(template_body_values || []).join(" | ")}`.trim()
         : (message as string);
 
+    // Log every attempt regardless of outcome
     await supabase.from("message_logs").insert({
       phone: result.phone,
       recipient_name: user_name || null,
@@ -176,6 +188,7 @@ Deno.serve(async (req) => {
         message_body: storedBody,
         template_used: template_name || (content_sid ? `twilio:${content_sid}` : null),
         template_id: template_id || null,
+        journey_stage: journey_stage || null,
         status: "sent",
         sent_at: new Date().toISOString(),
         created_by: user_id || null,
