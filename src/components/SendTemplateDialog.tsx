@@ -104,20 +104,14 @@ const SendTemplateDialog = ({ lead, open, onOpenChange }: Props) => {
           message: filledBody,
           user_id: user.id,
           user_name: user.name,
+          lead_id: lead.id,
+          template_name: picked.title,
+          template_id: picked.id,
+          journey_stage: picked.stage,
         },
       });
       if (error) throw error;
-      await supabase.from("lead_messages").insert({
-        lead_id: lead.id,
-        message_type: "outbound",
-        message_body: filledBody,
-        template_used: picked.title,
-        template_id: picked.id,
-        journey_stage: picked.stage,
-        status: data?.success ? "sent" : "failed",
-        sent_at: new Date().toISOString(),
-        created_by: user.id,
-      } as any);
+      if (!data?.success) throw new Error(data?.error || "Send failed");
       toast.success(`Sent: ${picked.title}`);
       onOpenChange(false);
     } catch (e: any) {
