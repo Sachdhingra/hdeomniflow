@@ -17,6 +17,13 @@ const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID");
 const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN");
 const TWILIO_WHATSAPP_FROM = Deno.env.get("TWILIO_WHATSAPP_FROM");
 
+// Log secret availability at cold-start so it shows up in Supabase function logs
+console.log("[send-whatsapp] secrets check →", {
+  TWILIO_ACCOUNT_SID: TWILIO_ACCOUNT_SID ? `${TWILIO_ACCOUNT_SID.slice(0, 4)}…` : "MISSING",
+  TWILIO_AUTH_TOKEN: TWILIO_AUTH_TOKEN ? "set" : "MISSING",
+  TWILIO_WHATSAPP_FROM: TWILIO_WHATSAPP_FROM || "MISSING",
+});
+
 interface SendResult {
   success: boolean;
   message_id?: string;
@@ -31,13 +38,12 @@ function normalizePhone(raw: string): string {
   if (!digits) return "";
   if (digits.startsWith("91") && digits.length === 12) return `+${digits}`;
   if (digits.length === 10) return `+91${digits}`;
-  return `+${digits}`; // already has country code
+  return `+${digits}`; // already has a country code prefix
 }
 
 function waFrom(): string {
   const f = (TWILIO_WHATSAPP_FROM || "").trim();
   if (!f) return "";
-  // Strip any existing "whatsapp:" prefix so we control exactly one
   const num = f.startsWith("whatsapp:") ? f.slice(9) : f;
   return `whatsapp:${normalizePhone(num) || num}`;
 }
@@ -45,7 +51,6 @@ function waFrom(): string {
 async function sendViaTwilio(params: {
   phone: string;
   message?: string;
-  // Twilio Content API template support (HX... sid)
   content_sid?: string;
   content_variables?: Record<string, string>;
 }): Promise<SendResult> {
@@ -53,30 +58,29 @@ async function sendViaTwilio(params: {
   if (!e164) return { success: false, error: "Invalid phone number", phone: params.phone };
 
   if (!TWILIO_ACCOUNT_SID) {
-    return { success: false, error: "TWILIO_ACCOUNT_SID not configured", phone: e164 };
+    return { success: false, error: "TWILIO_ACCOUNT_SID secret not set in Supabase", phone: params.phone };
   }
   if (!TWILIO_AUTH_TOKEN) {
-    return { success: false, error: "TWILIO_AUTH_TOKEN not configured", phone: e164 };
+    return { success: false, error: "TWILIO_AUTH_TOKEN secret not set in Supabase", phone: params.phone };
   }
   const from = waFrom();
   if (!from) {
-    return { success: false, error: "TWILIO_WHATSAPP_FROM not configured", phone: e164 };
+    return { success: false, error: "TWILIO_WHATSAPP_FROM secret not set in Supabase", phone: e164 };
   }
 
-  const body = new URLSearchParams();
-  body.set("To", `whatsapp:${e164}`);
-  body.set("From", from);
+  const formBody = new URLSearchParams();
+  formBody.set("To", `whatsapp:${e164}`);
+  formBody.set("From", from);
   if (params.content_sid) {
-    body.set("ContentSid", params.content_sid);
+    formBody.set("ContentSid", params.content_sid);
     if (params.content_variables && Object.keys(params.content_variables).length > 0) {
-      body.set("ContentVariables", JSON.stringify(params.content_variables));
+      formBody.set("ContentVariables", JSON.stringify(params.content_variables));
     }
   } else {
-    body.set("Body", params.message || "");
+    formBody.set("Body", params.message || "");
   }
 
   const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
-  // Basic auth: AccountSid:AuthToken
   const credentials = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
 
   console.log("[send-whatsapp] →", {
@@ -92,7 +96,7 @@ async function sendViaTwilio(params: {
         Authorization: `Basic ${credentials}`,
         "Content-Type": "application/x-www-form-urlencoded",
       },
-      body,
+      body: formBody,
     });
 
     const text = await res.text();
@@ -100,18 +104,18 @@ async function sendViaTwilio(params: {
     try { parsed = JSON.parse(text); } catch (_) { /* keep raw */ }
 
     if (!res.ok) {
-      // Twilio error format: { code, message, more_info, status }
+      // Twilio error body: { code, message, more_info, status }
       const err = parsed?.message || parsed?.error_message || `HTTP ${res.status}`;
-      console.error("[send-whatsapp] Twilio error:", parsed?.code, err);
-      return { success: false, error: err, phone: e164, providerResponse: parsed };
+      const twilioCode = parsed?.code ? ` (Twilio code ${parsed.code})` : "";
+      console.error("[send-whatsapp] Twilio rejected:", err, twilioCode, parsed);
+      return { success: false, error: `${err}${twilioCode}`, phone: e164, providerResponse: parsed };
     }
 
-    const message_id = parsed?.sid;
-    console.log("[send-whatsapp] ✓ sent", { message_id, status: parsed?.status });
-    return { success: true, message_id, phone: e164, providerResponse: parsed };
+    console.log("[send-whatsapp] ✓ sent", { sid: parsed?.sid, status: parsed?.status });
+    return { success: true, message_id: parsed?.sid, phone: e164, providerResponse: parsed };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("[send-whatsapp] fetch failed:", msg);
+    console.error("[send-whatsapp] fetch error:", msg);
     return { success: false, error: msg, phone: e164 };
   }
 }
@@ -120,6 +124,15 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+
+  // Always respond with HTTP 200 — success/failure is in the JSON body.
+  // Returning 4xx/5xx causes supabase.functions.invoke() to put the response
+  // in `error` instead of `data`, hiding the actual Twilio error from callers.
+  const ok = (payload: object) =>
+    new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
 
   try {
     const body = await req.json();
@@ -131,7 +144,6 @@ Deno.serve(async (req) => {
       lead_id,
       content_sid,
       content_variables,
-      // Back-compat: callers may still pass Meta-style template_name; use plain message fallback
       template_name,
       template_body_values,
       template_id,
@@ -139,21 +151,15 @@ Deno.serve(async (req) => {
     } = body || {};
 
     if (!phone) {
-      return new Response(JSON.stringify({ success: false, error: "phone is required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return ok({ success: false, error: "phone is required" });
     }
     if (!content_sid && !message) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Either content_sid or message is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return ok({ success: false, error: "Either content_sid or message is required" });
     }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // First attempt + one retry on failure
+    // First attempt + one retry on transient failure
     let result = await sendViaTwilio({ phone, message, content_sid, content_variables });
     let retryCount = 0;
     if (!result.success) {
@@ -195,25 +201,16 @@ Deno.serve(async (req) => {
       });
     }
 
-    return new Response(
-      JSON.stringify({
-        success: result.success,
-        message_id: result.message_id,
-        error: result.error,
-        phone: result.phone,
-        provider: "twilio",
-      }),
-      {
-        status: result.success ? 200 : 502,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
-    );
-  } catch (error) {
-    console.error("send-whatsapp error:", error);
-    const msg = error instanceof Error ? error.message : String(error);
-    return new Response(JSON.stringify({ success: false, error: msg }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return ok({
+      success: result.success,
+      message_id: result.message_id,
+      error: result.error,
+      phone: result.phone,
+      provider: "twilio",
     });
+  } catch (error) {
+    console.error("[send-whatsapp] unhandled error:", error);
+    const msg = error instanceof Error ? error.message : String(error);
+    return ok({ success: false, error: msg });
   }
 });
