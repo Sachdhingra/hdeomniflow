@@ -614,6 +614,8 @@ export type Database = {
           created_at: string
           created_by: string | null
           delivered_at: string | null
+          error_message: string | null
+          failed_at: string | null
           id: string
           intent: string | null
           journey_stage: string | null
@@ -622,6 +624,7 @@ export type Database = {
           message_body: string
           message_kind: string | null
           message_type: string
+          provider_message_id: string | null
           read_at: string | null
           response_received: boolean
           sent_at: string
@@ -637,6 +640,8 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           delivered_at?: string | null
+          error_message?: string | null
+          failed_at?: string | null
           id?: string
           intent?: string | null
           journey_stage?: string | null
@@ -645,6 +650,7 @@ export type Database = {
           message_body: string
           message_kind?: string | null
           message_type: string
+          provider_message_id?: string | null
           read_at?: string | null
           response_received?: boolean
           sent_at?: string
@@ -660,6 +666,8 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           delivered_at?: string | null
+          error_message?: string | null
+          failed_at?: string | null
           id?: string
           intent?: string | null
           journey_stage?: string | null
@@ -668,6 +676,7 @@ export type Database = {
           message_body?: string
           message_kind?: string | null
           message_type?: string
+          provider_message_id?: string | null
           read_at?: string | null
           response_received?: boolean
           sent_at?: string
@@ -969,6 +978,7 @@ export type Database = {
           message: string
           phone: string
           provider: string
+          provider_message_id: string | null
           recipient_name: string | null
           recipient_user_id: string | null
           retry_count: number
@@ -982,6 +992,7 @@ export type Database = {
           message: string
           phone: string
           provider?: string
+          provider_message_id?: string | null
           recipient_name?: string | null
           recipient_user_id?: string | null
           retry_count?: number
@@ -995,6 +1006,7 @@ export type Database = {
           message?: string
           phone?: string
           provider?: string
+          provider_message_id?: string | null
           recipient_name?: string | null
           recipient_user_id?: string | null
           retry_count?: number
