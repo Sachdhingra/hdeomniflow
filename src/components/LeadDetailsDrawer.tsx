@@ -19,6 +19,10 @@ interface LeadMessage {
   message_body: string;
   status: string;
   sent_at: string;
+  delivered_at?: string | null;
+  read_at?: string | null;
+  failed_at?: string | null;
+  error_message?: string | null;
   template_used: string | null;
   message_kind?: string | null;
   sentiment?: string | null;
@@ -71,7 +75,7 @@ const LeadDetailsDrawer = ({ lead, open, onOpenChange }: Props) => {
           .order("changed_at", { ascending: false }),
         supabase.rpc("calculate_conversion_probability", { _lead_id: lead.id }),
         supabase.from("lead_messages")
-          .select("id, message_type, message_body, status, sent_at, template_used, message_kind, sentiment, intent, concern, variant, sequence_number")
+          .select("id, message_type, message_body, status, sent_at, delivered_at, read_at, failed_at, error_message, template_used, message_kind, sentiment, intent, concern, variant, sequence_number")
           .eq("lead_id", lead.id)
           .order("sent_at", { ascending: false })
           .limit(20),
@@ -283,11 +287,29 @@ const LeadDetailsDrawer = ({ lead, open, onOpenChange }: Props) => {
               <ol className="space-y-1.5 max-h-48 overflow-y-auto">
                 {messages.map(m => (
                   <li key={m.id} className={`text-xs rounded p-2 border-l-2 ${m.message_type === "outbound" ? "border-primary bg-primary/5" : "border-success bg-success/5"}`}>
-                    <div className="flex items-center justify-between mb-0.5">
+                    <div className="flex items-center justify-between mb-0.5 gap-2">
                       <Badge variant="outline" className="text-[9px]">{m.message_type}</Badge>
-                      <span className="text-muted-foreground text-[10px]">{formatRelativeTime(m.sent_at)}</span>
+                      <div className="flex items-center gap-1">
+                        {m.message_type === "outbound" && (
+                          <Badge
+                            variant={m.status === "failed" ? "destructive" : "outline"}
+                            className="text-[9px] capitalize"
+                            title={m.error_message || (m.read_at ? `Read ${new Date(m.read_at).toLocaleString()}` : m.delivered_at ? `Delivered ${new Date(m.delivered_at).toLocaleString()}` : "")}
+                          >
+                            {m.status === "read" ? "✓✓ read" :
+                             m.status === "delivered" ? "✓✓ delivered" :
+                             m.status === "sent" ? "✓ sent" :
+                             m.status === "failed" ? "⚠ failed" :
+                             m.status === "queued" ? "⏳ queued" : m.status}
+                          </Badge>
+                        )}
+                        <span className="text-muted-foreground text-[10px]">{formatRelativeTime(m.sent_at)}</span>
+                      </div>
                     </div>
                     <p className="whitespace-pre-wrap">{m.message_body}</p>
+                    {m.status === "failed" && m.error_message && (
+                      <p className="text-[10px] text-destructive mt-1">{m.error_message}</p>
+                    )}
                   </li>
                 ))}
               </ol>

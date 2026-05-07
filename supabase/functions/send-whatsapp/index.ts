@@ -63,6 +63,11 @@ async function sendViaTwilio(params: {
   const body = new URLSearchParams();
   body.set("To", `whatsapp:${e164}`);
   body.set("From", from);
+  // Twilio will POST delivery status updates here.
+  const statusCallback = `${supabaseUrl}/functions/v1/twilio-status`;
+  if (statusCallback && /^https?:\/\//.test(statusCallback)) {
+    body.set("StatusCallback", statusCallback);
+  }
   if (params.content_sid) {
     body.set("ContentSid", params.content_sid);
     if (params.content_variables && Object.keys(params.content_variables).length > 0) {
@@ -163,6 +168,7 @@ Deno.serve(async (req) => {
       recipient_user_id: user_id || null,
       message: storedBody,
       provider: "twilio",
+      provider_message_id: result.message_id || null,
       status: result.success ? "sent" : "failed",
       retry_count: retryCount,
       error_message: result.error || null,
@@ -177,6 +183,7 @@ Deno.serve(async (req) => {
         template_used: template_name || (content_sid ? `twilio:${content_sid}` : null),
         template_id: template_id || null,
         status: "sent",
+        provider_message_id: result.message_id || null,
         sent_at: new Date().toISOString(),
         created_by: user_id || null,
       });
