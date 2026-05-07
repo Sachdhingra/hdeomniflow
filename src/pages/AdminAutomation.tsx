@@ -143,6 +143,32 @@ const AdminAutomation = () => {
     }
   };
 
+  const sendTestMessage = async () => {
+    if (!testPhone.trim()) { toast.error("Enter a phone number"); return; }
+    setTesting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("send-whatsapp", {
+        body: {
+          phone: testPhone.trim(),
+          message: `✅ Twilio WhatsApp test from Omni at ${new Date().toLocaleString()}`,
+          user_id: user?.id,
+          user_name: user?.name,
+        },
+      });
+      if (error) throw error;
+      if (data?.success) {
+        toast.success(`Test sent! Message SID: ${data.message_id}`);
+        setTestOpen(false);
+      } else {
+        toast.error(`Failed: ${data?.error || "unknown error"}`);
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Test failed");
+    } finally {
+      setTesting(false);
+    }
+  };
+
   if (loading) {
     return <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
   }
