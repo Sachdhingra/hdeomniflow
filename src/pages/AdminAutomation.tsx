@@ -4,7 +4,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, PlayCircle, MessageSquare, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
+import { Loader2, PlayCircle, MessageSquare, AlertTriangle, CheckCircle2, Clock, Send } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 type StageRow = { stage: string; count: number; avg_days: number };
