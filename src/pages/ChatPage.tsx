@@ -258,8 +258,13 @@ const ChatPage = () => {
       </aside>
 
       {/* Main panel */}
-      <section className="flex-1 bg-card border border-border rounded-lg flex flex-col overflow-hidden">
-        <header className="px-4 py-3 border-b border-border flex items-center gap-2">
+      <section className={`${isMobile && !activeId ? "hidden" : "flex"} flex-1 bg-card border border-border rounded-lg flex-col overflow-hidden min-w-0`}>
+        <header className="px-3 sm:px-4 py-3 border-b border-border flex items-center gap-2">
+          {isMobile && (
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 -ml-1" onClick={() => setActiveId(null)}>
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+          )}
           {activeChannel?.kind === "dm" ? (
             <span className="w-2 h-2 rounded-full bg-emerald-500" />
           ) : (
