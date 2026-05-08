@@ -81,6 +81,19 @@ const AccountsApprovals = () => {
       }
     }));
     setDuesByPhone(duesMap);
+
+    // Resolve lead owners (sales person who created the lead) for each job
+    const jobIds = (data || []).map((j: any) => j.id);
+    if (jobIds.length) {
+      const { data: owners } = await supabase.rpc("get_lead_owners_for_jobs" as any, { p_job_ids: jobIds });
+      const map: Record<string, { owner_name: string | null; assignee_name: string | null }> = {};
+      (owners || []).forEach((o: any) => {
+        map[o.job_id] = { owner_name: o.owner_name, assignee_name: o.assignee_name };
+      });
+      setOwnersByJob(map);
+    } else {
+      setOwnersByJob({});
+    }
     setLoading(false);
   }, []);
 
