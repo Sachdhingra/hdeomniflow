@@ -4,7 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Hash, Send, Plus, Search, Trash2, Edit2, Pin } from "lucide-react";
+import { Hash, Send, Plus, Search, Trash2, Edit2, Pin, ArrowLeft } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 
 interface Channel {
@@ -28,6 +29,7 @@ interface Message {
 
 const ChatPage = () => {
   const { user, allProfiles } = useAuth();
+  const isMobile = useIsMobile();
   const allowed = user && ["admin", "sales", "accounts", "service_head"].includes(user.role);
 
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -69,7 +71,7 @@ const ChatPage = () => {
         map[r.channel_id].push(r.user_id);
       });
       setMembers(map);
-      if (!activeId) setActiveId(list[0].id);
+      if (!activeId && !isMobile) setActiveId(list[0].id);
     }
   };
 
@@ -188,9 +190,9 @@ const ChatPage = () => {
   }
 
   return (
-    <div className="h-[calc(100vh-7rem)] flex gap-3">
+    <div className="h-[calc(100vh-7rem)] flex gap-2 sm:gap-3">
       {/* Sidebar */}
-      <aside className="w-72 bg-card border border-border rounded-lg flex flex-col overflow-hidden">
+      <aside className={`${isMobile ? (activeId ? "hidden" : "flex w-full") : "flex w-72"} bg-card border border-border rounded-lg flex-col overflow-hidden`}>
         <div className="p-3 border-b border-border">
           <div className="relative">
             <Search className="absolute left-2 top-2.5 w-4 h-4 text-muted-foreground" />
@@ -256,8 +258,13 @@ const ChatPage = () => {
       </aside>
 
       {/* Main panel */}
-      <section className="flex-1 bg-card border border-border rounded-lg flex flex-col overflow-hidden">
-        <header className="px-4 py-3 border-b border-border flex items-center gap-2">
+      <section className={`${isMobile && !activeId ? "hidden" : "flex"} flex-1 bg-card border border-border rounded-lg flex-col overflow-hidden min-w-0`}>
+        <header className="px-3 sm:px-4 py-3 border-b border-border flex items-center gap-2">
+          {isMobile && (
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 -ml-1" onClick={() => setActiveId(null)}>
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+          )}
           {activeChannel?.kind === "dm" ? (
             <span className="w-2 h-2 rounded-full bg-emerald-500" />
           ) : (
