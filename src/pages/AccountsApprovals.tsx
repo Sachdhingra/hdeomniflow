@@ -50,6 +50,7 @@ const AccountsApprovals = () => {
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [duesByPhone, setDuesByPhone] = useState<Record<string, { total: number; count: number }>>({});
+  const [ownersByJob, setOwnersByJob] = useState<Record<string, { owner_name: string | null; assignee_name: string | null }>>({});
   const [auditLog, setAuditLog] = useState<any[]>([]);
   const [dues, setDues] = useState<any[]>([]);
   const [newDue, setNewDue] = useState({ customer_name: "", customer_phone: "", amount: "", description: "" });
