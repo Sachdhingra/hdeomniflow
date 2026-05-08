@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import NotificationPanel from "@/components/NotificationPanel";
 import NetworkStatusBadge from "@/components/NetworkStatusBadge";
+import ChatNotifier from "@/components/ChatNotifier";
 
 interface NavItem {
   to: string;
@@ -95,6 +96,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
 
   return (
     <div className="min-h-screen flex bg-background">
+      <ChatNotifier />
       {sidebarOpen && (
         <div className="fixed inset-0 bg-foreground/20 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
