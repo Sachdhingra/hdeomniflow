@@ -229,6 +229,8 @@ const AccountsApprovals = () => {
         <div className="space-y-3">
           {filtered.map(job => {
             const dues = duesByPhone[job.customer_phone];
+            const owner = ownersByJob[job.id];
+            const ownerLabel = owner?.owner_name || owner?.assignee_name;
             return (
               <Card key={job.id} className="shadow-card">
                 <CardContent className="p-4 space-y-2">
