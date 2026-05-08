@@ -190,9 +190,9 @@ const ChatPage = () => {
   }
 
   return (
-    <div className="h-[calc(100vh-7rem)] flex gap-3">
+    <div className="h-[calc(100vh-7rem)] flex gap-2 sm:gap-3">
       {/* Sidebar */}
-      <aside className="w-72 bg-card border border-border rounded-lg flex flex-col overflow-hidden">
+      <aside className={`${isMobile ? (activeId ? "hidden" : "flex w-full") : "flex w-72"} bg-card border border-border rounded-lg flex-col overflow-hidden`}>
         <div className="p-3 border-b border-border">
           <div className="relative">
             <Search className="absolute left-2 top-2.5 w-4 h-4 text-muted-foreground" />
