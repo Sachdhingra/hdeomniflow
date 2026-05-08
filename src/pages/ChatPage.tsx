@@ -29,6 +29,7 @@ interface Message {
 
 const ChatPage = () => {
   const { user, allProfiles } = useAuth();
+  const isMobile = useIsMobile();
   const allowed = user && ["admin", "sales", "accounts", "service_head"].includes(user.role);
 
   const [channels, setChannels] = useState<Channel[]>([]);
