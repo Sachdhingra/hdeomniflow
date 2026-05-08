@@ -71,7 +71,7 @@ const ChatPage = () => {
         map[r.channel_id].push(r.user_id);
       });
       setMembers(map);
-      if (!activeId) setActiveId(list[0].id);
+      if (!activeId && !isMobile) setActiveId(list[0].id);
     }
   };
 
