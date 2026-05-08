@@ -1572,6 +1572,17 @@ export type Database = {
         Returns: undefined
       }
       get_dashboard_summary: { Args: never; Returns: Json }
+      get_lead_owners_for_jobs: {
+        Args: { p_job_ids: string[] }
+        Returns: {
+          assignee_id: string
+          assignee_name: string
+          job_id: string
+          lead_id: string
+          owner_id: string
+          owner_name: string
+        }[]
+      }
       get_or_create_dm_channel: { Args: { _other: string }; Returns: string }
       get_pending_approvals_count: { Args: never; Returns: number }
       get_user_role: {
