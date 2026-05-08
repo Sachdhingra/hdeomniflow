@@ -107,9 +107,24 @@ const AdminCategories = () => {
         .update(payload)
         .eq("id", editing.id));
     } else {
-      ({ error } = await (supabase as any)
+      // Check if a soft-deleted category with the same name exists and reactivate it
+      const { data: existing } = await (supabase as any)
         .from("categories")
-        .insert({ ...payload, created_by: user!.id }));
+        .select("id")
+        .eq("name", payload.name)
+        .not("deleted_at", "is", null)
+        .maybeSingle();
+
+      if (existing) {
+        ({ error } = await (supabase as any)
+          .from("categories")
+          .update({ ...payload, deleted_at: null })
+          .eq("id", existing.id));
+      } else {
+        ({ error } = await (supabase as any)
+          .from("categories")
+          .insert({ ...payload, created_by: user!.id }));
+      }
     }
 
     setSaving(false);
