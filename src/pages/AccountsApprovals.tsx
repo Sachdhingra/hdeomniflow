@@ -243,11 +243,20 @@ const AccountsApprovals = () => {
                         </Badge>
                         <Badge variant="outline" className="text-xs uppercase">{job.type}</Badge>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1 flex items-center gap-3">
+                      <p className="text-xs text-muted-foreground mt-1 flex items-center gap-3 flex-wrap">
                         <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{job.customer_phone}</span>
                         <span>{job.category}</span>
                         {job.date_to_attend && <span>📅 {job.date_to_attend}</span>}
                       </p>
+                      {ownerLabel && (
+                        <p className="text-xs mt-1">
+                          <span className="text-muted-foreground">Requested by: </span>
+                          <span className="font-medium text-foreground">{ownerLabel}</span>
+                          {owner?.assignee_name && owner?.owner_name && owner.assignee_name !== owner.owner_name && (
+                            <span className="text-muted-foreground"> · assigned to {owner.assignee_name}</span>
+                          )}
+                        </p>
+                      )}
                       {job.description && <p className="text-sm mt-1">{job.description}</p>}
                     </div>
                     <div className="text-right">
