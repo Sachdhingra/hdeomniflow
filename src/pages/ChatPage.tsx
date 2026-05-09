@@ -296,8 +296,9 @@ const ChatPage = () => {
                   </div>
                 )}
                 <div className={`max-w-[70%] ${mine ? "items-end" : ""}`}>
-                  <div className="text-xs text-muted-foreground mb-0.5 flex items-center gap-1">
+                  <div className="text-xs text-muted-foreground mb-0.5 flex items-center gap-1 flex-wrap">
                     <span className="font-medium">{sender?.name ?? "Unknown"}</span>
+                    {sender?.role && <span className="text-[10px] uppercase tracking-wide opacity-70">({sender.role})</span>}
                     <span>· {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                     {m.edited_at && <span className="italic">(edited)</span>}
                     {m.pinned && <Pin className="w-3 h-3 text-amber-500" />}
