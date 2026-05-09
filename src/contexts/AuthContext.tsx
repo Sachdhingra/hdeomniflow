@@ -99,7 +99,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       profiles.forEach(p => {
         const r = roles.find(r => r.user_id === p.id);
         if (!r) return;
-        map.set(p.id, { id: p.id, name: p.name, email: p.email, role: r.role as UserRole, active: (p as any).active });
+        map.set(p.id, { id: p.id, name: p.name, email: p.email, role: r.role as UserRole });
       });
     }
     // Always merge in the chat directory so sales/accounts/service users (who
