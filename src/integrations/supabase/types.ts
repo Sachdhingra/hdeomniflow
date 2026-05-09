@@ -1571,6 +1571,15 @@ export type Database = {
         Args: { _user: string }
         Returns: undefined
       }
+      get_chat_directory: {
+        Args: never
+        Returns: {
+          email: string
+          id: string
+          name: string
+          role: Database["public"]["Enums"]["app_role"]
+        }[]
+      }
       get_dashboard_summary: { Args: never; Returns: Json }
       get_lead_owners_for_jobs: {
         Args: { p_job_ids: string[] }
