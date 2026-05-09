@@ -108,7 +108,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (Array.isArray(dir)) {
       dir.forEach((d: any) => {
         if (!map.has(d.id)) {
-          map.set(d.id, { id: d.id, name: d.name, email: d.email, role: d.role as UserRole, active: true });
+          map.set(d.id, { id: d.id, name: d.name, email: d.email, role: d.role as UserRole });
         }
       });
     }
