@@ -106,7 +106,7 @@ const ChatPage = () => {
         .is("deleted_at", null)
         .order("created_at", { ascending: true })
         .limit(200);
-      if (!cancel) setMessages((data ?? []) as Message[]);
+      if (!cancel) setMessages((data ?? []) as unknown as Message[]);
     })();
 
     const channel = supabase
