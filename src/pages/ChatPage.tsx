@@ -160,17 +160,64 @@ const ChatPage = () => {
     return other?.name ?? "Direct message";
   };
 
+  const canAttach = !!user && MANAGEMENT_ROLES.includes(user.role);
+
   const sendMessage = async () => {
-    if (!input.trim() || !activeId || !user) return;
+    if (!activeId || !user) return;
+    if (!input.trim() && pendingFiles.length === 0) return;
     const body = input.trim();
+    const filesToUpload = pendingFiles;
     setInput("");
+    setPendingFiles([]);
+
+    let uploaded: ChatFile[] = [];
+    if (filesToUpload.length > 0) {
+      if (!canAttach) {
+        toast.error("Your role cannot share attachments");
+        return;
+      }
+      setUploading(true);
+      try {
+        for (const f of filesToUpload) {
+          const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+          if (!ALLOWED_EXT.includes(ext)) throw new Error(`File type .${ext} not allowed`);
+          if (f.size > MAX_FILE_SIZE) throw new Error(`${f.name} exceeds 25MB`);
+          const path = `${activeId}/${crypto.randomUUID()}-${f.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+          const { error: upErr } = await supabase.storage
+            .from("chat-attachments")
+            .upload(path, f, { contentType: f.type || "application/octet-stream", upsert: false });
+          if (upErr) throw upErr;
+          uploaded.push({ path, name: f.name, size: f.size, type: f.type });
+        }
+      } catch (e: any) {
+        toast.error(e?.message ?? "Upload failed");
+        setUploading(false);
+        setInput(body);
+        setPendingFiles(filesToUpload);
+        return;
+      }
+      setUploading(false);
+    }
+
     const { error } = await supabase
       .from("chat_messages")
-      .insert({ channel_id: activeId, sender_id: user.id, body });
+      .insert({ channel_id: activeId, sender_id: user.id, body, files: uploaded as any });
     if (error) {
       toast.error(error.message);
       setInput(body);
+      setPendingFiles(filesToUpload);
     }
+  };
+
+  const downloadAttachment = async (f: ChatFile) => {
+    const { data, error } = await supabase.storage
+      .from("chat-attachments")
+      .createSignedUrl(f.path, 60, { download: f.name });
+    if (error || !data?.signedUrl) {
+      toast.error(error?.message ?? "Could not open file");
+      return;
+    }
+    window.open(data.signedUrl, "_blank");
   };
 
   const startDM = async (otherId: string) => {
