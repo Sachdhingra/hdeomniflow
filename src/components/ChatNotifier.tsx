@@ -4,22 +4,55 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { MessagesSquare } from "lucide-react";
+import { useChatUnread } from "@/contexts/ChatUnreadContext";
+
+let sharedAudioCtx: AudioContext | null = null;
+
+const playPing = () => {
+  try {
+    if (!sharedAudioCtx) {
+      sharedAudioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    const ctx = sharedAudioCtx;
+    if (ctx.state === "suspended") ctx.resume();
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    osc.type = "sine";
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.35);
+  } catch {
+    // AudioContext not supported or blocked
+  }
+};
 
 /**
  * Listens for new chat_messages and shows:
  *  - In-app sonner toast (cloud banner) on any dashboard
  *  - Browser system notification when the tab is hidden / app backgrounded
- * Notifications persist 20 seconds. Suppressed while user is on /chat actively.
+ *  - Soft audio ping on each new message
+ * Tracks per-channel unread counts via ChatUnreadContext.
+ * Suppresses toast while user is on /chat with the tab visible.
  */
 const ChatNotifier = () => {
   const { user, allProfiles } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { addUnread, activeChannelId } = useChatUnread();
+
   const profilesRef = useRef(allProfiles);
   profilesRef.current = allProfiles;
   const onChatPage = location.pathname.startsWith("/chat");
   const onChatRef = useRef(onChatPage);
   onChatRef.current = onChatPage;
+  const activeChannelRef = useRef(activeChannelId);
+  activeChannelRef.current = activeChannelId;
 
   const allowed = !!user && ["admin", "sales", "accounts", "service_head"].includes(user.role);
 
@@ -42,27 +75,37 @@ const ChatNotifier = () => {
         (payload) => {
           const m: any = payload.new;
           if (!m || m.sender_id === user.id) return;
-          // Suppress only if user is actively on chat page AND tab is visible
+
           const tabVisible = typeof document !== "undefined" && document.visibilityState === "visible";
-          if (onChatRef.current && tabVisible) return;
+          const isActiveChannel = onChatRef.current && tabVisible && activeChannelRef.current === m.channel_id;
+
+          // Track unread for any channel the user isn't currently viewing
+          if (!isActiveChannel) {
+            addUnread(m.channel_id);
+          }
+
+          // Suppress toast when user is on chat page with tab in focus
+          const suppressToast = onChatRef.current && tabVisible;
+          if (suppressToast) return;
 
           const sender = profilesRef.current.find(p => p.id === m.sender_id);
           const name = sender?.name ?? "Teammate";
           const role = sender?.role ? ` (${sender.role})` : "";
           const preview = String(m.body ?? "").slice(0, 120) || "(attachment)";
 
-          // In-app cloud banner (sonner)
+          playPing();
+
           toast.message(`💬 ${name}${role}`, {
             description: preview,
-            icon: <MessagesSquare className="w-4 h-4" />,
+            icon: <MessagesSquare className="w-4 h-4 text-primary" />,
             duration: 20000,
             action: {
-              label: "Open",
+              label: "Open Chat",
               onClick: () => navigate("/chat"),
             },
           });
 
-          // System tray notification when tab not visible
+          // System notification when tab not visible
           if (
             typeof window !== "undefined" &&
             "Notification" in window &&
@@ -91,7 +134,7 @@ const ChatNotifier = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [allowed, user?.id, navigate]);
+  }, [allowed, user?.id, navigate, addUnread]);
 
   return null;
 };

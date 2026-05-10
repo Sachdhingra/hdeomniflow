@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import NotificationPanel from "@/components/NotificationPanel";
 import NetworkStatusBadge from "@/components/NetworkStatusBadge";
 import ChatNotifier from "@/components/ChatNotifier";
+import { useChatUnread } from "@/contexts/ChatUnreadContext";
 
 interface NavItem {
   to: string;
@@ -32,6 +33,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
 const AppLayout = ({ children }: { children: ReactNode }) => {
   const { user, logout, forceLogout } = useAuth();
   const { notifications, error, summary } = useData();
+  const { totalUnread: chatUnread } = useChatUnread();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   if (!user) return null;
@@ -55,7 +57,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/admin/templates", label: "WhatsApp Templates", icon: <MessageSquare className="w-5 h-5" /> },
       { to: "/admin/funnel-analytics", label: "Funnel Analytics", icon: <TrendingUp className="w-5 h-5" /> },
       { to: "/admin/orders", label: "Orders", icon: <ShoppingBag className="w-5 h-5" /> },
-      { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" /> },
+      { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" />, badge: chatUnread || undefined },
       { to: "/ai-assistant", label: "AI Assistant", icon: <Sparkles className="w-5 h-5" /> },
     ],
     sales: [
@@ -64,7 +66,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/leads/board", label: "Leads Board", icon: <KanbanSquare className="w-5 h-5" /> },
       { to: "/pipeline", label: "Pipeline", icon: <BarChart3 className="w-5 h-5" /> },
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
-      { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" /> },
+      { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" />, badge: chatUnread || undefined },
       { to: "/ai-assistant", label: "AI Assistant", icon: <Sparkles className="w-5 h-5" /> },
     ],
     service_head: [
@@ -72,7 +74,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/service-jobs", label: "Service Jobs", icon: <Wrench className="w-5 h-5" /> },
       { to: "/claims", label: "Claims", icon: <FileText className="w-5 h-5" /> },
       { to: "/calendar", label: "Calendar", icon: <CalendarDays className="w-5 h-5" /> },
-      { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" /> },
+      { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" />, badge: chatUnread || undefined },
       { to: "/ai-assistant", label: "AI Assistant", icon: <Sparkles className="w-5 h-5" /> },
     ],
     field_agent: [
@@ -88,7 +90,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
     accounts: [
       { to: "/", label: "Approvals", icon: <ShieldCheck className="w-5 h-5" /> },
       { to: "/accounts/approvals", label: "All Approvals", icon: <ClipboardList className="w-5 h-5" /> },
-      { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" /> },
+      { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" />, badge: chatUnread || undefined },
     ],
   };
 
