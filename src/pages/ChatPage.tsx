@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Hash, Send, Plus, Search, Trash2, Edit2, Pin, ArrowLeft } from "lucide-react";
+import { Hash, Send, Plus, Search, Trash2, Edit2, Pin, ArrowLeft, Paperclip, FileText, X, Download, Loader2 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 import { useChatUnread } from "@/contexts/ChatUnreadContext";
@@ -16,17 +16,34 @@ interface Channel {
   kind: "group" | "dm";
   is_default: boolean;
 }
+interface ChatFile {
+  path: string;
+  name: string;
+  size: number;
+  type: string;
+}
 interface Message {
   id: string;
   channel_id: string;
   sender_id: string;
   body: string;
   file_url: string | null;
+  files?: ChatFile[] | null;
   pinned: boolean;
   edited_at: string | null;
   deleted_at: string | null;
   created_at: string;
 }
+
+const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
+const ALLOWED_EXT = ["pdf","doc","docx","xlsx","xls","txt","pptx","ppt","csv","jpg","jpeg","png","webp"];
+const MANAGEMENT_ROLES = ["admin","sales","accounts","service_head"];
+
+const formatBytes = (b: number) => {
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+};
 
 const ChatPage = () => {
   const { user, allProfiles } = useAuth();
@@ -43,6 +60,9 @@ const ChatPage = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   // Bootstrap: ensure default channels for this user, then load
   useEffect(() => {
@@ -89,7 +109,7 @@ const ChatPage = () => {
         .is("deleted_at", null)
         .order("created_at", { ascending: true })
         .limit(200);
-      if (!cancel) setMessages((data ?? []) as Message[]);
+      if (!cancel) setMessages((data ?? []) as unknown as Message[]);
     })();
 
     const channel = supabase
@@ -100,15 +120,16 @@ const ChatPage = () => {
         (payload) => {
           setMessages(prev => {
             if (payload.eventType === "INSERT") {
-              const n = payload.new as Message;
+              const n = payload.new as unknown as Message;
               if (prev.some(m => m.id === n.id)) return prev;
               return [...prev, n];
             }
             if (payload.eventType === "UPDATE") {
-              return prev.map(m => (m.id === (payload.new as Message).id ? (payload.new as Message) : m));
+              const n = payload.new as unknown as Message;
+              return prev.map(m => (m.id === n.id ? n : m));
             }
             if (payload.eventType === "DELETE") {
-              return prev.filter(m => m.id !== (payload.old as Message).id);
+              return prev.filter(m => m.id !== (payload.old as { id: string }).id);
             }
             return prev;
           });
@@ -142,17 +163,64 @@ const ChatPage = () => {
     return other?.name ?? "Direct message";
   };
 
+  const canAttach = !!user && MANAGEMENT_ROLES.includes(user.role);
+
   const sendMessage = async () => {
-    if (!input.trim() || !activeId || !user) return;
+    if (!activeId || !user) return;
+    if (!input.trim() && pendingFiles.length === 0) return;
     const body = input.trim();
+    const filesToUpload = pendingFiles;
     setInput("");
+    setPendingFiles([]);
+
+    let uploaded: ChatFile[] = [];
+    if (filesToUpload.length > 0) {
+      if (!canAttach) {
+        toast.error("Your role cannot share attachments");
+        return;
+      }
+      setUploading(true);
+      try {
+        for (const f of filesToUpload) {
+          const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+          if (!ALLOWED_EXT.includes(ext)) throw new Error(`File type .${ext} not allowed`);
+          if (f.size > MAX_FILE_SIZE) throw new Error(`${f.name} exceeds 25MB`);
+          const path = `${activeId}/${crypto.randomUUID()}-${f.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+          const { error: upErr } = await supabase.storage
+            .from("chat-attachments")
+            .upload(path, f, { contentType: f.type || "application/octet-stream", upsert: false });
+          if (upErr) throw upErr;
+          uploaded.push({ path, name: f.name, size: f.size, type: f.type });
+        }
+      } catch (e: any) {
+        toast.error(e?.message ?? "Upload failed");
+        setUploading(false);
+        setInput(body);
+        setPendingFiles(filesToUpload);
+        return;
+      }
+      setUploading(false);
+    }
+
     const { error } = await supabase
       .from("chat_messages")
-      .insert({ channel_id: activeId, sender_id: user.id, body });
+      .insert({ channel_id: activeId, sender_id: user.id, body, files: uploaded as any });
     if (error) {
       toast.error(error.message);
       setInput(body);
+      setPendingFiles(filesToUpload);
     }
+  };
+
+  const downloadAttachment = async (f: ChatFile) => {
+    const { data, error } = await supabase.storage
+      .from("chat-attachments")
+      .createSignedUrl(f.path, 60, { download: f.name });
+    if (error || !data?.signedUrl) {
+      toast.error(error?.message ?? "Could not open file");
+      return;
+    }
+    window.open(data.signedUrl, "_blank");
   };
 
   const startDM = async (otherId: string) => {
@@ -181,7 +249,10 @@ const ChatPage = () => {
   const filteredMessages = useMemo(() => {
     if (!search.trim()) return messages;
     const q = search.toLowerCase();
-    return messages.filter(m => m.body.toLowerCase().includes(q));
+    return messages.filter(m =>
+      m.body.toLowerCase().includes(q) ||
+      (Array.isArray(m.files) && m.files.some(f => f.name.toLowerCase().includes(q)))
+    );
   }, [messages, search]);
 
   const dmCandidates = allProfiles.filter(
@@ -321,27 +392,48 @@ const ChatPage = () => {
                     {m.edited_at && <span className="italic">(edited)</span>}
                     {m.pinned && <Pin className="w-3 h-3 text-amber-500" />}
                   </div>
-                  <div
-                    className={`rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words ${
-                      mine ? "bg-primary text-primary-foreground" : "bg-muted"
-                    }`}
-                  >
-                    {editingId === m.id ? (
-                      <div className="flex flex-col gap-2">
-                        <Input
-                          value={editBody}
-                          onChange={e => setEditBody(e.target.value)}
-                          onKeyDown={e => e.key === "Enter" && saveEdit()}
-                        />
-                        <div className="flex gap-2">
-                          <Button size="sm" onClick={saveEdit}>Save</Button>
-                          <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancel</Button>
+                  {(m.body || editingId === m.id) && (
+                    <div
+                      className={`rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words ${
+                        mine ? "bg-primary text-primary-foreground" : "bg-muted"
+                      }`}
+                    >
+                      {editingId === m.id ? (
+                        <div className="flex flex-col gap-2">
+                          <Input
+                            value={editBody}
+                            onChange={e => setEditBody(e.target.value)}
+                            onKeyDown={e => e.key === "Enter" && saveEdit()}
+                          />
+                          <div className="flex gap-2">
+                            <Button size="sm" onClick={saveEdit}>Save</Button>
+                            <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancel</Button>
+                          </div>
                         </div>
-                      </div>
-                    ) : (
-                      m.body
-                    )}
-                  </div>
+                      ) : (
+                        m.body
+                      )}
+                    </div>
+                  )}
+                  {Array.isArray(m.files) && m.files.length > 0 && editingId !== m.id && (
+                    <div className={`mt-1 flex flex-col gap-1 ${mine ? "items-end" : "items-start"}`}>
+                      {m.files.map((f, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => downloadAttachment(f)}
+                          className="flex items-center gap-2 text-left bg-card border border-border rounded-md px-2.5 py-2 hover:bg-muted transition-colors max-w-full"
+                        >
+                          <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                          <div className="min-w-0">
+                            <div className="text-xs font-medium truncate">{f.name}</div>
+                            <div className="text-[10px] text-muted-foreground">{formatBytes(f.size)}</div>
+                          </div>
+                          <Download className="w-3.5 h-3.5 text-muted-foreground shrink-0 ml-1" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div className="flex gap-2 mt-0.5">
                     <button onClick={() => togglePin(m)} className="text-[11px] text-muted-foreground hover:text-foreground">
                       {m.pinned ? "Unpin" : "Pin"}
@@ -372,21 +464,82 @@ const ChatPage = () => {
           })}
         </div>
 
-        <footer className="p-3 border-t border-border flex gap-2">
-          <Input
-            placeholder="Type a message…"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-              }
-            }}
-          />
-          <Button onClick={sendMessage}>
-            <Send className="w-4 h-4" />
-          </Button>
+        <footer className="p-3 border-t border-border flex flex-col gap-2">
+          {pendingFiles.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {pendingFiles.map((f, i) => (
+                <div key={i} className="flex items-center gap-2 bg-muted rounded-md px-2 py-1 text-xs">
+                  <FileText className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="truncate max-w-[160px]">{f.name}</span>
+                  <span className="text-muted-foreground">{formatBytes(f.size)}</span>
+                  <button
+                    type="button"
+                    onClick={() => setPendingFiles(prev => prev.filter((_, j) => j !== i))}
+                    className="text-muted-foreground hover:text-foreground"
+                    aria-label="Remove attachment"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            {canAttach && (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.doc,.docx,.xlsx,.xls,.txt,.pptx,.ppt,.csv,.jpg,.jpeg,.png,.webp"
+                  className="hidden"
+                  onChange={e => {
+                    const list = Array.from(e.target.files ?? []);
+                    const valid: File[] = [];
+                    for (const f of list) {
+                      const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+                      if (!ALLOWED_EXT.includes(ext)) {
+                        toast.error(`${f.name}: type not allowed`);
+                        continue;
+                      }
+                      if (f.size > MAX_FILE_SIZE) {
+                        toast.error(`${f.name}: exceeds 25MB`);
+                        continue;
+                      }
+                      valid.push(f);
+                    }
+                    setPendingFiles(prev => [...prev, ...valid]);
+                    if (fileInputRef.current) fileInputRef.current.value = "";
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  disabled={uploading || !activeId}
+                  onClick={() => fileInputRef.current?.click()}
+                  aria-label="Attach files"
+                >
+                  <Paperclip className="w-4 h-4" />
+                </Button>
+              </>
+            )}
+            <Input
+              placeholder="Type a message…"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              disabled={uploading}
+              onKeyDown={e => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage();
+                }
+              }}
+            />
+            <Button onClick={sendMessage} disabled={uploading || (!input.trim() && pendingFiles.length === 0)}>
+              {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            </Button>
+          </div>
         </footer>
       </section>
     </div>

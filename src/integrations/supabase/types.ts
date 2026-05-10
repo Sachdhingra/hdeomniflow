@@ -341,6 +341,7 @@ export type Database = {
           deleted_at: string | null
           edited_at: string | null
           file_url: string | null
+          files: Json
           id: string
           pinned: boolean
           sender_id: string
@@ -352,6 +353,7 @@ export type Database = {
           deleted_at?: string | null
           edited_at?: string | null
           file_url?: string | null
+          files?: Json
           id?: string
           pinned?: boolean
           sender_id: string
@@ -363,6 +365,7 @@ export type Database = {
           deleted_at?: string | null
           edited_at?: string | null
           file_url?: string | null
+          files?: Json
           id?: string
           pinned?: boolean
           sender_id?: string
