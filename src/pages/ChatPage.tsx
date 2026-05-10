@@ -16,17 +16,34 @@ interface Channel {
   kind: "group" | "dm";
   is_default: boolean;
 }
+interface ChatFile {
+  path: string;
+  name: string;
+  size: number;
+  type: string;
+}
 interface Message {
   id: string;
   channel_id: string;
   sender_id: string;
   body: string;
   file_url: string | null;
+  files?: ChatFile[] | null;
   pinned: boolean;
   edited_at: string | null;
   deleted_at: string | null;
   created_at: string;
 }
+
+const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
+const ALLOWED_EXT = ["pdf","doc","docx","xlsx","xls","txt","pptx","ppt","csv","jpg","jpeg","png","webp"];
+const MANAGEMENT_ROLES = ["admin","sales","accounts","service_head"];
+
+const formatBytes = (b: number) => {
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+};
 
 const ChatPage = () => {
   const { user, allProfiles } = useAuth();
