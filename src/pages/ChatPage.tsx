@@ -389,27 +389,48 @@ const ChatPage = () => {
                     {m.edited_at && <span className="italic">(edited)</span>}
                     {m.pinned && <Pin className="w-3 h-3 text-amber-500" />}
                   </div>
-                  <div
-                    className={`rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words ${
-                      mine ? "bg-primary text-primary-foreground" : "bg-muted"
-                    }`}
-                  >
-                    {editingId === m.id ? (
-                      <div className="flex flex-col gap-2">
-                        <Input
-                          value={editBody}
-                          onChange={e => setEditBody(e.target.value)}
-                          onKeyDown={e => e.key === "Enter" && saveEdit()}
-                        />
-                        <div className="flex gap-2">
-                          <Button size="sm" onClick={saveEdit}>Save</Button>
-                          <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancel</Button>
+                  {(m.body || editingId === m.id) && (
+                    <div
+                      className={`rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words ${
+                        mine ? "bg-primary text-primary-foreground" : "bg-muted"
+                      }`}
+                    >
+                      {editingId === m.id ? (
+                        <div className="flex flex-col gap-2">
+                          <Input
+                            value={editBody}
+                            onChange={e => setEditBody(e.target.value)}
+                            onKeyDown={e => e.key === "Enter" && saveEdit()}
+                          />
+                          <div className="flex gap-2">
+                            <Button size="sm" onClick={saveEdit}>Save</Button>
+                            <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancel</Button>
+                          </div>
                         </div>
-                      </div>
-                    ) : (
-                      m.body
-                    )}
-                  </div>
+                      ) : (
+                        m.body
+                      )}
+                    </div>
+                  )}
+                  {Array.isArray(m.files) && m.files.length > 0 && editingId !== m.id && (
+                    <div className={`mt-1 flex flex-col gap-1 ${mine ? "items-end" : "items-start"}`}>
+                      {m.files.map((f, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => downloadAttachment(f)}
+                          className="flex items-center gap-2 text-left bg-card border border-border rounded-md px-2.5 py-2 hover:bg-muted transition-colors max-w-full"
+                        >
+                          <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                          <div className="min-w-0">
+                            <div className="text-xs font-medium truncate">{f.name}</div>
+                            <div className="text-[10px] text-muted-foreground">{formatBytes(f.size)}</div>
+                          </div>
+                          <Download className="w-3.5 h-3.5 text-muted-foreground shrink-0 ml-1" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div className="flex gap-2 mt-0.5">
                     <button onClick={() => togglePin(m)} className="text-[11px] text-muted-foreground hover:text-foreground">
                       {m.pinned ? "Unpin" : "Pin"}
