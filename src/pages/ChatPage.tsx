@@ -249,7 +249,10 @@ const ChatPage = () => {
   const filteredMessages = useMemo(() => {
     if (!search.trim()) return messages;
     const q = search.toLowerCase();
-    return messages.filter(m => m.body.toLowerCase().includes(q));
+    return messages.filter(m =>
+      m.body.toLowerCase().includes(q) ||
+      (Array.isArray(m.files) && m.files.some(f => f.name.toLowerCase().includes(q)))
+    );
   }, [messages, search]);
 
   const dmCandidates = allProfiles.filter(
