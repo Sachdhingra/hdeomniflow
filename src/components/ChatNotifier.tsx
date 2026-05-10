@@ -28,17 +28,16 @@ const playPing = () => {
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + 0.35);
   } catch {
-    // AudioContext not supported or blocked
+    // AudioContext not supported or blocked by autoplay policy
   }
 };
 
 /**
  * Listens for new chat_messages and shows:
- *  - In-app sonner toast (cloud banner) on any dashboard
+ *  - In-app sonner toast for any message NOT in the currently-viewed channel
  *  - Browser system notification when the tab is hidden / app backgrounded
- *  - Soft audio ping on each new message
- * Tracks per-channel unread counts via ChatUnreadContext.
- * Suppresses toast while user is on /chat with the tab visible.
+ *  - Soft audio ping on each notification
+ * Only suppressed when the user is actively viewing the exact channel the message arrived in.
  */
 const ChatNotifier = () => {
   const { user, allProfiles } = useAuth();
@@ -48,9 +47,11 @@ const ChatNotifier = () => {
 
   const profilesRef = useRef(allProfiles);
   profilesRef.current = allProfiles;
+
   const onChatPage = location.pathname.startsWith("/chat");
   const onChatRef = useRef(onChatPage);
   onChatRef.current = onChatPage;
+
   const activeChannelRef = useRef(activeChannelId);
   activeChannelRef.current = activeChannelId;
 
@@ -67,7 +68,8 @@ const ChatNotifier = () => {
 
   useEffect(() => {
     if (!allowed || !user) return;
-    const channel = supabase
+
+    const sub = supabase
       .channel(`chat-notifier-${user.id}`)
       .on(
         "postgres_changes",
@@ -76,36 +78,37 @@ const ChatNotifier = () => {
           const m: any = payload.new;
           if (!m || m.sender_id === user.id) return;
 
-          const tabVisible = typeof document !== "undefined" && document.visibilityState === "visible";
-          const isActiveChannel = onChatRef.current && tabVisible && activeChannelRef.current === m.channel_id;
+          const tabVisible =
+            typeof document !== "undefined" && document.visibilityState === "visible";
 
-          // Track unread for any channel the user isn't currently viewing
-          if (!isActiveChannel) {
-            addUnread(m.channel_id);
-          }
+          // Only suppress when user is ACTIVELY viewing this exact channel
+          const isActiveChannel =
+            onChatRef.current && tabVisible && activeChannelRef.current === m.channel_id;
 
-          // Suppress toast when user is on chat page with tab in focus
-          const suppressToast = onChatRef.current && tabVisible;
-          if (suppressToast) return;
+          if (isActiveChannel) return;
 
-          const sender = profilesRef.current.find(p => p.id === m.sender_id);
+          // Track unread for the channel
+          addUnread(m.channel_id);
+
+          const sender = profilesRef.current.find((p) => p.id === m.sender_id);
           const name = sender?.name ?? "Teammate";
           const role = sender?.role ? ` (${sender.role})` : "";
           const preview = String(m.body ?? "").slice(0, 120) || "(attachment)";
 
+          // Always play ping + show toast for non-active-channel messages
           playPing();
 
           toast.message(`💬 ${name}${role}`, {
             description: preview,
             icon: <MessagesSquare className="w-4 h-4 text-primary" />,
-            duration: 20000,
+            duration: 15000,
             action: {
               label: "Open Chat",
               onClick: () => navigate("/chat"),
             },
           });
 
-          // System notification when tab not visible
+          // Browser notification only when tab is not visible
           if (
             typeof window !== "undefined" &&
             "Notification" in window &&
@@ -123,7 +126,7 @@ const ChatNotifier = () => {
                 navigate("/chat");
                 n.close();
               };
-              setTimeout(() => n.close(), 20000);
+              setTimeout(() => n.close(), 15000);
             } catch {
               // ignore
             }
@@ -131,8 +134,9 @@ const ChatNotifier = () => {
         },
       )
       .subscribe();
+
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(sub);
     };
   }, [allowed, user?.id, navigate, addUnread]);
 
