@@ -117,15 +117,16 @@ const ChatPage = () => {
         (payload) => {
           setMessages(prev => {
             if (payload.eventType === "INSERT") {
-              const n = payload.new as Message;
+              const n = payload.new as unknown as Message;
               if (prev.some(m => m.id === n.id)) return prev;
               return [...prev, n];
             }
             if (payload.eventType === "UPDATE") {
-              return prev.map(m => (m.id === (payload.new as Message).id ? (payload.new as Message) : m));
+              const n = payload.new as unknown as Message;
+              return prev.map(m => (m.id === n.id ? n : m));
             }
             if (payload.eventType === "DELETE") {
-              return prev.filter(m => m.id !== (payload.old as Message).id);
+              return prev.filter(m => m.id !== (payload.old as { id: string }).id);
             }
             return prev;
           });
