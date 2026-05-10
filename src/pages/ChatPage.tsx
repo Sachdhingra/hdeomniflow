@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Hash, Send, Plus, Search, Trash2, Edit2, Pin, ArrowLeft } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
+import { useChatUnread } from "@/contexts/ChatUnreadContext";
 
 interface Channel {
   id: string;
@@ -30,6 +31,7 @@ interface Message {
 const ChatPage = () => {
   const { user, allProfiles } = useAuth();
   const isMobile = useIsMobile();
+  const { channelUnread, setActiveChannel } = useChatUnread();
   const allowed = user && ["admin", "sales", "accounts", "service_head"].includes(user.role);
 
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -119,6 +121,12 @@ const ChatPage = () => {
       supabase.removeChannel(channel);
     };
   }, [activeId]);
+
+  // Sync active channel with ChatUnreadContext so ChatNotifier doesn't double-count
+  useEffect(() => {
+    setActiveChannel(activeId);
+    return () => setActiveChannel(null);
+  }, [activeId, setActiveChannel]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -215,8 +223,13 @@ const ChatPage = () => {
                   activeId === c.id ? "bg-accent text-accent-foreground" : "hover:bg-muted"
                 }`}
               >
-                <Hash className="w-4 h-4 text-muted-foreground" />
-                <span className="truncate">{c.name}</span>
+                <Hash className="w-4 h-4 text-muted-foreground shrink-0" />
+                <span className="truncate flex-1">{c.name}</span>
+                {channelUnread[c.id] > 0 && (
+                  <Badge className="h-4 min-w-4 px-1 text-[10px] bg-destructive text-destructive-foreground shrink-0">
+                    {channelUnread[c.id] > 99 ? "99+" : channelUnread[c.id]}
+                  </Badge>
+                )}
               </button>
             ))}
           </div>
@@ -233,8 +246,13 @@ const ChatPage = () => {
                   activeId === c.id ? "bg-accent text-accent-foreground" : "hover:bg-muted"
                 }`}
               >
-                <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                <span className="truncate">{dmCounterpartName(c.id)}</span>
+                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                <span className="truncate flex-1">{dmCounterpartName(c.id)}</span>
+                {channelUnread[c.id] > 0 && (
+                  <Badge className="h-4 min-w-4 px-1 text-[10px] bg-destructive text-destructive-foreground shrink-0">
+                    {channelUnread[c.id] > 99 ? "99+" : channelUnread[c.id]}
+                  </Badge>
+                )}
               </button>
             ))}
 

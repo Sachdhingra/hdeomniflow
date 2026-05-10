@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { DataProvider } from "@/contexts/DataContext";
+import { ChatUnreadProvider } from "@/contexts/ChatUnreadContext";
 import AppLayout from "@/components/AppLayout";
 import Login from "@/pages/Login";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
@@ -158,10 +159,12 @@ const App = () => (
       <Sonner />
       <AuthProvider>
         <DataProvider>
-          <BrowserRouter>
-            <AppRoutes />
-            <PWAInstallPrompt />
-          </BrowserRouter>
+          <ChatUnreadProvider>
+            <BrowserRouter>
+              <AppRoutes />
+              <PWAInstallPrompt />
+            </BrowserRouter>
+          </ChatUnreadProvider>
         </DataProvider>
       </AuthProvider>
     </TooltipProvider>
