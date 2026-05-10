@@ -461,21 +461,82 @@ const ChatPage = () => {
           })}
         </div>
 
-        <footer className="p-3 border-t border-border flex gap-2">
-          <Input
-            placeholder="Type a message…"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-              }
-            }}
-          />
-          <Button onClick={sendMessage}>
-            <Send className="w-4 h-4" />
-          </Button>
+        <footer className="p-3 border-t border-border flex flex-col gap-2">
+          {pendingFiles.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {pendingFiles.map((f, i) => (
+                <div key={i} className="flex items-center gap-2 bg-muted rounded-md px-2 py-1 text-xs">
+                  <FileText className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="truncate max-w-[160px]">{f.name}</span>
+                  <span className="text-muted-foreground">{formatBytes(f.size)}</span>
+                  <button
+                    type="button"
+                    onClick={() => setPendingFiles(prev => prev.filter((_, j) => j !== i))}
+                    className="text-muted-foreground hover:text-foreground"
+                    aria-label="Remove attachment"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            {canAttach && (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.doc,.docx,.xlsx,.xls,.txt,.pptx,.ppt,.csv,.jpg,.jpeg,.png,.webp"
+                  className="hidden"
+                  onChange={e => {
+                    const list = Array.from(e.target.files ?? []);
+                    const valid: File[] = [];
+                    for (const f of list) {
+                      const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+                      if (!ALLOWED_EXT.includes(ext)) {
+                        toast.error(`${f.name}: type not allowed`);
+                        continue;
+                      }
+                      if (f.size > MAX_FILE_SIZE) {
+                        toast.error(`${f.name}: exceeds 25MB`);
+                        continue;
+                      }
+                      valid.push(f);
+                    }
+                    setPendingFiles(prev => [...prev, ...valid]);
+                    if (fileInputRef.current) fileInputRef.current.value = "";
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  disabled={uploading || !activeId}
+                  onClick={() => fileInputRef.current?.click()}
+                  aria-label="Attach files"
+                >
+                  <Paperclip className="w-4 h-4" />
+                </Button>
+              </>
+            )}
+            <Input
+              placeholder="Type a message…"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              disabled={uploading}
+              onKeyDown={e => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage();
+                }
+              }}
+            />
+            <Button onClick={sendMessage} disabled={uploading || (!input.trim() && pendingFiles.length === 0)}>
+              {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            </Button>
+          </div>
         </footer>
       </section>
     </div>
