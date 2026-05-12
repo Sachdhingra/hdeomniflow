@@ -32,10 +32,54 @@ const playPing = () => {
   }
 };
 
+// Show a system notification that appears in the phone's notification shade.
+// Android Chrome (62+) dropped support for new Notification() from a page
+// context; it must go through ServiceWorkerRegistration.showNotification().
+const showSystemNotification = async (
+  title: string,
+  body: string,
+  tag: string,
+) => {
+  if (typeof window === "undefined") return;
+  if (!("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+
+  try {
+    if ("serviceWorker" in navigator) {
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification(title, {
+        body,
+        tag,
+        icon: "/icon-192.png",
+        badge: "/icon-192.png",
+        data: { url: "/chat" },
+        vibrate: [200, 100, 200],
+        requireInteraction: false,
+      } as any);
+      return;
+    }
+  } catch {
+    // Service worker not available — fall through to legacy API
+  }
+
+  // Fallback: desktop browsers where new Notification() still works
+  try {
+    const n = new Notification(title, {
+      body,
+      tag,
+      icon: "/icon-192.png",
+    });
+    n.onclick = () => { window.focus(); n.close(); };
+    setTimeout(() => n.close(), 15000);
+  } catch {
+    // ignore
+  }
+};
+
 /**
  * Listens for new chat_messages and shows:
  *  - In-app sonner toast for any message NOT in the currently-viewed channel
- *  - Browser system notification when the tab is hidden / app backgrounded
+ *  - System notification (home screen shade on mobile) when app is backgrounded
  *  - Soft audio ping on each notification
  * Only suppressed when the user is actively viewing the exact channel the message arrived in.
  */
@@ -95,7 +139,7 @@ const ChatNotifier = () => {
           const role = sender?.role ? ` (${sender.role})` : "";
           const preview = String(m.body ?? "").slice(0, 120) || "(attachment)";
 
-          // Always play ping + show toast for non-active-channel messages
+          // Always play ping + show in-app toast
           playPing();
 
           toast.message(`💬 ${name}${role}`, {
@@ -108,28 +152,13 @@ const ChatNotifier = () => {
             },
           });
 
-          // Browser notification only when tab is not visible
-          if (
-            typeof window !== "undefined" &&
-            "Notification" in window &&
-            Notification.permission === "granted" &&
-            !tabVisible
-          ) {
-            try {
-              const n = new Notification(`💬 ${name}${role}`, {
-                body: preview,
-                tag: `chat-${m.channel_id}`,
-                icon: "/placeholder.svg",
-              });
-              n.onclick = () => {
-                window.focus();
-                navigate("/chat");
-                n.close();
-              };
-              setTimeout(() => n.close(), 15000);
-            } catch {
-              // ignore
-            }
+          // System notification when tab is not visible (home screen / notification shade)
+          if (!tabVisible) {
+            showSystemNotification(
+              `💬 ${name}${role}`,
+              preview,
+              `chat-${m.channel_id}`,
+            );
           }
         },
       )
