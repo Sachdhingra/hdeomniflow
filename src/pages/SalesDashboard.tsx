@@ -394,7 +394,7 @@ const SalesDashboard = () => {
       <SalesTargetCard />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard title="My Total Leads" value={user?.role === "admin" ? filteredLeads.length : summary.myTotalLeads} icon={<Users className="w-5 h-5" />} trend={user?.role !== "admin" && filteredLeads.length < summary.myTotalLeads ? `${filteredLeads.length} shown` : undefined} />
+        <StatCard title="My Total Leads" value={summary.teamTotalLeads || (user?.role === "admin" ? filteredLeads.length : summary.myTotalLeads)} icon={<Users className="w-5 h-5" />} trend={`${filteredLeads.length} shown`} />
         <StatCard title="Won This Month" value={summary.myMonthWonCount} icon={<Trophy className="w-5 h-5" />} trend={summary.myTotalLeads ? `${Math.round((summary.myMonthWonCount / summary.myTotalLeads) * 100)}% conversion` : undefined} trendUp />
         <StatCard title="Won Value (Month)" value={`₹${summary.myMonthWonValue >= 1000 ? (summary.myMonthWonValue / 1000).toFixed(0) + "K" : summary.myMonthWonValue.toLocaleString("en-IN")}`} icon={<IndianRupee className="w-5 h-5" />} />
         <StatCard title="Pipeline Value" value={`₹${totalValue >= 1000 ? (totalValue / 1000).toFixed(0) + "K" : totalValue.toLocaleString("en-IN")}`} icon={<TrendingUp className="w-5 h-5" />} />
