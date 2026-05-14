@@ -61,6 +61,13 @@ interface SummaryData {
   teamTotalLeads: number;
   myMonthWonCount: number;
   myMonthWonValue: number;
+  myFyWonCount: number;
+  myFyWonValue: number;
+  teamMonthWonCount: number;
+  teamMonthWonValue: number;
+  teamFyWonCount: number;
+  teamFyWonValue: number;
+  fyStart: string | null;
 }
 
 interface DataContextType {
