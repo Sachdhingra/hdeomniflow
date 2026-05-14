@@ -393,12 +393,47 @@ const SalesDashboard = () => {
 
       <SalesTargetCard />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard title="My Total Leads" value={summary.teamTotalLeads || (user?.role === "admin" ? filteredLeads.length : summary.myTotalLeads)} icon={<Users className="w-5 h-5" />} trend={`${filteredLeads.length} shown`} />
-        <StatCard title="Won This Month" value={summary.myMonthWonCount} icon={<Trophy className="w-5 h-5" />} trend={summary.myTotalLeads ? `${Math.round((summary.myMonthWonCount / summary.myTotalLeads) * 100)}% conversion` : undefined} trendUp />
-        <StatCard title="Won Value (Month)" value={`₹${summary.myMonthWonValue >= 1000 ? (summary.myMonthWonValue / 1000).toFixed(0) + "K" : summary.myMonthWonValue.toLocaleString("en-IN")}`} icon={<IndianRupee className="w-5 h-5" />} />
-        <StatCard title="Pipeline Value" value={`₹${totalValue >= 1000 ? (totalValue / 1000).toFixed(0) + "K" : totalValue.toLocaleString("en-IN")}`} icon={<TrendingUp className="w-5 h-5" />} />
-      </div>
+      {(() => {
+        const fmtK = (n: number) => n >= 1000 ? `₹${(n / 1000).toFixed(0)}K` : `₹${n.toLocaleString("en-IN")}`;
+        const totalLeadsValue = isAdmin ? summary.teamTotalLeads : summary.myTotalLeads;
+        const wonMonthCount = isAdmin ? summary.teamMonthWonCount : summary.myMonthWonCount;
+        const wonMonthValue = isAdmin ? summary.teamMonthWonValue : summary.myMonthWonValue;
+        const wonFyCount = isAdmin ? summary.teamFyWonCount : summary.myFyWonCount;
+        const wonFyValue = isAdmin ? summary.teamFyWonValue : summary.myFyWonValue;
+        const fyLabel = (() => {
+          const now = new Date();
+          const startYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+          return `Apr ${startYear} – Mar ${startYear + 1}`;
+        })();
+        return (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard
+              title={isAdmin ? "Total Leads (Team)" : "My Total Leads"}
+              value={totalLeadsValue}
+              icon={<Users className="w-5 h-5" />}
+              trend={`${filteredLeads.length} shown`}
+            />
+            <StatCard
+              title="Won This Month"
+              value={wonMonthCount}
+              icon={<Trophy className="w-5 h-5" />}
+              trend={fmtK(wonMonthValue)}
+              trendUp
+            />
+            <StatCard
+              title="Won Till Date (FY)"
+              value={wonFyCount}
+              icon={<TrendingUp className="w-5 h-5" />}
+              trend={fyLabel}
+            />
+            <StatCard
+              title="Pipeline Value"
+              value={fmtK(totalValue)}
+              icon={<IndianRupee className="w-5 h-5" />}
+            />
+          </div>
+        );
+      })()}
 
       <div className="flex gap-2 flex-wrap items-center">
         <Button size="sm" variant={fromDate === todayStr && toDate === todayStr ? "default" : "outline"} onClick={() => setQuickDate(todayStr, todayStr)}>Today</Button>
