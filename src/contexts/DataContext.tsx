@@ -124,7 +124,11 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const [allRoles, setAllRoles] = useState<{ user_id: string; role: string }[]>(() => getCache<any[]>("roles") || []);
   const [loading, setLoading] = useState(true);
   const [summaryLoading, setSummaryLoading] = useState(true);
-  const [summary, setSummary] = useState<SummaryData>(() => getCache<SummaryData>("summary") || { totalLeads: 0, totalPipelineValue: 0, pendingJobs: 0, overdueLeads: 0, myTotalLeads: 0, teamTotalLeads: 0, myMonthWonCount: 0, myMonthWonValue: 0 });
+  const [summary, setSummary] = useState<SummaryData>(() => {
+    const cached = getCache<SummaryData>("summary");
+    const empty: SummaryData = { totalLeads: 0, totalPipelineValue: 0, pendingJobs: 0, overdueLeads: 0, myTotalLeads: 0, teamTotalLeads: 0, myMonthWonCount: 0, myMonthWonValue: 0, myFyWonCount: 0, myFyWonValue: 0, teamMonthWonCount: 0, teamMonthWonValue: 0, teamFyWonCount: 0, teamFyWonValue: 0, fyStart: null };
+    return cached ? { ...empty, ...cached } : empty;
+  });
   const [error, setError] = useState<string | null>(null);
   const [hasMoreLeads, setHasMoreLeads] = useState(false);
   const [hasMoreJobs, setHasMoreJobs] = useState(false);
