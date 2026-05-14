@@ -58,6 +58,7 @@ interface SummaryData {
   pendingJobs: number;
   overdueLeads: number;
   myTotalLeads: number;
+  teamTotalLeads: number;
   myMonthWonCount: number;
   myMonthWonValue: number;
 }
@@ -116,7 +117,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const [allRoles, setAllRoles] = useState<{ user_id: string; role: string }[]>(() => getCache<any[]>("roles") || []);
   const [loading, setLoading] = useState(true);
   const [summaryLoading, setSummaryLoading] = useState(true);
-  const [summary, setSummary] = useState<SummaryData>(() => getCache<SummaryData>("summary") || { totalLeads: 0, totalPipelineValue: 0, pendingJobs: 0, overdueLeads: 0, myTotalLeads: 0, myMonthWonCount: 0, myMonthWonValue: 0 });
+  const [summary, setSummary] = useState<SummaryData>(() => getCache<SummaryData>("summary") || { totalLeads: 0, totalPipelineValue: 0, pendingJobs: 0, overdueLeads: 0, myTotalLeads: 0, teamTotalLeads: 0, myMonthWonCount: 0, myMonthWonValue: 0 });
   const [error, setError] = useState<string | null>(null);
   const [hasMoreLeads, setHasMoreLeads] = useState(false);
   const [hasMoreJobs, setHasMoreJobs] = useState(false);
@@ -140,6 +141,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         pendingJobs: d?.pending_jobs || 0,
         overdueLeads: d?.overdue_leads || 0,
         myTotalLeads: d?.my_total_leads || 0,
+        teamTotalLeads: d?.team_total_leads || 0,
         myMonthWonCount: d?.my_month_won_count || 0,
         myMonthWonValue: Number(d?.my_month_won_value) || 0,
       };
