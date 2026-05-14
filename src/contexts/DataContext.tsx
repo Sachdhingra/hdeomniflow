@@ -58,6 +58,7 @@ interface SummaryData {
   pendingJobs: number;
   overdueLeads: number;
   myTotalLeads: number;
+  teamTotalLeads: number;
   myMonthWonCount: number;
   myMonthWonValue: number;
 }
