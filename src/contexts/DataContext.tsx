@@ -155,6 +155,13 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         teamTotalLeads: d?.team_total_leads || 0,
         myMonthWonCount: d?.my_month_won_count || 0,
         myMonthWonValue: Number(d?.my_month_won_value) || 0,
+        myFyWonCount: d?.my_fy_won_count || 0,
+        myFyWonValue: Number(d?.my_fy_won_value) || 0,
+        teamMonthWonCount: d?.team_month_won_count || 0,
+        teamMonthWonValue: Number(d?.team_month_won_value) || 0,
+        teamFyWonCount: d?.team_fy_won_count || 0,
+        teamFyWonValue: Number(d?.team_fy_won_value) || 0,
+        fyStart: d?.fy_start || null,
       };
       setSummary(s);
       setCache("summary", s);
