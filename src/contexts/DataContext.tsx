@@ -80,7 +80,7 @@ interface DataContextType {
   summaryLoading: boolean;
   summary: SummaryData;
   error: string | null;
-  addLead: (lead: TablesInsert<"leads">) => Promise<void>;
+  addLead: (lead: TablesInsert<"leads">) => Promise<Lead | null>;
   updateLead: (id: string, updates: Partial<Lead>) => Promise<void>;
   softDeleteLead: (id: string) => Promise<void>;
   restoreLead: (id: string) => Promise<void>;
@@ -469,11 +469,11 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [user, fetchLeads, fetchServiceJobs, fetchNotifications, fetchSiteVisits, fetchSummary]);
 
-  const addLead = async (lead: TablesInsert<"leads">) => {
+  const addLead = async (lead: TablesInsert<"leads">): Promise<Lead | null> => {
     const { data, error } = await supabase.from("leads").insert(lead).select().single();
     if (error) throw error;
-    // Optimistic: prepend to local state immediately
     if (data) setLeads(prev => [data, ...prev]);
+    return data as Lead | null;
   };
 
   const updateLead = async (id: string, updates: Partial<Lead>) => {
