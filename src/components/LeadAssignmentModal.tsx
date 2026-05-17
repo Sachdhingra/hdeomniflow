@@ -58,41 +58,48 @@ const LeadAssignmentModal = ({ open, onOpenChange, leadId, customerName, current
     try {
       await updateLead(leadId, { assigned_to: assignee, assignment_notes: reason || null } as any);
 
-      // Fetch lead details for notification and DM
-      const { data: lead } = await supabase
+      // Fetch lead details for the notification message and chat DM body
+      const { data: lead, error: leadFetchErr } = await supabase
         .from("leads")
         .select("customer_name, customer_phone, category, value_in_rupees, next_follow_up_date")
         .eq("id", leadId)
         .single();
 
+      if (leadFetchErr) {
+        console.error("[LeadAssign] lead fetch failed:", leadFetchErr.message);
+      }
+
       if (lead) {
         const formattedValue = Number(lead.value_in_rupees).toLocaleString("en-IN");
         const categoryLabel = LEAD_CATEGORIES.find(c => c.value === lead.category)?.label || lead.category;
 
-        // Notification record for assignee
-        await supabase.from("notifications").insert({
+        // Notification record — admin role satisfies the INSERT RLS policy
+        const { error: notifErr } = await supabase.from("notifications").insert({
           user_id: assignee,
           message: `New lead assigned: ${lead.customer_name} · ₹${formattedValue} · ${lead.customer_phone}`,
           type: "lead_assigned",
         });
+        if (notifErr) console.error("[LeadAssign] notification insert failed:", notifErr.message);
 
-        // DM in chat (best-effort — don't fail the assignment if chat errors)
-        try {
-          const { data: channelId } = await supabase.rpc("get_or_create_dm_channel", { _other: assignee });
-          if (channelId && user?.id) {
-            const adminName = profiles.find(p => p.id === user.id)?.name || "Admin";
-            const followUp = lead.next_follow_up_date
-              ? new Date(lead.next_follow_up_date).toLocaleDateString("en-IN")
-              : "Not set";
-            const notesPart = reason ? `\n📝 Notes: ${reason}` : "";
-            await supabase.from("chat_messages").insert({
-              channel_id: channelId as string,
-              sender_id: user.id,
-              body: `🎯 NEW LEAD ASSIGNED\n\n👤 Customer: ${lead.customer_name}\n📱 Phone: ${lead.customer_phone}\n🛋️ Product: ${categoryLabel}\n💰 Value: ₹${formattedValue}\n📅 Follow-up: ${followUp}${notesPart}\n\nAssigned by: ${adminName}`,
-            });
-          }
-        } catch (dmErr) {
-          console.warn("Lead DM failed (non-fatal):", dmErr);
+        // Chat DM — best-effort, never blocks the assignment success toast
+        const { data: channelId, error: rpcErr } = await supabase.rpc(
+          "get_or_create_dm_channel",
+          { _other: assignee }
+        );
+        if (rpcErr) {
+          console.error("[LeadAssign] get_or_create_dm_channel failed:", rpcErr.message);
+        } else if (channelId && user?.id) {
+          const adminName = profiles.find(p => p.id === user.id)?.name || "Admin";
+          const followUp = lead.next_follow_up_date
+            ? new Date(lead.next_follow_up_date).toLocaleDateString("en-IN")
+            : "Not set";
+          const notesPart = reason ? `\n📝 Notes: ${reason}` : "";
+          const { error: msgErr } = await supabase.from("chat_messages").insert({
+            channel_id: channelId as string,
+            sender_id: user.id,
+            body: `🎯 NEW LEAD ASSIGNED\n\n👤 Customer: ${lead.customer_name}\n📱 Phone: ${lead.customer_phone}\n🛋️ Product: ${categoryLabel}\n💰 Value: ₹${formattedValue}\n📅 Follow-up: ${followUp}${notesPart}\n\nAssigned by: ${adminName}`,
+          });
+          if (msgErr) console.error("[LeadAssign] chat message insert failed:", msgErr.message);
         }
       }
 
