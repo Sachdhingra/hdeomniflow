@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Plus, AlertTriangle, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 import GodrejProductPicker from "@/components/GodrejProductPicker";
+import LeadAssignmentModal from "@/components/LeadAssignmentModal";
 import {
   DEHRADUN_NEIGHBORHOODS, PREFERRED_STYLES, FAMILY_SITUATIONS,
   DECISION_TIMELINES, BUDGET_RANGES, STATED_NEEDS,
