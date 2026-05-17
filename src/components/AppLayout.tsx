@@ -95,7 +95,8 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
     ],
   };
 
-  const navItems = NAV_ITEMS[user.role];
+  const ATTENDANCE_ITEM: NavItem = { to: "/attendance", label: "Attendance", icon: <Clock className="w-5 h-5" /> };
+  const navItems = [...NAV_ITEMS[user.role], ATTENDANCE_ITEM];
 
   return (
     <div className="min-h-screen flex bg-background">
@@ -166,6 +167,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
             <Menu className="w-5 h-5" />
           </button>
           <div className="flex-1" />
+          <AttendanceClockButton />
           <NetworkStatusBadge />
           <NotificationPanel />
         </header>
