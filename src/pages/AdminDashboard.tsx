@@ -26,6 +26,9 @@ import { DashboardSkeleton } from "@/components/DashboardSkeleton";
 import SiteVisitLocationDialog from "@/components/SiteVisitLocationDialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Link } from "react-router-dom";
+import UnassignedLeadsCard from "@/components/UnassignedLeadsCard";
+import WorkloadDistributionCard from "@/components/WorkloadDistributionCard";
+import DailyAttendanceCard from "@/components/DailyAttendanceCard";
 
 const MessageLogsPanel = () => {
   const [logs, setLogs] = useState<any[]>([]);
@@ -367,6 +370,11 @@ const AdminDashboard = () => {
         </div>
 
         <TabsContent value="overview" className="space-y-4 mt-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <UnassignedLeadsCard />
+            <WorkloadDistributionCard />
+            <DailyAttendanceCard />
+          </div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <Card className="shadow-card">
               <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Users className="w-4 h-4 text-primary" />Sales Pipeline</CardTitle></CardHeader>

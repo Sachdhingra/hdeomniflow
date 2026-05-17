@@ -91,6 +91,60 @@ export type Database = {
         }
         Relationships: []
       }
+      attendance: {
+        Row: {
+          clock_in: string | null
+          clock_in_lat: number | null
+          clock_in_lng: number | null
+          clock_out: string | null
+          clock_out_lat: number | null
+          clock_out_lng: number | null
+          created_at: string
+          date: string
+          id: string
+          minutes_late: number
+          notes: string | null
+          status: string
+          updated_at: string
+          user_id: string
+          working_hours: number | null
+        }
+        Insert: {
+          clock_in?: string | null
+          clock_in_lat?: number | null
+          clock_in_lng?: number | null
+          clock_out?: string | null
+          clock_out_lat?: number | null
+          clock_out_lng?: number | null
+          created_at?: string
+          date: string
+          id?: string
+          minutes_late?: number
+          notes?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+          working_hours?: number | null
+        }
+        Update: {
+          clock_in?: string | null
+          clock_in_lat?: number | null
+          clock_in_lng?: number | null
+          clock_out?: string | null
+          clock_out_lat?: number | null
+          clock_out_lng?: number | null
+          created_at?: string
+          date?: string
+          id?: string
+          minutes_late?: number
+          notes?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+          working_hours?: number | null
+        }
+        Relationships: []
+      }
       audit_flags: {
         Row: {
           agent_id: string
@@ -578,6 +632,36 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_assignment_history: {
+        Row: {
+          assigned_by: string | null
+          created_at: string
+          from_user: string | null
+          id: string
+          lead_id: string
+          reason: string | null
+          to_user: string | null
+        }
+        Insert: {
+          assigned_by?: string | null
+          created_at?: string
+          from_user?: string | null
+          id?: string
+          lead_id: string
+          reason?: string | null
+          to_user?: string | null
+        }
+        Update: {
+          assigned_by?: string | null
+          created_at?: string
+          from_user?: string | null
+          id?: string
+          lead_id?: string
+          reason?: string | null
+          to_user?: string | null
+        }
+        Relationships: []
+      }
       lead_journey_history: {
         Row: {
           auto: boolean
@@ -747,7 +831,9 @@ export type Database = {
       }
       leads: {
         Row: {
+          assigned_at: string | null
           assigned_to: string | null
+          assignment_notes: string | null
           barrier_addressed: boolean
           budget_range: string | null
           category: Database["public"]["Enums"]["lead_category"]
@@ -822,7 +908,9 @@ export type Database = {
           why_lost: string | null
         }
         Insert: {
+          assigned_at?: string | null
           assigned_to?: string | null
+          assignment_notes?: string | null
           barrier_addressed?: boolean
           budget_range?: string | null
           category: Database["public"]["Enums"]["lead_category"]
@@ -897,7 +985,9 @@ export type Database = {
           why_lost?: string | null
         }
         Update: {
+          assigned_at?: string | null
           assigned_to?: string | null
+          assignment_notes?: string | null
           barrier_addressed?: boolean
           budget_range?: string | null
           category?: Database["public"]["Enums"]["lead_category"]
@@ -1553,6 +1643,61 @@ export type Database = {
     }
     Functions: {
       _invoke_daily_excel_report: { Args: never; Returns: number }
+      attendance_clock: {
+        Args: { p_action: string; p_lat?: number; p_lng?: number }
+        Returns: {
+          clock_in: string | null
+          clock_in_lat: number | null
+          clock_in_lng: number | null
+          clock_out: string | null
+          clock_out_lat: number | null
+          clock_out_lng: number | null
+          created_at: string
+          date: string
+          id: string
+          minutes_late: number
+          notes: string | null
+          status: string
+          updated_at: string
+          user_id: string
+          working_hours: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "attendance"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      attendance_monthly_report: {
+        Args: { p_month: string }
+        Returns: {
+          clock_in: string
+          clock_out: string
+          date: string
+          email: string
+          minutes_late: number
+          name: string
+          role: Database["public"]["Enums"]["app_role"]
+          status: string
+          user_id: string
+          working_hours: number
+        }[]
+      }
+      attendance_today_summary: {
+        Args: never
+        Returns: {
+          clock_in: string
+          clock_out: string
+          email: string
+          minutes_late: number
+          name: string
+          role: Database["public"]["Enums"]["app_role"]
+          status: string
+          user_id: string
+          working_hours: number
+        }[]
+      }
       bump_variant_reply: { Args: { _variant_id: string }; Returns: undefined }
       bump_variant_sent: { Args: { _variant_id: string }; Returns: undefined }
       calculate_conversion_probability: {

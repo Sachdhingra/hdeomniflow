@@ -32,6 +32,7 @@ const AccountsApprovals = lazy(() => import("@/pages/AccountsApprovals"));
 const AdminOrdersDashboard = lazy(() => import("@/pages/AdminOrdersDashboard"));
 const ChatPage = lazy(() => import("@/pages/ChatPage"));
 const AIAssistantPage = lazy(() => import("@/pages/AIAssistantPage"));
+const AttendancePage = lazy(() => import("@/pages/AttendancePage"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
 const PageLoader = () => (
@@ -145,6 +146,7 @@ const AppRoutes = () => {
       <Suspense fallback={<PageLoader />}>
         <Routes>
           {renderRoutes()}
+          <Route path="/attendance" element={<AttendancePage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>
