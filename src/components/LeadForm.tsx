@@ -21,6 +21,7 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
   const { user } = useAuth();
   const { addLead } = useData();
   const [open, setOpen] = useState(false);
+  const [assignFor, setAssignFor] = useState<{ id: string; name: string } | null>(null);
   const [form, setForm] = useState({
     customerName: "", customerPhone: "", category: "" as LeadCategory | "",
     valueInRupees: "", notes: "", nextFollowUpDate: "", nextFollowUpTime: "",
