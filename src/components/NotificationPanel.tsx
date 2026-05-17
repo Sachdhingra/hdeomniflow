@@ -1,10 +1,11 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useData } from "@/contexts/DataContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Bell, Truck, AlertCircle, CheckCircle, Info, History } from "lucide-react";
+import { Bell, Truck, AlertCircle, CheckCircle, Info, History, Target } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 const ICON_MAP: Record<string, React.ReactNode> = {
@@ -12,11 +13,13 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   warning: <AlertCircle className="w-4 h-4 text-warning" />,
   success: <CheckCircle className="w-4 h-4 text-success" />,
   delivery: <Truck className="w-4 h-4 text-primary" />,
+  lead_assigned: <Target className="w-4 h-4 text-primary" />,
 };
 
 const NotificationPanel = () => {
   const { user } = useAuth();
   const { notifications, markNotificationRead } = useData();
+  const navigate = useNavigate();
   const [showHistory, setShowHistory] = useState(false);
 
   const myNotifications = notifications
@@ -56,7 +59,11 @@ const NotificationPanel = () => {
             displayList.map(n => (
               <div
                 key={n.id}
-                onClick={() => { if (!n.read) markNotificationRead(n.id); }}
+                onClick={() => {
+                  if (!n.read) markNotificationRead(n.id);
+                  if (n.type === "lead_assigned") navigate("/leads");
+                  else if (n.link) navigate(n.link);
+                }}
                 className={`p-3 border-b border-border cursor-pointer hover:bg-muted/50 transition-colors flex items-start gap-2 ${!n.read ? "bg-primary/5" : ""}`}
               >
                 {ICON_MAP[n.type] || ICON_MAP.info}
