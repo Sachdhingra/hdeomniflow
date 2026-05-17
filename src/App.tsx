@@ -146,6 +146,7 @@ const AppRoutes = () => {
       <Suspense fallback={<PageLoader />}>
         <Routes>
           {renderRoutes()}
+          <Route path="/attendance" element={<AttendancePage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>
