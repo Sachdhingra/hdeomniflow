@@ -155,6 +155,7 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setDuplicateCheck({ checking: false, exists: false }); }}>
       <DialogTrigger asChild>
         <Button className="gradient-primary gap-2"><Plus className="w-4 h-4" /> Add Lead</Button>
