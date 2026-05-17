@@ -299,6 +299,16 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
         </form>
       </DialogContent>
     </Dialog>
+    {assignFor && (
+      <LeadAssignmentModal
+        open={!!assignFor}
+        onOpenChange={(v) => !v && setAssignFor(null)}
+        leadId={assignFor.id}
+        customerName={assignFor.name}
+        currentAssignee={null}
+      />
+    )}
+    </>
   );
 };
 
