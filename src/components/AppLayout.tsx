@@ -178,6 +178,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
           {children}
         </main>
       </div>
+      <DiscountCalculator />
     </div>
   );
 };
