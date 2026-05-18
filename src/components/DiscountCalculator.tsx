@@ -207,7 +207,7 @@ const DiscountCalculator = () => {
             />
           </div>
 
-          <Tabs value={mode} onValueChange={(v) => setVal("") || setMode(v as Mode)}>
+          <Tabs value={mode} onValueChange={(v) => { setVal(""); setMode(v as Mode); }}>
             <TabsList className="grid grid-cols-3 h-8">
               <TabsTrigger value="percent" className="text-xs">%</TabsTrigger>
               <TabsTrigger value="fixed" className="text-xs">₹ Off</TabsTrigger>
