@@ -15,6 +15,7 @@ import ChatNotifier from "@/components/ChatNotifier";
 import LeadNotifier from "@/components/LeadNotifier";
 import AttendanceClockButton from "@/components/AttendanceClockButton";
 import { useChatUnread } from "@/contexts/ChatUnreadContext";
+import FloatingDiscountCalculator from "@/components/FloatingDiscountCalculator";
 
 interface NavItem {
   to: string;
@@ -177,6 +178,9 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
           {children}
         </main>
       </div>
+      {(user.role === "admin" || user.role === "sales" || user.role === "service_head" || user.role === "site_agent") && (
+        <FloatingDiscountCalculator />
+      )}
     </div>
   );
 };
