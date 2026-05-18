@@ -14,6 +14,7 @@ import NetworkStatusBadge from "@/components/NetworkStatusBadge";
 import ChatNotifier from "@/components/ChatNotifier";
 import LeadNotifier from "@/components/LeadNotifier";
 import AttendanceClockButton from "@/components/AttendanceClockButton";
+import DiscountCalculator from "@/components/DiscountCalculator";
 import { useChatUnread } from "@/contexts/ChatUnreadContext";
 
 interface NavItem {
@@ -177,6 +178,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
           {children}
         </main>
       </div>
+      <DiscountCalculator />
     </div>
   );
 };
