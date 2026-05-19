@@ -305,9 +305,17 @@ function buildServiceEmail(name: string, reportDate: Date, m: ReturnType<typeof 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-  // Auth: shared internal secret (cron) OR admin user
-  const headerSecret = req.headers.get("x-internal-secret");
-  let authorized = INTERNAL_SECRET !== "" && headerSecret === INTERNAL_SECRET;
+  // Auth: cron uses vault-stored shared secret verified via RPC; admins can also trigger
+  const headerSecret = req.headers.get("x-internal-secret") ?? "";
+  let authorized = false;
+  const adminClient = createClient(SUPABASE_URL, SERVICE_ROLE);
+  if (headerSecret) {
+    const { data: ok } = await adminClient.rpc("verify_daily_report_secret", { _token: headerSecret });
+    if (ok === true) authorized = true;
+  }
+  if (!authorized && INTERNAL_SECRET !== "" && headerSecret === INTERNAL_SECRET) {
+    authorized = true;
+  }
   if (!authorized) {
     const authHeader = req.headers.get("Authorization");
     if (authHeader?.startsWith("Bearer ")) {
@@ -318,8 +326,7 @@ Deno.serve(async (req) => {
       const { data } = await userClient.auth.getClaims(token);
       const uid = data?.claims?.sub;
       if (uid) {
-        const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
-        const { data: isAdmin } = await admin.rpc("has_role", { _user_id: uid, _role: "admin" });
+        const { data: isAdmin } = await adminClient.rpc("has_role", { _user_id: uid, _role: "admin" });
         if (isAdmin === true) authorized = true;
       }
     }
