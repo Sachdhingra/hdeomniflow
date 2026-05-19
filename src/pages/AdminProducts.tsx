@@ -26,6 +26,7 @@ import {
   Plus, Pencil, Trash2, Search, Loader2, Package, Upload, Download,
 } from "lucide-react";
 import GodrejScraperCard from "@/components/GodrejScraperCard";
+import WebResearchCard from "@/components/WebResearchCard";
 
 interface Category {
   id: string;
@@ -412,7 +413,12 @@ const AdminProducts = () => {
 
   return (
     <div className="space-y-6">
-      {isAdmin && <GodrejScraperCard />}
+      {isAdmin && (
+        <div className="grid gap-4 md:grid-cols-2">
+          <GodrejScraperCard />
+          <WebResearchCard />
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
