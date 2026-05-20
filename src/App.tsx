@@ -34,6 +34,8 @@ const ChatPage = lazy(() => import("@/pages/ChatPage"));
 const AIAssistantPage = lazy(() => import("@/pages/AIAssistantPage"));
 const AttendancePage = lazy(() => import("@/pages/AttendancePage"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
+const FeedbackKiosk = lazy(() => import("@/pages/FeedbackKiosk"));
+const FeedbackAnalyticsDashboard = lazy(() => import("@/pages/FeedbackAnalyticsDashboard"));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -87,6 +89,7 @@ const AppRoutes = () => {
             <Route path="/admin/orders" element={<AdminOrdersDashboard />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/ai-assistant" element={<AIAssistantPage />} />
+            <Route path="/admin/feedback" element={<FeedbackAnalyticsDashboard />} />
           </>
         );
       case "accounts":
@@ -159,16 +162,26 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <AuthProvider>
-        <DataProvider>
-          <ChatUnreadProvider>
-            <BrowserRouter>
-              <AppRoutes />
-              <PWAInstallPrompt />
-            </BrowserRouter>
-          </ChatUnreadProvider>
-        </DataProvider>
-      </AuthProvider>
+      <BrowserRouter>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            <Route path="/feedback" element={<FeedbackKiosk />} />
+            <Route
+              path="/*"
+              element={
+                <AuthProvider>
+                  <DataProvider>
+                    <ChatUnreadProvider>
+                      <AppRoutes />
+                      <PWAInstallPrompt />
+                    </ChatUnreadProvider>
+                  </DataProvider>
+                </AuthProvider>
+              }
+            />
+          </Routes>
+        </Suspense>
+      </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
 );
