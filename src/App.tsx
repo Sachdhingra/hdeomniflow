@@ -89,6 +89,7 @@ const AppRoutes = () => {
             <Route path="/admin/orders" element={<AdminOrdersDashboard />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/ai-assistant" element={<AIAssistantPage />} />
+            <Route path="/admin/feedback" element={<FeedbackAnalyticsDashboard />} />
           </>
         );
       case "accounts":
