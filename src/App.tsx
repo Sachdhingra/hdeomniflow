@@ -34,6 +34,8 @@ const ChatPage = lazy(() => import("@/pages/ChatPage"));
 const AIAssistantPage = lazy(() => import("@/pages/AIAssistantPage"));
 const AttendancePage = lazy(() => import("@/pages/AttendancePage"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
+const FeedbackKiosk = lazy(() => import("@/pages/FeedbackKiosk"));
+const FeedbackAnalyticsDashboard = lazy(() => import("@/pages/FeedbackAnalyticsDashboard"));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
