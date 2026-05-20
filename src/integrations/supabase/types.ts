@@ -91,6 +91,27 @@ export type Database = {
         }
         Relationships: []
       }
+      app_settings: {
+        Row: {
+          key: string
+          updated_at: string
+          updated_by: string | null
+          value: string
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          updated_by?: string | null
+          value: string
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          updated_by?: string | null
+          value?: string
+        }
+        Relationships: []
+      }
       attendance: {
         Row: {
           clock_in: string | null
@@ -473,6 +494,48 @@ export type Database = {
           id?: string
           is_cleared?: boolean
           reference_id?: string | null
+        }
+        Relationships: []
+      }
+      customer_feedback: {
+        Row: {
+          comments: string | null
+          created_at: string
+          customer_name: string
+          customer_phone: string
+          id: string
+          lead_created: boolean
+          lead_id: string | null
+          needs_attention: boolean
+          overall_rating: number
+          qualified_for_review: boolean
+          staff_rating: number
+        }
+        Insert: {
+          comments?: string | null
+          created_at?: string
+          customer_name: string
+          customer_phone: string
+          id?: string
+          lead_created?: boolean
+          lead_id?: string | null
+          needs_attention?: boolean
+          overall_rating: number
+          qualified_for_review?: boolean
+          staff_rating: number
+        }
+        Update: {
+          comments?: string | null
+          created_at?: string
+          customer_name?: string
+          customer_phone?: string
+          id?: string
+          lead_created?: boolean
+          lead_id?: string | null
+          needs_attention?: boolean
+          overall_rating?: number
+          qualified_for_review?: boolean
+          staff_rating?: number
         }
         Relationships: []
       }
