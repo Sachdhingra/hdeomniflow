@@ -162,16 +162,26 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <AuthProvider>
-        <DataProvider>
-          <ChatUnreadProvider>
-            <BrowserRouter>
-              <AppRoutes />
-              <PWAInstallPrompt />
-            </BrowserRouter>
-          </ChatUnreadProvider>
-        </DataProvider>
-      </AuthProvider>
+      <BrowserRouter>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            <Route path="/feedback" element={<FeedbackKiosk />} />
+            <Route
+              path="/*"
+              element={
+                <AuthProvider>
+                  <DataProvider>
+                    <ChatUnreadProvider>
+                      <AppRoutes />
+                      <PWAInstallPrompt />
+                    </ChatUnreadProvider>
+                  </DataProvider>
+                </AuthProvider>
+              }
+            />
+          </Routes>
+        </Suspense>
+      </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
 );
