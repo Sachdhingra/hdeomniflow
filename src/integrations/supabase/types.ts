@@ -584,6 +584,39 @@ export type Database = {
         }
         Relationships: []
       }
+      firecrawl_research: {
+        Row: {
+          id: string
+          url: string
+          title: string | null
+          description: string | null
+          markdown: string | null
+          links: Json | null
+          scraped_at: string
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          url: string
+          title?: string | null
+          description?: string | null
+          markdown?: string | null
+          links?: Json | null
+          scraped_at?: string
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          url?: string
+          title?: string | null
+          description?: string | null
+          markdown?: string | null
+          links?: Json | null
+          scraped_at?: string
+          created_by?: string | null
+        }
+        Relationships: []
+      }
       godrej_products: {
         Row: {
           active: boolean
