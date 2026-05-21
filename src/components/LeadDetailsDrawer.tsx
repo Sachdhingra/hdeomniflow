@@ -4,7 +4,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { Phone, Mail, Calendar, Package, History, Sparkles, MapPin, MessageCircle, Zap, Home, Users, Clock } from "lucide-react";
+import { Phone, Mail, Calendar, Package, History, Sparkles, MapPin, MessageCircle, Zap, Home, Users, Clock, Star, MapPinned } from "lucide-react";
 import type { Lead, LeadStatus } from "@/contexts/DataContext";
 import { LEAD_CATEGORIES } from "@/contexts/DataContext";
 import { neighborhoodColor, responseTimeColor, formatRelativeTime, PREFERRED_STYLES, BUDGET_RANGES, FAMILY_SITUATIONS, DECISION_TIMELINES, STATED_NEEDS } from "@/lib/leadConstants";
@@ -40,6 +40,15 @@ interface StageHistoryRow {
   reason: string | null;
 }
 
+interface DedupLogRow {
+  id: string;
+  action: string;
+  visit_count: number | null;
+  last_visit_date: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
 const STAGE_LABEL: Record<string, string> = {
   new: "New", contacted: "Contacted", follow_up: "Follow Up",
   negotiation: "Negotiation", won: "Won", lost: "Lost",
@@ -61,6 +70,7 @@ const probabilityColor = (p: number) => {
 const LeadDetailsDrawer = ({ lead, open, onOpenChange }: Props) => {
   const [history, setHistory] = useState<StageHistoryRow[]>([]);
   const [messages, setMessages] = useState<LeadMessage[]>([]);
+  const [dedupHistory, setDedupHistory] = useState<DedupLogRow[]>([]);
   const [probability, setProbability] = useState<number>(0);
   const [loading, setLoading] = useState(false);
 
@@ -68,7 +78,7 @@ const LeadDetailsDrawer = ({ lead, open, onOpenChange }: Props) => {
     if (!lead || !open) return;
     setLoading(true);
     (async () => {
-      const [{ data: hist }, { data: prob }, { data: msgs }] = await Promise.all([
+      const [{ data: hist }, { data: prob }, { data: msgs }, { data: dedup }] = await Promise.all([
         supabase.from("lead_stage_history")
           .select("id, old_stage, new_stage, changed_at, reason")
           .eq("lead_id", lead.id)
@@ -79,9 +89,14 @@ const LeadDetailsDrawer = ({ lead, open, onOpenChange }: Props) => {
           .eq("lead_id", lead.id)
           .order("sent_at", { ascending: false })
           .limit(20),
+        supabase.from("lead_deduplication_log")
+          .select("id, action, visit_count, last_visit_date, notes, created_at")
+          .eq("lead_id", lead.id)
+          .order("created_at", { ascending: true }),
       ]);
       setHistory((hist as StageHistoryRow[]) || []);
       setMessages((msgs as LeadMessage[]) || []);
+      setDedupHistory((dedup as DedupLogRow[]) || []);
       setProbability(typeof prob === "number" ? prob : (lead.conversion_probability ?? 30));
       setLoading(false);
     })();
@@ -108,6 +123,16 @@ const LeadDetailsDrawer = ({ lead, open, onOpenChange }: Props) => {
             <span>{lead.customer_name}</span>
             {(l.repeat_count ?? 0) > 0 && (
               <RepeatBadge repeatCount={l.repeat_count} totalSales={l.total_sales} />
+            )}
+            {(l.visit_count ?? 1) > 1 && (
+              <Badge variant="secondary" className="text-[10px] gap-0.5">
+                🏪 {l.visit_count} visits
+              </Badge>
+            )}
+            {l.feedback_score != null && (
+              <Badge variant="outline" className="text-[10px] gap-0.5">
+                <Star className="w-2.5 h-2.5 fill-warning text-warning" />{l.feedback_score}/5
+              </Badge>
             )}
           </SheetTitle>
           <SheetDescription className="flex items-center gap-2 flex-wrap">
@@ -352,6 +377,36 @@ const LeadDetailsDrawer = ({ lead, open, onOpenChange }: Props) => {
               <section className="space-y-1 text-sm">
                 <h4 className="font-semibold">Notes</h4>
                 <p className="text-muted-foreground whitespace-pre-wrap">{lead.notes}</p>
+              </section>
+            </>
+          )}
+
+          {dedupHistory.length > 0 && (
+            <>
+              <Separator />
+              <section className="space-y-2">
+                <h4 className="font-semibold text-sm flex items-center gap-1.5">
+                  <MapPinned className="w-4 h-4" />Visit History
+                  <Badge variant="secondary" className="text-[10px]">{dedupHistory.length}</Badge>
+                </h4>
+                <ol className="space-y-2">
+                  {dedupHistory.map((d, i) => (
+                    <li key={d.id} className="text-xs border-l-2 border-warning/40 pl-3 py-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <Badge
+                          variant={d.action === "created_new_lead" ? "default" : "secondary"}
+                          className="text-[9px]"
+                        >
+                          {d.action === "created_new_lead" ? "🆕 Lead created" : `🏪 Visit #${d.visit_count ?? i + 1}`}
+                        </Badge>
+                        <span className="text-muted-foreground text-[10px]">
+                          {new Date(d.last_visit_date ?? d.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                      {d.notes && <p className="text-muted-foreground mt-0.5">{d.notes}</p>}
+                    </li>
+                  ))}
+                </ol>
               </section>
             </>
           )}

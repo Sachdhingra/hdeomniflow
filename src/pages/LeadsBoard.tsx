@@ -9,7 +9,7 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Phone, MoveHorizontal, Sparkles, MessageCircle, MapPin, Zap, AlertTriangle, Snowflake } from "lucide-react";
+import { Phone, MoveHorizontal, Sparkles, MessageCircle, MapPin, Zap, AlertTriangle, Snowflake, Star } from "lucide-react";
 import { toast } from "sonner";
 import LeadDetailsDrawer from "@/components/LeadDetailsDrawer";
 import SendTemplateDialog from "@/components/SendTemplateDialog";
@@ -190,13 +190,24 @@ const LeadsBoard = () => {
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 min-w-0">
                             <p className="font-semibold text-sm line-clamp-1 uppercase">{lead.customer_name}</p>
-                            {(l.repeat_count ?? 0) > 0 && (
-                              <RepeatBadge
-                                repeatCount={l.repeat_count}
-                                totalSales={l.total_sales}
-                                className="mt-1"
-                              />
-                            )}
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {(l.repeat_count ?? 0) > 0 && (
+                                <RepeatBadge
+                                  repeatCount={l.repeat_count}
+                                  totalSales={l.total_sales}
+                                />
+                              )}
+                              {(l.visit_count ?? 1) > 1 && (
+                                <Badge variant="secondary" className="text-[10px] gap-0.5 h-4">
+                                  🏪 {l.visit_count} visits
+                                </Badge>
+                              )}
+                              {l.feedback_score != null && (
+                                <Badge variant="outline" className="text-[10px] gap-0.5 h-4">
+                                  <Star className="w-2.5 h-2.5 fill-warning text-warning" />{l.feedback_score}/5
+                                </Badge>
+                              )}
+                            </div>
                           </div>
                           <Tooltip>
                             <TooltipTrigger asChild onClick={e => e.stopPropagation()}>
