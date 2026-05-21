@@ -20,19 +20,19 @@ Deno.serve(async (req) => {
 
     const authHeader = req.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
-      return json({ error: 'Unauthorized' }, 401);
+      return json({ success: false, error: 'Unauthorized' });
     }
     const userClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
     });
     const { data: userData, error: userErr } = await userClient.auth.getUser();
-    if (userErr || !userData?.user) return json({ error: 'Unauthorized' }, 401);
+    if (userErr || !userData?.user) return json({ success: false, error: 'Unauthorized' });
 
     const userId = userData.user.id;
     const admin = createClient(supabaseUrl, serviceKey);
     const { data: roleRow } = await admin
       .from('user_roles').select('role').eq('user_id', userId).eq('role', 'admin').maybeSingle();
-    if (!roleRow) return json({ error: 'Admin role required' }, 403);
+    if (!roleRow) return json({ success: false, error: 'Admin role required' });
 
     const body = await req.json().catch(() => ({}));
     const url: string = (body.url ?? '').trim();
@@ -69,7 +69,8 @@ Deno.serve(async (req) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error('firecrawl-research error', msg);
-    return json({ success: false, error: msg }, 500);
+    // Always return 200 so the client receives the error body
+    return json({ success: false, error: msg });
   }
 });
 

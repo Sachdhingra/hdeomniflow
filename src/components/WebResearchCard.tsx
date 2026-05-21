@@ -25,12 +25,12 @@ export default function WebResearchCard() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const loadHistory = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("firecrawl_research")
       .select("id, url, title, description, scraped_at")
       .order("scraped_at", { ascending: false })
       .limit(10);
-    setHistory((data as ResearchRow[]) ?? []);
+    if (!error) setHistory((data as ResearchRow[]) ?? []);
   };
 
   useEffect(() => { loadHistory(); }, []);
@@ -47,7 +47,15 @@ export default function WebResearchCard() {
       const { data, error } = await supabase.functions.invoke("firecrawl-research", {
         body: { url: normalized },
       });
-      if (error) throw error;
+      // Extract real error message — Supabase wraps non-2xx as a generic FunctionsHttpError
+      if (error) {
+        let msg: string = error.message ?? "Scrape failed";
+        try {
+          const body = await (error as any).context?.json?.();
+          if (body?.error) msg = body.error;
+        } catch { /* ignore */ }
+        throw new Error(msg);
+      }
       if (data?.success === false) throw new Error(data.error || "Scrape failed");
       toast.success(`Scraped: ${data.title || normalized}`);
       setUrl("");
