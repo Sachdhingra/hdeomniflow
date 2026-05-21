@@ -509,7 +509,12 @@ export type Database = {
           needs_attention: boolean
           overall_rating: number
           qualified_for_review: boolean
+          reviewed_on_google: boolean
+          showroom_id: string
           staff_rating: number
+          thank_you_sent: boolean
+          thank_you_sent_at: string | null
+          thank_you_template: string | null
         }
         Insert: {
           comments?: string | null
@@ -522,7 +527,12 @@ export type Database = {
           needs_attention?: boolean
           overall_rating: number
           qualified_for_review?: boolean
+          reviewed_on_google?: boolean
+          showroom_id?: string
           staff_rating: number
+          thank_you_sent?: boolean
+          thank_you_sent_at?: string | null
+          thank_you_template?: string | null
         }
         Update: {
           comments?: string | null
@@ -535,7 +545,12 @@ export type Database = {
           needs_attention?: boolean
           overall_rating?: number
           qualified_for_review?: boolean
+          reviewed_on_google?: boolean
+          showroom_id?: string
           staff_rating?: number
+          thank_you_sent?: boolean
+          thank_you_sent_at?: string | null
+          thank_you_template?: string | null
         }
         Relationships: []
       }
@@ -1284,6 +1299,50 @@ export type Database = {
         }
         Relationships: []
       }
+      pending_thank_you_messages: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          feedback_id: string
+          id: string
+          message: string
+          phone: string
+          scheduled_send_time: string
+          sent_at: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          feedback_id: string
+          id?: string
+          message: string
+          phone: string
+          scheduled_send_time?: string
+          sent_at?: string | null
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          feedback_id?: string
+          id?: string
+          message?: string
+          phone?: string
+          scheduled_send_time?: string
+          sent_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pending_thank_you_messages_feedback_id_fkey"
+            columns: ["feedback_id"]
+            isOneToOne: false
+            referencedRelation: "customer_feedback"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           brand_code: string | null
@@ -1664,6 +1723,20 @@ export type Database = {
       }
     }
     Views: {
+      daily_feedback_stats: {
+        Row: {
+          avg_experience_rating: number | null
+          avg_overall_rating: number | null
+          feedback_date: string | null
+          five_star_count: number | null
+          four_star_count: number | null
+          poor_count: number | null
+          showroom_id: string | null
+          three_star_count: number | null
+          total_feedback: number | null
+        }
+        Relationships: []
+      }
       template_variant_performance: {
         Row: {
           is_active: boolean | null
