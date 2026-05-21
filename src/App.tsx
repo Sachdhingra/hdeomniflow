@@ -90,6 +90,7 @@ const AppRoutes = () => {
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/ai-assistant" element={<AIAssistantPage />} />
             <Route path="/admin/feedback" element={<FeedbackAnalyticsDashboard />} />
+            <Route path="/dashboard/feedback-analytics" element={<FeedbackAnalyticsDashboard />} />
           </>
         );
       case "accounts":
@@ -166,6 +167,7 @@ const App = () => (
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/feedback" element={<FeedbackKiosk />} />
+            <Route path="/feedback/exit" element={<FeedbackKiosk />} />
             <Route
               path="/*"
               element={
