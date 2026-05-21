@@ -47,9 +47,8 @@ export default function WebResearchCard() {
       const { data, error } = await supabase.functions.invoke("godrej-scrape", {
         body: { mode: "research", url: normalized },
       });
-      // Extract real error message — Supabase wraps non-2xx as a generic FunctionsHttpError
       if (error) {
-        let msg: string = error.message ?? "Scrape failed";
+        let msg = "Scrape failed — please try again in a moment";
         try {
           const body = await (error as any).context?.json?.();
           if (body?.error) msg = body.error;
@@ -62,7 +61,7 @@ export default function WebResearchCard() {
       await loadHistory();
       if (data.id) setExpanded(data.id);
     } catch (e: any) {
-      toast.error(`Research failed: ${e.message || e}`);
+      toast.error(e.message || "Research failed");
     } finally {
       setLoading(false);
     }
@@ -94,16 +93,16 @@ export default function WebResearchCard() {
         <div className="flex gap-2">
           <Input
             ref={inputRef}
-            placeholder="https://www.urbanladder.com/sofas"
+            placeholder="e.g. urbanladder.com/sofas"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && scrape()}
+            onKeyDown={(e) => e.key === "Enter" && !loading && scrape()}
             disabled={loading}
             className="flex-1"
           />
           <Button onClick={scrape} disabled={loading} size="sm" className="shrink-0">
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-            Scrape
+            {loading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Search className="h-4 w-4 mr-1" />}
+            {loading ? "Scraping…" : "Scrape"}
           </Button>
         </div>
 
@@ -141,11 +140,10 @@ export default function WebResearchCard() {
                     >
                       <ExternalLink className="h-3.5 w-3.5" />
                     </a>
-                    {expanded === row.id ? (
-                      <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                    )}
+                    {expanded === row.id
+                      ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                      : <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    }
                   </div>
                 </button>
                 {expanded === row.id && row.markdown && (
