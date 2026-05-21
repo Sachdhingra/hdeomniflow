@@ -44,8 +44,8 @@ export default function WebResearchCard() {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("firecrawl-research", {
-        body: { url: normalized },
+      const { data, error } = await supabase.functions.invoke("godrej-scrape", {
+        body: { mode: "research", url: normalized },
       });
       // Extract real error message — Supabase wraps non-2xx as a generic FunctionsHttpError
       if (error) {
