@@ -17,6 +17,17 @@ interface ResearchRow {
   scraped_at: string;
 }
 
+async function invokeResearch(url: string): Promise<{ data: any; error: any }> {
+  // Try godrej-scrape with research mode first (deployed, confirmed working)
+  const r1 = await supabase.functions.invoke("godrej-scrape", {
+    body: { mode: "research", url },
+  });
+  if (!r1.error) return r1;
+
+  // Fall back to the dedicated firecrawl-research function
+  return supabase.functions.invoke("firecrawl-research", { body: { url } });
+}
+
 export default function WebResearchCard() {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
@@ -44,11 +55,9 @@ export default function WebResearchCard() {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("godrej-scrape", {
-        body: { mode: "research", url: normalized },
-      });
+      const { data, error } = await invokeResearch(normalized);
       if (error) {
-        let msg = "Scrape failed — please try again in a moment";
+        let msg = error.message ?? "Scrape failed";
         try {
           const body = await (error as any).context?.json?.();
           if (body?.error) msg = body.error;
