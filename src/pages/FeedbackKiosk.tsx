@@ -81,6 +81,24 @@ const FeedbackKiosk = () => {
     setComments("");
   };
 
+  // Kiosk safety: auto-reset after 5 min of inactivity on any step except the
+  // result screen (which has its own short timer). Resets the timer on any
+  // user interaction so an active customer is never interrupted.
+  useEffect(() => {
+    if (step === 4) return;
+    let timer = window.setTimeout(reset, 5 * 60 * 1000);
+    const bump = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(reset, 5 * 60 * 1000);
+    };
+    const events = ["pointerdown", "keydown", "touchstart"];
+    events.forEach((e) => window.addEventListener(e, bump, { passive: true }));
+    return () => {
+      window.clearTimeout(timer);
+      events.forEach((e) => window.removeEventListener(e, bump));
+    };
+  }, [step]);
+
   const handleOverall = (n: number) => {
     setOverall(n);
     setTimeout(() => setStep(2), 250);
