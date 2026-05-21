@@ -1014,6 +1014,9 @@ export type Database = {
           updated_at: string
           updated_by: string
           value_in_rupees: number
+          visit_count: number
+          feedback_score: number | null
+          last_activity_date: string | null
           visit_date: string | null
           visit_photo: string | null
           why_lost: string | null
@@ -1091,6 +1094,9 @@ export type Database = {
           updated_at?: string
           updated_by: string
           value_in_rupees?: number
+          visit_count?: number
+          feedback_score?: number | null
+          last_activity_date?: string | null
           visit_date?: string | null
           visit_photo?: string | null
           why_lost?: string | null
@@ -1168,11 +1174,74 @@ export type Database = {
           updated_at?: string
           updated_by?: string
           value_in_rupees?: number
+          visit_count?: number
+          feedback_score?: number | null
+          last_activity_date?: string | null
           visit_date?: string | null
           visit_photo?: string | null
           why_lost?: string | null
         }
         Relationships: []
+      }
+      lead_deduplication_log: {
+        Row: {
+          id: string
+          lead_id: string | null
+          feedback_id: string | null
+          phone: string
+          action: string
+          previous_stage: string | null
+          new_stage: string | null
+          assigned_to: string | null
+          visit_count: number | null
+          last_visit_date: string | null
+          notes: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          lead_id?: string | null
+          feedback_id?: string | null
+          phone: string
+          action: string
+          previous_stage?: string | null
+          new_stage?: string | null
+          assigned_to?: string | null
+          visit_count?: number | null
+          last_visit_date?: string | null
+          notes?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          lead_id?: string | null
+          feedback_id?: string | null
+          phone?: string
+          action?: string
+          previous_stage?: string | null
+          new_stage?: string | null
+          assigned_to?: string | null
+          visit_count?: number | null
+          last_visit_date?: string | null
+          notes?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_deduplication_log_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_deduplication_log_feedback_id_fkey"
+            columns: ["feedback_id"]
+            isOneToOne: false
+            referencedRelation: "customer_feedback"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       message_logs: {
         Row: {
