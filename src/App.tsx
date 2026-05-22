@@ -170,6 +170,14 @@ const App = () => (
             <Route path="/feedback" element={<FeedbackKiosk />} />
             <Route path="/feedback/exit" element={<FeedbackKiosk />} />
             <Route
+              path="/kiosk/feedback"
+              element={
+                <KioskModeWrapper enableAutoReset resetTimeoutMinutes={5} resetPath="/kiosk/feedback">
+                  <FeedbackKiosk />
+                </KioskModeWrapper>
+              }
+            />
+            <Route
               path="/*"
               element={
                 <AuthProvider>
