@@ -36,6 +36,7 @@ const AttendancePage = lazy(() => import("@/pages/AttendancePage"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 const FeedbackKiosk = lazy(() => import("@/pages/FeedbackKiosk"));
 const FeedbackAnalyticsDashboard = lazy(() => import("@/pages/FeedbackAnalyticsDashboard"));
+import KioskModeWrapper from "@/components/kiosk/KioskModeWrapper";
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -168,6 +169,14 @@ const App = () => (
           <Routes>
             <Route path="/feedback" element={<FeedbackKiosk />} />
             <Route path="/feedback/exit" element={<FeedbackKiosk />} />
+            <Route
+              path="/kiosk/feedback"
+              element={
+                <KioskModeWrapper enableAutoReset resetTimeoutMinutes={5} resetPath="/kiosk/feedback">
+                  <FeedbackKiosk />
+                </KioskModeWrapper>
+              }
+            />
             <Route
               path="/*"
               element={
