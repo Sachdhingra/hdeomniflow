@@ -79,11 +79,12 @@ export default function WebResearchCard() {
 
   const loadMarkdown = async (id: string) => {
     if (expanded === id) { setExpanded(null); return; }
-    const { data } = await supabase
+    const { data } = await (supabase as any)
       .from("firecrawl_research")
       .select("id, url, title, description, markdown, scraped_at")
       .eq("id", id)
       .single();
+
     if (data) {
       setHistory((prev) =>
         prev.map((r) => (r.id === id ? { ...r, markdown: (data as any).markdown } : r))
