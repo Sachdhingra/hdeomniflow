@@ -36,13 +36,14 @@ export default function WebResearchCard() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const loadHistory = async () => {
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("firecrawl_research")
       .select("id, url, title, description, scraped_at")
       .order("scraped_at", { ascending: false })
       .limit(10);
     if (!error) setHistory((data as ResearchRow[]) ?? []);
   };
+
 
   useEffect(() => { loadHistory(); }, []);
 
