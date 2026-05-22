@@ -36,13 +36,14 @@ export default function WebResearchCard() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const loadHistory = async () => {
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("firecrawl_research")
       .select("id, url, title, description, scraped_at")
       .order("scraped_at", { ascending: false })
       .limit(10);
     if (!error) setHistory((data as ResearchRow[]) ?? []);
   };
+
 
   useEffect(() => { loadHistory(); }, []);
 
@@ -78,11 +79,12 @@ export default function WebResearchCard() {
 
   const loadMarkdown = async (id: string) => {
     if (expanded === id) { setExpanded(null); return; }
-    const { data } = await supabase
+    const { data } = await (supabase as any)
       .from("firecrawl_research")
       .select("id, url, title, description, markdown, scraped_at")
       .eq("id", id)
       .single();
+
     if (data) {
       setHistory((prev) =>
         prev.map((r) => (r.id === id ? { ...r, markdown: (data as any).markdown } : r))

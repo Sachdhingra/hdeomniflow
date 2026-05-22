@@ -584,39 +584,6 @@ export type Database = {
         }
         Relationships: []
       }
-      firecrawl_research: {
-        Row: {
-          id: string
-          url: string
-          title: string | null
-          description: string | null
-          markdown: string | null
-          links: Json | null
-          scraped_at: string
-          created_by: string | null
-        }
-        Insert: {
-          id?: string
-          url: string
-          title?: string | null
-          description?: string | null
-          markdown?: string | null
-          links?: Json | null
-          scraped_at?: string
-          created_by?: string | null
-        }
-        Update: {
-          id?: string
-          url?: string
-          title?: string | null
-          description?: string | null
-          markdown?: string | null
-          links?: Json | null
-          scraped_at?: string
-          created_by?: string | null
-        }
-        Relationships: []
-      }
       godrej_products: {
         Row: {
           active: boolean
@@ -770,6 +737,48 @@ export type Database = {
           lead_id?: string
           reason?: string | null
           to_user?: string | null
+        }
+        Relationships: []
+      }
+      lead_deduplication_log: {
+        Row: {
+          action: string
+          created_at: string
+          created_by: string | null
+          customer_phone: string
+          feedback_id: string | null
+          id: string
+          last_visit_date: string | null
+          lead_id: string
+          notes: string | null
+          source: string | null
+          visit_count: number | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          created_by?: string | null
+          customer_phone: string
+          feedback_id?: string | null
+          id?: string
+          last_visit_date?: string | null
+          lead_id: string
+          notes?: string | null
+          source?: string | null
+          visit_count?: number | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          created_by?: string | null
+          customer_phone?: string
+          feedback_id?: string | null
+          id?: string
+          last_visit_date?: string | null
+          lead_id?: string
+          notes?: string | null
+          source?: string | null
+          visit_count?: number | null
         }
         Relationships: []
       }
@@ -970,12 +979,14 @@ export type Database = {
           delivery_notes: string | null
           family_situation: string | null
           family_visit_date: string | null
+          feedback_score: number | null
           first_purchase_date: string | null
           has_family: boolean | null
           id: string
           journey_stage: string | null
           journey_stage_auto: boolean
           journey_stage_changed_at: string | null
+          last_activity_date: string | null
           last_alert_at: string | null
           last_follow_up: string
           last_inbound_concern: string | null
@@ -1015,8 +1026,6 @@ export type Database = {
           updated_by: string
           value_in_rupees: number
           visit_count: number
-          feedback_score: number | null
-          last_activity_date: string | null
           visit_date: string | null
           visit_photo: string | null
           why_lost: string | null
@@ -1050,12 +1059,14 @@ export type Database = {
           delivery_notes?: string | null
           family_situation?: string | null
           family_visit_date?: string | null
+          feedback_score?: number | null
           first_purchase_date?: string | null
           has_family?: boolean | null
           id?: string
           journey_stage?: string | null
           journey_stage_auto?: boolean
           journey_stage_changed_at?: string | null
+          last_activity_date?: string | null
           last_alert_at?: string | null
           last_follow_up?: string
           last_inbound_concern?: string | null
@@ -1095,8 +1106,6 @@ export type Database = {
           updated_by: string
           value_in_rupees?: number
           visit_count?: number
-          feedback_score?: number | null
-          last_activity_date?: string | null
           visit_date?: string | null
           visit_photo?: string | null
           why_lost?: string | null
@@ -1130,12 +1139,14 @@ export type Database = {
           delivery_notes?: string | null
           family_situation?: string | null
           family_visit_date?: string | null
+          feedback_score?: number | null
           first_purchase_date?: string | null
           has_family?: boolean | null
           id?: string
           journey_stage?: string | null
           journey_stage_auto?: boolean
           journey_stage_changed_at?: string | null
+          last_activity_date?: string | null
           last_alert_at?: string | null
           last_follow_up?: string
           last_inbound_concern?: string | null
@@ -1175,73 +1186,11 @@ export type Database = {
           updated_by?: string
           value_in_rupees?: number
           visit_count?: number
-          feedback_score?: number | null
-          last_activity_date?: string | null
           visit_date?: string | null
           visit_photo?: string | null
           why_lost?: string | null
         }
         Relationships: []
-      }
-      lead_deduplication_log: {
-        Row: {
-          id: string
-          lead_id: string | null
-          feedback_id: string | null
-          phone: string
-          action: string
-          previous_stage: string | null
-          new_stage: string | null
-          assigned_to: string | null
-          visit_count: number | null
-          last_visit_date: string | null
-          notes: string | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          lead_id?: string | null
-          feedback_id?: string | null
-          phone: string
-          action: string
-          previous_stage?: string | null
-          new_stage?: string | null
-          assigned_to?: string | null
-          visit_count?: number | null
-          last_visit_date?: string | null
-          notes?: string | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          lead_id?: string | null
-          feedback_id?: string | null
-          phone?: string
-          action?: string
-          previous_stage?: string | null
-          new_stage?: string | null
-          assigned_to?: string | null
-          visit_count?: number | null
-          last_visit_date?: string | null
-          notes?: string | null
-          created_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "lead_deduplication_log_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "lead_deduplication_log_feedback_id_fkey"
-            columns: ["feedback_id"]
-            isOneToOne: false
-            referencedRelation: "customer_feedback"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       message_logs: {
         Row: {
