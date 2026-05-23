@@ -127,7 +127,7 @@ const FeedbackKiosk = () => {
       return;
     }
     setStep(4);
-    const closeMs = overall >= 4 ? 6000 : 3500;
+    const closeMs = overall >= 4 ? 10000 : 3500;
     setTimeout(reset, closeMs);
   };
 
