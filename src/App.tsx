@@ -36,6 +36,7 @@ const AttendancePage = lazy(() => import("@/pages/AttendancePage"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 const FeedbackKiosk = lazy(() => import("@/pages/FeedbackKiosk"));
 const FeedbackAnalyticsDashboard = lazy(() => import("@/pages/FeedbackAnalyticsDashboard"));
+const AdminSchemeBanners = lazy(() => import("@/pages/AdminSchemeBanners"));
 import KioskModeWrapper from "@/components/kiosk/KioskModeWrapper";
 
 const PageLoader = () => (
@@ -92,6 +93,7 @@ const AppRoutes = () => {
             <Route path="/ai-assistant" element={<AIAssistantPage />} />
             <Route path="/admin/feedback" element={<FeedbackAnalyticsDashboard />} />
             <Route path="/dashboard/feedback-analytics" element={<FeedbackAnalyticsDashboard />} />
+            <Route path="/admin/kiosk-banners" element={<AdminSchemeBanners />} />
           </>
         );
       case "accounts":

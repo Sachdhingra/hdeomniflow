@@ -11,7 +11,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from "recharts";
-import { Loader2, RefreshCw, Star, AlertTriangle, TrendingUp, TrendingDown } from "lucide-react";
+import { Loader2, RefreshCw, Star, AlertTriangle, TrendingUp, TrendingDown, Trash2, ExternalLink } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { Link } from "react-router-dom";
 
 interface Feedback {
   id: string;
@@ -22,6 +25,8 @@ interface Feedback {
   staff_rating: number;
   needs_attention: boolean;
   lead_created: boolean;
+  lead_id: string | null;
+  salesperson_name: string | null;
   created_at: string;
 }
 
@@ -44,6 +49,14 @@ const FeedbackAnalyticsDashboard = () => {
     if (!error && data) setItems(data as Feedback[]);
     setLoading(false);
     setLastUpdated(new Date());
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Delete this feedback entry permanently?")) return;
+    const { error } = await supabase.from("customer_feedback").delete().eq("id", id);
+    if (error) return toast.error(error.message);
+    toast.success("Feedback deleted");
+    setItems((prev) => prev.filter((i) => i.id !== id));
   };
 
   useEffect(() => {
@@ -215,11 +228,13 @@ const FeedbackAnalyticsDashboard = () => {
                 <TableRow>
                   <TableHead>Customer</TableHead>
                   <TableHead>Phone</TableHead>
+                  <TableHead>Salesperson</TableHead>
                   <TableHead>Overall</TableHead>
                   <TableHead>Staff</TableHead>
                   <TableHead>Comments</TableHead>
                   <TableHead>Lead</TableHead>
                   <TableHead>When</TableHead>
+                  <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -236,6 +251,7 @@ const FeedbackAnalyticsDashboard = () => {
                   >
                     <TableCell className="font-medium">{f.customer_name}</TableCell>
                     <TableCell>{f.customer_phone}</TableCell>
+                    <TableCell className="text-sm">{f.salesperson_name || "—"}</TableCell>
                     <TableCell>
                       <span className="text-xl mr-1">{EMOJI[f.overall_rating - 1]}</span>
                       {f.overall_rating}
@@ -247,15 +263,27 @@ const FeedbackAnalyticsDashboard = () => {
                     <TableCell className="max-w-xs truncate text-sm text-muted-foreground">
                       {f.comments || "—"}
                     </TableCell>
-                    <TableCell>{f.lead_created ? <Badge variant="secondary">✅ Lead</Badge> : "—"}</TableCell>
+                    <TableCell>
+                      {f.lead_id ? (
+                        <Link to="/leads/board" className="inline-flex items-center gap-1 text-primary hover:underline text-xs">
+                          {f.lead_created ? <Badge variant="secondary">✅ New</Badge> : <Badge variant="outline">Updated</Badge>}
+                          <ExternalLink className="w-3 h-3" />
+                        </Link>
+                      ) : "—"}
+                    </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {new Date(f.created_at).toLocaleString()}
+                    </TableCell>
+                    <TableCell>
+                      <Button size="icon" variant="ghost" onClick={() => handleDelete(f.id)} aria-label="Delete">
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
                 {items.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                       No feedback yet.
                     </TableCell>
                   </TableRow>
