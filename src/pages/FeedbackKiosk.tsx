@@ -1,18 +1,23 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, Maximize2 } from "lucide-react";
 import GoogleReviewQRCode from "@/components/GoogleReviewQRCode";
+import KioskScreensaver from "@/components/kiosk/KioskScreensaver";
 
 type Step = 1 | 2 | 3 | 4;
 
 const EMOJIS_OVERALL = ["😢", "😕", "😐", "😊", "🤩"];
 const EMOJIS_STAFF = ["😢", "😕", "😐", "😊", "⭐"];
 const LABELS = ["Poor", "OK", "Good", "Great", "Amazing"];
+const SALESPEOPLE = ["Shivam", "Nisha", "Reena", "Amit", "Saurabh", "Swati"];
+
+const POSITIVE_AUTO_RESET_SECONDS = 30;
 
 const EmojiRow = ({
   emojis,
@@ -54,10 +59,13 @@ const FeedbackKiosk = () => {
   const [staff, setStaff] = useState<number | null>(null);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [salesperson, setSalesperson] = useState<string>("");
   const [comments, setComments] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [reviewUrl, setReviewUrl] = useState<string>("");
   const [businessPhone, setBusinessPhone] = useState<string>("");
+  const [countdown, setCountdown] = useState<number>(POSITIVE_AUTO_RESET_SECONDS);
+  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     supabase
@@ -73,17 +81,18 @@ const FeedbackKiosk = () => {
   }, []);
 
   const reset = () => {
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
     setStep(1);
     setOverall(null);
     setStaff(null);
     setName("");
     setPhone("");
+    setSalesperson("");
     setComments("");
+    setCountdown(POSITIVE_AUTO_RESET_SECONDS);
   };
 
-  // Kiosk safety: auto-reset after 5 min of inactivity on any step except the
-  // result screen (which has its own short timer). Resets the timer on any
-  // user interaction so an active customer is never interrupted.
+  // Auto-reset after 5 min of inactivity on steps 1–3
   useEffect(() => {
     if (step === 4) return;
     let timer = window.setTimeout(reset, 5 * 60 * 1000);
@@ -108,15 +117,29 @@ const FeedbackKiosk = () => {
     setTimeout(() => setStep(3), 250);
   };
 
+  const enterFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch {
+      toast.error("Fullscreen not available");
+    }
+  };
+
   const submit = async () => {
     if (!name.trim()) return toast.error("Please enter your name");
     if (!/^\d{10}$/.test(phone)) return toast.error("WhatsApp number must be 10 digits");
+    if (!salesperson) return toast.error("Please select the salesperson who helped you");
     if (overall == null || staff == null) return;
 
     setSubmitting(true);
     const { error } = await supabase.from("customer_feedback").insert({
       customer_name: name.trim(),
       customer_phone: phone,
+      salesperson_name: salesperson,
       comments: comments.trim() || null,
       overall_rating: overall,
       staff_rating: staff,
@@ -127,9 +150,25 @@ const FeedbackKiosk = () => {
       return;
     }
     setStep(4);
-    const closeMs = overall >= 4 ? 10000 : 3500;
-    setTimeout(reset, closeMs);
+
+    // Start countdown for auto-reset
+    const seconds = overall >= 4 ? POSITIVE_AUTO_RESET_SECONDS : 4;
+    setCountdown(seconds);
+    let remaining = seconds;
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    countdownTimerRef.current = setInterval(() => {
+      remaining -= 1;
+      setCountdown(remaining);
+      if (remaining <= 0) {
+        if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+        reset();
+      }
+    }, 1000);
   };
+
+  useEffect(() => () => {
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+  }, []);
 
   const resultEmoji = useMemo(() => {
     if (overall === 5) return "🌟";
@@ -139,7 +178,16 @@ const FeedbackKiosk = () => {
   }, [overall]);
 
   return (
-    <div className="min-h-screen gradient-feedback flex flex-col items-center px-4 py-6 sm:py-10">
+    <div className="min-h-screen gradient-feedback flex flex-col items-center px-4 py-6 sm:py-10 relative">
+      <button
+        onClick={enterFullscreen}
+        className="absolute top-3 right-3 text-white/80 hover:text-white p-2 rounded-lg bg-white/10 backdrop-blur"
+        aria-label="Toggle fullscreen"
+        title="Fullscreen"
+      >
+        <Maximize2 className="w-4 h-4" />
+      </button>
+
       <header className="text-center text-white mb-6">
         <h1 className="text-2xl sm:text-3xl font-bold">OmniFlow Customer Feedback</h1>
         <p className="text-white/80 text-sm mt-1">We'd love to hear about your visit</p>
@@ -192,6 +240,19 @@ const FeedbackKiosk = () => {
                 />
               </div>
               <div>
+                <Label>Who helped you today?</Label>
+                <Select value={salesperson} onValueChange={setSalesperson}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select salesperson" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SALESPEOPLE.map((s) => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
                 <Label htmlFor="fb-comments">Comments (optional)</Label>
                 <Textarea
                   id="fb-comments"
@@ -201,9 +262,6 @@ const FeedbackKiosk = () => {
                   rows={3}
                 />
               </div>
-              {overall != null && overall >= 4 && (
-                <p className="text-sm text-accent font-medium">✨ You might get a special offer!</p>
-              )}
               <div className="flex gap-2">
                 <Button variant="outline" className="flex-1" onClick={() => setStep(2)}>
                   Back
@@ -222,17 +280,16 @@ const FeedbackKiosk = () => {
             {overall >= 4 ? (
               <>
                 <h2 className="text-2xl font-bold">
-                  {overall === 5
-                    ? `${name}, you're amazing! Your feedback means the world to us!`
-                    : `Thank you, ${name}! We love your positive feedback!`}
+                  Great having you onboard, {name}!
                 </h2>
-                <p className="text-white/90">You qualified for a Google review! ⭐</p>
+                <p className="text-white/90 max-w-md">
+                  Your positive reviews help us do better every day. 💚
+                </p>
                 {reviewUrl ? (
                   <GoogleReviewQRCode url={reviewUrl} />
                 ) : (
                   <p className="text-white/80">Review link not configured yet.</p>
                 )}
-                <p className="text-sm text-white/80">Your review helps other customers find us! 💚</p>
               </>
             ) : overall === 3 ? (
               <>
@@ -250,12 +307,20 @@ const FeedbackKiosk = () => {
                 )}
               </>
             )}
-            <Button variant="secondary" onClick={reset} className="mt-2">
-              Done — next customer
-            </Button>
+
+            <div className="mt-2 flex flex-col items-center gap-2">
+              <div className="text-white/90 text-sm">
+                Next customer in <span className="font-bold text-lg">{countdown}s</span>
+              </div>
+              <Button variant="secondary" onClick={reset}>
+                Done — next customer
+              </Button>
+            </div>
           </section>
         )}
       </main>
+
+      <KioskScreensaver />
     </div>
   );
 };
