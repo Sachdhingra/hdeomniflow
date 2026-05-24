@@ -510,6 +510,7 @@ export type Database = {
           overall_rating: number
           qualified_for_review: boolean
           reviewed_on_google: boolean
+          salesperson_name: string | null
           showroom_id: string
           staff_rating: number
           thank_you_sent: boolean
@@ -528,6 +529,7 @@ export type Database = {
           overall_rating: number
           qualified_for_review?: boolean
           reviewed_on_google?: boolean
+          salesperson_name?: string | null
           showroom_id?: string
           staff_rating: number
           thank_you_sent?: boolean
@@ -546,6 +548,7 @@ export type Database = {
           overall_rating?: number
           qualified_for_review?: boolean
           reviewed_on_google?: boolean
+          salesperson_name?: string | null
           showroom_id?: string
           staff_rating?: number
           thank_you_sent?: boolean
@@ -1545,6 +1548,39 @@ export type Database = {
           target_value?: number
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      scheme_banners: {
+        Row: {
+          active: boolean
+          created_at: string
+          created_by: string | null
+          id: string
+          image_url: string
+          sort_order: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          image_url: string
+          sort_order?: number
+          title?: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          image_url?: string
+          sort_order?: number
+          title?: string
+          updated_at?: string
         }
         Relationships: []
       }
