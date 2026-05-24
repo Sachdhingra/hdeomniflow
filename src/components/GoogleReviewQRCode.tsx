@@ -1,32 +1,26 @@
-import { useEffect, useRef } from "react";
-import QRCode from "qrcode";
 import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
+import qrImage from "@/assets/google-review-qr.jpg";
 
 interface Props {
   url: string;
   size?: number;
 }
 
-const GoogleReviewQRCode = ({ url, size = 300 }: Props) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    if (!canvasRef.current || !url) return;
-    QRCode.toCanvas(canvasRef.current, url, {
-      width: size,
-      margin: 2,
-      color: { dark: "#000000", light: "#FFFFFF" },
-      errorCorrectionLevel: "H",
-    }).catch(() => {});
-  }, [url, size]);
-
+const GoogleReviewQRCode = ({ url, size = 280 }: Props) => {
   return (
     <div className="flex flex-col items-center gap-4">
       <div className="qr-glow rounded-2xl bg-white p-3">
-        <canvas ref={canvasRef} width={size} height={size} className="rounded-lg" />
+        <img
+          src={qrImage}
+          alt="Google review QR code"
+          width={size}
+          height={size}
+          style={{ width: size, height: size, objectFit: "contain" }}
+          className="rounded-lg"
+        />
       </div>
-      <p className="text-base font-semibold text-white drop-shadow">Scan to review us ⭐</p>
+      <p className="text-base font-semibold text-white drop-shadow">Scan to leave a Google review</p>
       <Button
         size="lg"
         variant="secondary"
