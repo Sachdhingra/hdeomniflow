@@ -80,16 +80,27 @@ export const KioskModeWrapper: React.FC<KioskModeWrapperProps> = ({
     return () => clearInterval(id);
   }, [enableAutoReset, isKioskLocked, resetTimeoutMinutes, navigate, resetPath]);
 
-  // Fullscreen body styles while locked
+  // Fullscreen body styles while locked + request browser fullscreen on first interaction
   useEffect(() => {
     if (!isKioskLocked) return;
     const prevHtmlOverflow = document.documentElement.style.overflow;
     const prevBodyOverflow = document.body.style.overflow;
     document.documentElement.style.overflow = "hidden";
     document.body.style.overflow = "hidden";
+
+    const tryFullscreen = async () => {
+      try {
+        if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+          await document.documentElement.requestFullscreen();
+        }
+      } catch { /* requires user gesture; will retry on next tap */ }
+    };
+    window.addEventListener("pointerdown", tryFullscreen, { once: true });
+
     return () => {
       document.documentElement.style.overflow = prevHtmlOverflow;
       document.body.style.overflow = prevBodyOverflow;
+      window.removeEventListener("pointerdown", tryFullscreen);
     };
   }, [isKioskLocked]);
 
