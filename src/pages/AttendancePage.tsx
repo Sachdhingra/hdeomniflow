@@ -33,18 +33,35 @@ const currentMonth = () => {
 const fmtTime = (iso: string | null) =>
   iso ? new Date(iso).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" }) : "—";
 
+interface SummaryRow {
+  user_id: string;
+  name: string;
+  email: string;
+  role: string;
+  days_present: number;
+  days_on_time: number;
+  days_late: number;
+  days_absent: number;
+  working_days: number;
+}
+
 const AttendancePage = () => {
   const { user } = useAuth();
   const [month, setMonth] = useState(currentMonth());
   const [rows, setRows] = useState<Row[]>([]);
+  const [summary, setSummary] = useState<SummaryRow[]>([]);
   const [loading, setLoading] = useState(false);
   const isPriv = user?.role === "admin" || user?.role === "accounts";
 
   const load = async (m: string) => {
     setLoading(true);
-    const { data, error } = await (supabase as any).rpc("attendance_monthly_report", { p_month: m });
+    const [{ data, error }, sumRes] = await Promise.all([
+      (supabase as any).rpc("attendance_monthly_report", { p_month: m }),
+      (supabase as any).rpc("attendance_monthly_user_summary", { p_month: m, p_user_id: null }),
+    ]);
     if (error) toast.error(error.message);
     setRows((data as Row[]) || []);
+    setSummary((sumRes.data as SummaryRow[]) || []);
     setLoading(false);
   };
 
