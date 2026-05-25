@@ -185,6 +185,54 @@ const AttendancePage = () => {
           )}
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">
+            Monthly Summary {isPriv ? "(Per Employee)" : ""}
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Working days exclude Sundays. Auto clock-out runs daily at 8:05 PM IST.
+          </p>
+        </CardHeader>
+        <CardContent>
+          {summary.length === 0 ? (
+            <p className="text-center py-6 text-muted-foreground text-sm">No summary available</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    {isPriv && <TableHead>Employee</TableHead>}
+                    <TableHead className="text-center">Present</TableHead>
+                    <TableHead className="text-center">On Time</TableHead>
+                    <TableHead className="text-center">Late</TableHead>
+                    <TableHead className="text-center">Absent</TableHead>
+                    <TableHead className="text-center">Working Days</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {summary.map((s) => (
+                    <TableRow key={s.user_id}>
+                      {isPriv && (
+                        <TableCell className="text-xs font-medium">
+                          {s.name}
+                          <div className="text-[10px] text-muted-foreground">{s.role}</div>
+                        </TableCell>
+                      )}
+                      <TableCell className="text-center text-xs font-semibold">{s.days_present}</TableCell>
+                      <TableCell className="text-center text-xs text-success">{s.days_on_time}</TableCell>
+                      <TableCell className="text-center text-xs text-destructive">{s.days_late}</TableCell>
+                      <TableCell className="text-center text-xs text-muted-foreground">{s.days_absent}</TableCell>
+                      <TableCell className="text-center text-xs">{s.working_days}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };
