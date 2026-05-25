@@ -10,7 +10,7 @@ interface KioskModeWrapperProps {
   adminPin?: string;
 }
 
-const KIOSK_PIN = "1234"; // TODO: change before deploying
+const KIOSK_PIN = "1234";
 
 export const KioskModeWrapper: React.FC<KioskModeWrapperProps> = ({
   children,
@@ -24,44 +24,47 @@ export const KioskModeWrapper: React.FC<KioskModeWrapperProps> = ({
   const lastActivityRef = useRef<number>(Date.now());
   const tapCountRef = useRef<number>(0);
   const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const unlockingRef = useRef(false);
 
   // Block navigation, shortcuts, context menu
   useEffect(() => {
     if (!isKioskLocked) return;
 
-    // Push a sentinel so back-button bounces forward
+    // Sentinel history entries — bounce back/forward attempts
+    window.history.pushState(null, "", window.location.href);
     window.history.pushState(null, "", window.location.href);
     const handlePopState = () => {
       window.history.pushState(null, "", window.location.href);
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      const blocked = ["F5", "F11", "F12", "Escape"];
+      const blocked = ["F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11","F12","Escape","BrowserBack","BrowserForward","BrowserRefresh"];
+      if (blocked.includes(e.key)) { e.preventDefault(); e.stopPropagation(); return; }
       const meta = e.ctrlKey || e.metaKey || e.altKey;
-      if (blocked.includes(e.key)) {
-        e.preventDefault();
-        return;
-      }
-      if (meta && ["t", "w", "n", "q", "l", "r", "p", "j"].includes(e.key.toLowerCase())) {
-        e.preventDefault();
-        return;
-      }
+      if (meta) { e.preventDefault(); e.stopPropagation(); return; }
       lastActivityRef.current = Date.now();
     };
 
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
+    const beforeUnload = (e: BeforeUnloadEvent) => {
+      if (unlockingRef.current) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
     const bump = () => { lastActivityRef.current = Date.now(); };
 
     window.addEventListener("popstate", handlePopState);
-    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, true);
     document.addEventListener("contextmenu", handleContextMenu);
+    window.addEventListener("beforeunload", beforeUnload);
     window.addEventListener("pointerdown", bump);
     window.addEventListener("touchstart", bump);
 
     return () => {
       window.removeEventListener("popstate", handlePopState);
-      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keydown", handleKeyDown, true);
       document.removeEventListener("contextmenu", handleContextMenu);
+      window.removeEventListener("beforeunload", beforeUnload);
       window.removeEventListener("pointerdown", bump);
       window.removeEventListener("touchstart", bump);
     };
@@ -80,7 +83,7 @@ export const KioskModeWrapper: React.FC<KioskModeWrapperProps> = ({
     return () => clearInterval(id);
   }, [enableAutoReset, isKioskLocked, resetTimeoutMinutes, navigate, resetPath]);
 
-  // Fullscreen body styles while locked + request browser fullscreen on first interaction
+  // Persistent fullscreen — re-request on any interaction if not in fullscreen, while locked
   useEffect(() => {
     if (!isKioskLocked) return;
     const prevHtmlOverflow = document.documentElement.style.overflow;
@@ -91,16 +94,27 @@ export const KioskModeWrapper: React.FC<KioskModeWrapperProps> = ({
     const tryFullscreen = async () => {
       try {
         if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
-          await document.documentElement.requestFullscreen();
+          await document.documentElement.requestFullscreen({ navigationUI: "hide" } as any);
         }
-      } catch { /* requires user gesture; will retry on next tap */ }
+      } catch { /* needs gesture */ }
     };
-    window.addEventListener("pointerdown", tryFullscreen, { once: true });
+    const onAnyTap = () => { tryFullscreen(); };
+    const onFsChange = () => {
+      // If user/system exited fullscreen while still locked, re-arm for next tap
+      if (!document.fullscreenElement && isKioskLocked) {
+        // Will re-request on next pointerdown via onAnyTap
+      }
+    };
+    window.addEventListener("pointerdown", onAnyTap);
+    document.addEventListener("fullscreenchange", onFsChange);
+    // First attempt (likely needs gesture)
+    tryFullscreen();
 
     return () => {
       document.documentElement.style.overflow = prevHtmlOverflow;
       document.body.style.overflow = prevBodyOverflow;
-      window.removeEventListener("pointerdown", tryFullscreen);
+      window.removeEventListener("pointerdown", onAnyTap);
+      document.removeEventListener("fullscreenchange", onFsChange);
     };
   }, [isKioskLocked]);
 
@@ -108,18 +122,20 @@ export const KioskModeWrapper: React.FC<KioskModeWrapperProps> = ({
     const pin = window.prompt("Enter admin PIN:");
     if (pin === null) return;
     if (pin === adminPin) {
+      unlockingRef.current = true;
       setIsKioskLocked(false);
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     } else {
       window.alert("Wrong PIN");
     }
   };
 
   const handleLock = () => {
+    unlockingRef.current = false;
     setIsKioskLocked(true);
     navigate(resetPath, { replace: true });
   };
 
-  // Corner triple-tap detector
   const handleCornerTap = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!isKioskLocked) return;
     const w = window.innerWidth;
@@ -150,7 +166,7 @@ export const KioskModeWrapper: React.FC<KioskModeWrapperProps> = ({
 
       {isKioskLocked && (
         <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 text-[10px] text-muted-foreground/70">
-          Auto-reset after {resetTimeoutMinutes} min idle · triple-tap any corner for admin
+          Locked · triple-tap any corner for admin
         </div>
       )}
 

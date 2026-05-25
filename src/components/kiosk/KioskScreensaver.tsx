@@ -14,22 +14,39 @@ interface Props {
 
 /**
  * Full-screen rotating screensaver of admin-uploaded scheme banners.
- * Appears after `idleSeconds` of no interaction; dismissed by any touch/click.
+ * Subscribes to realtime changes so add/delete/toggle in admin reflects instantly.
  */
 const KioskScreensaver = ({ idleSeconds = 45, rotateSeconds = 6 }: Props) => {
   const [banners, setBanners] = useState<Banner[]>([]);
   const [active, setActive] = useState(false);
   const [idx, setIdx] = useState(0);
 
-  useEffect(() => {
-    supabase
+  const fetchBanners = async () => {
+    const { data } = await supabase
       .from("scheme_banners")
       .select("id,image_url,title")
       .eq("active", true)
-      .order("sort_order", { ascending: true })
-      .then(({ data }) => setBanners((data as Banner[]) ?? []));
+      .order("sort_order", { ascending: true });
+    setBanners((data as Banner[]) ?? []);
+  };
+
+  // Initial load + realtime subscription
+  useEffect(() => {
+    fetchBanners();
+    const channel = supabase
+      .channel("scheme-banners-kiosk")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "scheme_banners" },
+        () => fetchBanners(),
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
+  // Idle detection
   useEffect(() => {
     let last = Date.now();
     const bump = () => {
@@ -50,11 +67,18 @@ const KioskScreensaver = ({ idleSeconds = 45, rotateSeconds = 6 }: Props) => {
     };
   }, [active, idleSeconds, banners.length]);
 
+  // Rotation
   useEffect(() => {
     if (!active || banners.length <= 1) return;
     const t = setInterval(() => setIdx((i) => (i + 1) % banners.length), rotateSeconds * 1000);
     return () => clearInterval(t);
   }, [active, banners.length, rotateSeconds]);
+
+  // Clamp index if banners shrink while active
+  useEffect(() => {
+    if (banners.length === 0) { setActive(false); return; }
+    if (idx >= banners.length) setIdx(0);
+  }, [banners.length, idx]);
 
   if (!active || banners.length === 0) return null;
   const b = banners[idx];
