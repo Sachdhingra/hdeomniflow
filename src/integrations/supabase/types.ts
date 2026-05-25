@@ -1866,6 +1866,7 @@ export type Database = {
     }
     Functions: {
       _invoke_daily_excel_report: { Args: never; Returns: number }
+      attendance_auto_clockout: { Args: never; Returns: number }
       attendance_clock: {
         Args: { p_action: string; p_lat?: number; p_lng?: number }
         Returns: {
@@ -1905,6 +1906,20 @@ export type Database = {
           status: string
           user_id: string
           working_hours: number
+        }[]
+      }
+      attendance_monthly_user_summary: {
+        Args: { p_month: string; p_user_id?: string }
+        Returns: {
+          days_absent: number
+          days_late: number
+          days_on_time: number
+          days_present: number
+          email: string
+          name: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+          working_days: number
         }[]
       }
       attendance_today_summary: {
@@ -2002,6 +2017,7 @@ export type Database = {
         | "chair"
         | "office_table"
         | "others"
+        | "kiosk"
       lead_status:
         | "new"
         | "contacted"
@@ -2168,6 +2184,7 @@ export const Constants = {
         "chair",
         "office_table",
         "others",
+        "kiosk",
       ],
       lead_status: [
         "new",
