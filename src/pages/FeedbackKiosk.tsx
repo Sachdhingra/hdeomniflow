@@ -278,19 +278,19 @@ const FeedbackKiosk = () => {
           <section className="w-full flex flex-col items-center gap-5 text-center text-white animate-fade-in">
             <div className="text-6xl">{resultEmoji}</div>
             {overall >= 4 ? (
-              <>
-                <h2 className="text-2xl font-bold">
+              <div className="w-full max-w-md mx-auto flex flex-col items-center gap-3">
+                <h2 className="text-xl sm:text-2xl font-bold">
                   Great having you onboard, {name}!
                 </h2>
-                <p className="text-white/90 max-w-md">
-                  Your positive reviews help us do better every day. 💚
+                <p className="text-white/90 text-sm sm:text-base">
+                  🎁 You are eligible for a <span className="font-bold">lucky draw</span>!
                 </p>
                 {reviewUrl ? (
-                  <GoogleReviewQRCode url={reviewUrl} />
+                  <GoogleReviewQRCode url={reviewUrl} size={180} />
                 ) : (
                   <p className="text-white/80">Review link not configured yet.</p>
                 )}
-              </>
+              </div>
             ) : overall === 3 ? (
               <>
                 <h2 className="text-2xl font-bold">Thank you for visiting!</h2>

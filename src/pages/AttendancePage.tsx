@@ -33,18 +33,35 @@ const currentMonth = () => {
 const fmtTime = (iso: string | null) =>
   iso ? new Date(iso).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" }) : "—";
 
+interface SummaryRow {
+  user_id: string;
+  name: string;
+  email: string;
+  role: string;
+  days_present: number;
+  days_on_time: number;
+  days_late: number;
+  days_absent: number;
+  working_days: number;
+}
+
 const AttendancePage = () => {
   const { user } = useAuth();
   const [month, setMonth] = useState(currentMonth());
   const [rows, setRows] = useState<Row[]>([]);
+  const [summary, setSummary] = useState<SummaryRow[]>([]);
   const [loading, setLoading] = useState(false);
   const isPriv = user?.role === "admin" || user?.role === "accounts";
 
   const load = async (m: string) => {
     setLoading(true);
-    const { data, error } = await (supabase as any).rpc("attendance_monthly_report", { p_month: m });
+    const [{ data, error }, sumRes] = await Promise.all([
+      (supabase as any).rpc("attendance_monthly_report", { p_month: m }),
+      (supabase as any).rpc("attendance_monthly_user_summary", { p_month: m, p_user_id: null }),
+    ]);
     if (error) toast.error(error.message);
     setRows((data as Row[]) || []);
+    setSummary((sumRes.data as SummaryRow[]) || []);
     setLoading(false);
   };
 
@@ -160,6 +177,54 @@ const AttendancePage = () => {
                       <TableCell className="text-xs">{fmtTime(r.clock_in)}</TableCell>
                       <TableCell className="text-xs">{fmtTime(r.clock_out)}</TableCell>
                       <TableCell className="text-xs">{r.working_hours ?? "—"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">
+            Monthly Summary {isPriv ? "(Per Employee)" : ""}
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Working days exclude Sundays. Auto clock-out runs daily at 8:05 PM IST.
+          </p>
+        </CardHeader>
+        <CardContent>
+          {summary.length === 0 ? (
+            <p className="text-center py-6 text-muted-foreground text-sm">No summary available</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    {isPriv && <TableHead>Employee</TableHead>}
+                    <TableHead className="text-center">Present</TableHead>
+                    <TableHead className="text-center">On Time</TableHead>
+                    <TableHead className="text-center">Late</TableHead>
+                    <TableHead className="text-center">Absent</TableHead>
+                    <TableHead className="text-center">Working Days</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {summary.map((s) => (
+                    <TableRow key={s.user_id}>
+                      {isPriv && (
+                        <TableCell className="text-xs font-medium">
+                          {s.name}
+                          <div className="text-[10px] text-muted-foreground">{s.role}</div>
+                        </TableCell>
+                      )}
+                      <TableCell className="text-center text-xs font-semibold">{s.days_present}</TableCell>
+                      <TableCell className="text-center text-xs text-success">{s.days_on_time}</TableCell>
+                      <TableCell className="text-center text-xs text-destructive">{s.days_late}</TableCell>
+                      <TableCell className="text-center text-xs text-muted-foreground">{s.days_absent}</TableCell>
+                      <TableCell className="text-center text-xs">{s.working_days}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
