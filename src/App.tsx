@@ -37,6 +37,7 @@ const NotFound = lazy(() => import("@/pages/NotFound"));
 const FeedbackKiosk = lazy(() => import("@/pages/FeedbackKiosk"));
 const FeedbackAnalyticsDashboard = lazy(() => import("@/pages/FeedbackAnalyticsDashboard"));
 const AdminSchemeBanners = lazy(() => import("@/pages/AdminSchemeBanners"));
+const AdminCompanyPurchases = lazy(() => import("@/pages/AdminCompanyPurchases"));
 import KioskModeWrapper from "@/components/kiosk/KioskModeWrapper";
 
 const PageLoader = () => (
@@ -94,6 +95,7 @@ const AppRoutes = () => {
             <Route path="/admin/feedback" element={<FeedbackAnalyticsDashboard />} />
             <Route path="/dashboard/feedback-analytics" element={<FeedbackAnalyticsDashboard />} />
             <Route path="/admin/kiosk-banners" element={<AdminSchemeBanners />} />
+            <Route path="/accounts/purchases" element={<AdminCompanyPurchases />} />
           </>
         );
       case "accounts":
@@ -101,6 +103,7 @@ const AppRoutes = () => {
           <>
             <Route path="/" element={<AccountsApprovals />} />
             <Route path="/accounts/approvals" element={<AccountsApprovals />} />
+            <Route path="/accounts/purchases" element={<AdminCompanyPurchases />} />
             <Route path="/chat" element={<ChatPage />} />
           </>
         );

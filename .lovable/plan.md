@@ -1,57 +1,53 @@
-## Customer Feedback System for OmniFlow
+# Tally Import System – Company Purchases
 
-A public kiosk feedback flow + admin analytics dashboard, integrated into the existing app and sharing the same backend.
+Build a full Accounts module to record company purchases (Godrej and others), then export them as Tally-compatible CSV/Excel for one-click import into Tally Prime.
+
+## Scope
 
 ### 1. Database (migration)
+- `company_purchases` — header (purchase_number auto via sequence, supplier_name, supplier_invoice_no, purchase_date, voucher_class default `PURCHASE GST`, currency `INR`, status `Draft|Confirmed|Tally Exported`, tally_import_status `Pending|Exported|Failed`, tally_exported_at, totals cache, created_by/at, updated_at).
+- `purchase_line_items` — purchase_id FK, item_name, item_code, quantity, unit, rate, discount_percent, amount, hsn_code, gst_percent (default 5), gst_amount, line_total.
+- `suppliers` (small lookup) seeded with `GODREJ AND BOYCE MANUFACTURING CO LTD`. Admins can add more.
+- RLS: only `admin` and `accounts` roles can read/write. Trigger to auto-compute amount/gst/line_total and update header totals + updated_at. Trigger to assign `purchase_number` (PO-001 style) on insert.
+- Storage bucket `purchase-pdfs` (private) with RLS for admin/accounts to upload/read.
 
-New table `customer_feedback`:
-- `customer_name`, `customer_phone`, `comments`
-- `overall_rating` (1–5), `staff_rating` (1–5)
-- `needs_attention` (bool, true when overall ≤ 2)
-- `qualified_for_review` (bool, true when overall ≥ 4)
-- `lead_created` (bool), `lead_id` (uuid, nullable)
-- `created_at`
+### 2. Edge function `extract-purchase-pdf`
+- Accepts PDF (file path in storage or base64).
+- Calls Lovable AI (`google/gemini-2.5-flash`) with the PDF to extract: supplier_name, supplier_invoice_no, purchase_date, and line items (name, code, qty, unit, rate, discount%, hsn, gst%).
+- Returns structured JSON for the UI to pre-fill the form.
 
-New setting `google_review_url` stored in a small `app_settings` table (key/value) so admin can edit later; seeded with a placeholder.
+### 3. UI — new page `/accounts/purchases` (admin + accounts roles)
+- **List view**: table of purchases with filters (status, supplier, date range), summary cards (total this month, pending Tally import, exported), bulk-select for batch CSV export.
+- **Add / Edit dialog**:
+  - Header: supplier dropdown (with "+ Add supplier"), invoice no, date, voucher class, currency.
+  - Line items: add/remove rows with item name (typeahead from `godrej_products`), code, qty, unit, rate, discount%, hsn, gst%. Auto-calculated amount, gst amount, line total. Footer totals.
+  - Buttons: Save Draft, Confirm, **Upload PDF (auto-extract)**, **Generate Tally CSV**, **Generate Tally Excel**.
+- **Detail drawer**: header info, items, status timeline, actions (Download CSV/Excel, Mark as Imported, Edit, Delete).
 
-RLS:
-- Public (anon) INSERT allowed (kiosk has no auth)
-- SELECT only for `admin` role via `has_role`
-- `app_settings`: public SELECT for the review URL row, admin-only UPDATE
+### 4. CSV / Excel generation (client-side)
+- CSV headers: `Voucher Type, Reference Number, Date, Payee Name, Ledger Name, Item Name, Quantity, Unit, Rate, Amount, Discount, Disc Type, Tax Rate, Tax Amount, Narration`.
+- One row per line item. Filename `{Supplier}_{InvoiceNo}.csv`.
+- Excel via `xlsx` package with same columns, currency formatting, header styling.
+- Batch export concatenates rows across selected purchases into a single file.
+- On successful export, update `tally_import_status='Exported'` and `tally_exported_at=now()`, status → `Tally Exported`.
 
-When `overall_rating >= 4`, a trigger inserts a row into `leads` (source `feedback_kiosk`, category default) and stores the new `lead_id` back on the feedback row — uses existing schema, created_by/updated_by set to a system admin (NULL not allowed → use first admin via `user_roles`).
+### 5. Routing & navigation
+- Add route in `src/App.tsx` for both `admin` and `accounts` roles.
+- Add sidebar menu link "Company Purchases" under Accounts in `AppLayout`.
 
-### 2. Public kiosk route `/feedback`
+### 6. Dashboard summary card
+- Small card on `AccountsApprovals` / Admin dashboard showing month-to-date totals and pending-Tally counts (link through).
 
-`FeedbackExitModal.tsx` (full-page, not modal — kiosk style), 4 steps:
-1. Overall rating — 5 emoji buttons (😢😕😐😊🤩), auto-advance
-2. Staff rating — same scale (😢😕😐😊⭐), auto-advance
-3. Name + 10-digit WhatsApp + optional comments; helper "✨ You might get a special offer!" if overall ≥ 4
-4. Result screen — conditional:
-   - **≥4**: animated `GoogleReviewQRCode` (pulsing + glowing border), thank-you with name, "Open Review Link" button, auto-reset after 4s
-   - **=3**: simple thanks, auto-reset after 3s
-   - **≤2**: empathetic message, optional contact phone, tagged `needs_attention`, auto-reset after 3s
+## Technical notes
+- Use `zod` for line-item validation; show inline errors.
+- All money formatted with `Intl.NumberFormat('en-IN')`.
+- GST auto-calc: `amount = qty*rate*(1-discount/100)`, `gst_amount = amount*gst%/100`, `line_total = amount + gst_amount`. Done in DB trigger and mirrored in UI.
+- Use existing `supabase` client and shadcn components (Dialog, Table, Select, Input).
+- Add `xlsx` dependency (lightweight, already common).
 
-Mobile-first, gradient purple→blue, large touch targets, step indicator. Route is public (no auth wrapper).
+## Out of scope (can be added later)
+- Direct Tally API push (Tally requires desktop XML import or ODBC; CSV download is the standard handoff).
+- Multi-currency conversion.
+- Approval workflow beyond Draft → Confirmed → Exported.
 
-### 3. `GoogleReviewQRCode.tsx`
-
-Uses `qrcode` npm package to render a 300×300 QR. CSS pulse + glowing green border animation. Fallback "Open Review Link" button.
-
-### 4. Admin analytics: `FeedbackAnalyticsDashboard.tsx`
-
-New admin page `/admin/feedback` (admin-only via existing role guard), linked from admin nav.
-
-- 4 KPI cards: total this month, avg overall, avg staff, positive %
-- Rating distribution bar chart (Recharts, already in project)
-- Recent feedback table (last 20) with emoji ratings, color rows, ✅ when lead was created
-- Insights block: week-over-week trend, count needing attention
-- Auto-refresh every 30s with "Last updated" timestamp
-
-### Technical notes
-
-- New dependency: `qrcode` (+ types)
-- Public INSERT policy uses `WITH CHECK (true)` scoped to the `anon` role
-- Phone validated client-side (10 digits) and server-side via CHECK constraint
-- The `/feedback` route is registered outside the authenticated layout in `App.tsx`
-- Google review URL is read from `app_settings` so it's editable without redeploy
+Approve and I'll implement.

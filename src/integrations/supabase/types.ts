@@ -455,6 +455,69 @@ export type Database = {
           },
         ]
       }
+      company_purchases: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          currency: string
+          grand_total: number
+          gst_total: number
+          id: string
+          notes: string | null
+          pdf_url: string | null
+          purchase_date: string
+          purchase_number: string | null
+          status: string
+          subtotal: number
+          supplier_invoice_no: string
+          supplier_name: string
+          tally_exported_at: string | null
+          tally_import_status: string
+          updated_at: string
+          voucher_class: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          grand_total?: number
+          gst_total?: number
+          id?: string
+          notes?: string | null
+          pdf_url?: string | null
+          purchase_date: string
+          purchase_number?: string | null
+          status?: string
+          subtotal?: number
+          supplier_invoice_no: string
+          supplier_name: string
+          tally_exported_at?: string | null
+          tally_import_status?: string
+          updated_at?: string
+          voucher_class?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          grand_total?: number
+          gst_total?: number
+          id?: string
+          notes?: string | null
+          pdf_url?: string | null
+          purchase_date?: string
+          purchase_number?: string | null
+          status?: string
+          subtotal?: number
+          supplier_invoice_no?: string
+          supplier_name?: string
+          tally_exported_at?: string | null
+          tally_import_status?: string
+          updated_at?: string
+          voucher_class?: string
+        }
+        Relationships: []
+      }
       customer_dues: {
         Row: {
           amount: number
@@ -1486,6 +1549,68 @@ export type Database = {
         }
         Relationships: []
       }
+      purchase_line_items: {
+        Row: {
+          amount: number
+          created_at: string
+          discount_percent: number
+          gst_amount: number
+          gst_percent: number
+          hsn_code: string | null
+          id: string
+          item_code: string | null
+          item_name: string
+          line_total: number
+          purchase_id: string
+          quantity: number
+          rate: number
+          sort_order: number
+          unit: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          discount_percent?: number
+          gst_amount?: number
+          gst_percent?: number
+          hsn_code?: string | null
+          id?: string
+          item_code?: string | null
+          item_name: string
+          line_total?: number
+          purchase_id: string
+          quantity?: number
+          rate?: number
+          sort_order?: number
+          unit?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          discount_percent?: number
+          gst_amount?: number
+          gst_percent?: number
+          hsn_code?: string | null
+          id?: string
+          item_code?: string | null
+          item_name?: string
+          line_total?: number
+          purchase_id?: string
+          quantity?: number
+          rate?: number
+          sort_order?: number
+          unit?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_line_items_purchase_id_fkey"
+            columns: ["purchase_id"]
+            isOneToOne: false
+            referencedRelation: "company_purchases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reschedule_history: {
         Row: {
           created_at: string
@@ -1787,6 +1912,39 @@ export type Database = {
           photos?: string[] | null
           society?: string
           status?: string | null
+        }
+        Relationships: []
+      }
+      suppliers: {
+        Row: {
+          address: string | null
+          created_at: string
+          created_by: string | null
+          gstin: string | null
+          id: string
+          is_active: boolean
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string
+          created_by?: string | null
+          gstin?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          created_at?: string
+          created_by?: string | null
+          gstin?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          updated_at?: string
         }
         Relationships: []
       }
