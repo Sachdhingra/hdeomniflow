@@ -95,6 +95,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
     accounts: [
       { to: "/", label: "Approvals", icon: <ShieldCheck className="w-5 h-5" /> },
       { to: "/accounts/approvals", label: "All Approvals", icon: <ClipboardList className="w-5 h-5" /> },
+      { to: "/accounts/purchases", label: "Company Purchases", icon: <Receipt className="w-5 h-5" /> },
       { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" />, badge: chatUnread || undefined },
     ],
   };
