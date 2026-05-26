@@ -37,6 +37,7 @@ const NotFound = lazy(() => import("@/pages/NotFound"));
 const FeedbackKiosk = lazy(() => import("@/pages/FeedbackKiosk"));
 const FeedbackAnalyticsDashboard = lazy(() => import("@/pages/FeedbackAnalyticsDashboard"));
 const AdminSchemeBanners = lazy(() => import("@/pages/AdminSchemeBanners"));
+const AdminCompanyPurchases = lazy(() => import("@/pages/AdminCompanyPurchases"));
 import KioskModeWrapper from "@/components/kiosk/KioskModeWrapper";
 
 const PageLoader = () => (
