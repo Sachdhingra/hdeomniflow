@@ -95,6 +95,7 @@ const AppRoutes = () => {
             <Route path="/admin/feedback" element={<FeedbackAnalyticsDashboard />} />
             <Route path="/dashboard/feedback-analytics" element={<FeedbackAnalyticsDashboard />} />
             <Route path="/admin/kiosk-banners" element={<AdminSchemeBanners />} />
+            <Route path="/accounts/purchases" element={<AdminCompanyPurchases />} />
           </>
         );
       case "accounts":
@@ -102,6 +103,7 @@ const AppRoutes = () => {
           <>
             <Route path="/" element={<AccountsApprovals />} />
             <Route path="/accounts/approvals" element={<AccountsApprovals />} />
+            <Route path="/accounts/purchases" element={<AdminCompanyPurchases />} />
             <Route path="/chat" element={<ChatPage />} />
           </>
         );
