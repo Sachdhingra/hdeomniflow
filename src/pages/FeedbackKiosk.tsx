@@ -17,7 +17,7 @@ const EMOJIS_STAFF = ["😢", "😕", "😐", "😊", "⭐"];
 const LABELS = ["Poor", "OK", "Good", "Great", "Amazing"];
 const SALESPEOPLE = ["Shivam", "Nisha", "Reena", "Amit", "Saurabh", "Swati"];
 
-const POSITIVE_AUTO_RESET_SECONDS = 30;
+const AUTO_RESET_SECONDS = 60;
 
 const EmojiRow = ({
   emojis,
@@ -64,7 +64,7 @@ const FeedbackKiosk = () => {
   const [submitting, setSubmitting] = useState(false);
   const [reviewUrl, setReviewUrl] = useState<string>("");
   const [businessPhone, setBusinessPhone] = useState<string>("");
-  const [countdown, setCountdown] = useState<number>(POSITIVE_AUTO_RESET_SECONDS);
+  const [countdown, setCountdown] = useState<number>(AUTO_RESET_SECONDS);
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -89,7 +89,7 @@ const FeedbackKiosk = () => {
     setPhone("");
     setSalesperson("");
     setComments("");
-    setCountdown(POSITIVE_AUTO_RESET_SECONDS);
+    setCountdown(AUTO_RESET_SECONDS);
   };
 
   // Auto-reset after 5 min of inactivity on steps 1–3
@@ -152,7 +152,7 @@ const FeedbackKiosk = () => {
     setStep(4);
 
     // Start countdown for auto-reset
-    const seconds = overall >= 4 ? POSITIVE_AUTO_RESET_SECONDS : 4;
+    const seconds = AUTO_RESET_SECONDS;
     setCountdown(seconds);
     let remaining = seconds;
     if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
