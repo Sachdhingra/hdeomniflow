@@ -17,7 +17,7 @@ const EMOJIS_STAFF = ["😢", "😕", "😐", "😊", "⭐"];
 const LABELS = ["Poor", "OK", "Good", "Great", "Amazing"];
 const SALESPEOPLE = ["Shivam", "Nisha", "Reena", "Amit", "Saurabh", "Swati"];
 
-const POSITIVE_AUTO_RESET_SECONDS = 30;
+const AUTO_RESET_SECONDS = 60;
 
 const EmojiRow = ({
   emojis,
