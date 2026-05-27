@@ -80,6 +80,6 @@ export function downloadTallyExcel(filename: string, purchases: TallyPurchase[])
 }
 
 export function tallyFilename(p: TallyPurchase, ext: "csv" | "xlsx") {
-  const safe = (s: string) => s.replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, "");
-  return `${safe(p.supplier_name).slice(0, 24)}_${safe(p.supplier_invoice_no)}.${ext}`;
+  const supplier = p.supplier_name.replace(/\s+/g, "_").substring(0, 15);
+  return `${supplier}_${p.supplier_invoice_no}_${p.purchase_date}.${ext}`;
 }
