@@ -1915,6 +1915,69 @@ export type Database = {
         }
         Relationships: []
       }
+      staff_profiles: {
+        Row: {
+          address: string | null
+          bio: string | null
+          city: string | null
+          created_at: string
+          date_of_birth: string | null
+          department: string | null
+          designation: string | null
+          email: string
+          full_name: string
+          id: string
+          is_profile_complete: boolean
+          joining_date: string | null
+          phone: string | null
+          pincode: string | null
+          profile_picture_url: string | null
+          state: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          address?: string | null
+          bio?: string | null
+          city?: string | null
+          created_at?: string
+          date_of_birth?: string | null
+          department?: string | null
+          designation?: string | null
+          email: string
+          full_name: string
+          id?: string
+          is_profile_complete?: boolean
+          joining_date?: string | null
+          phone?: string | null
+          pincode?: string | null
+          profile_picture_url?: string | null
+          state?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          address?: string | null
+          bio?: string | null
+          city?: string | null
+          created_at?: string
+          date_of_birth?: string | null
+          department?: string | null
+          designation?: string | null
+          email?: string
+          full_name?: string
+          id?: string
+          is_profile_complete?: boolean
+          joining_date?: string | null
+          phone?: string | null
+          pincode?: string | null
+          profile_picture_url?: string | null
+          state?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       suppliers: {
         Row: {
           address: string | null
@@ -1979,6 +2042,21 @@ export type Database = {
           showroom_id: string | null
           three_star_count: number | null
           total_feedback: number | null
+        }
+        Relationships: []
+      }
+      monthly_sales_leaderboard: {
+        Row: {
+          avg_feedback_score: number | null
+          closed_deals: number | null
+          designation: string | null
+          leads_count: number | null
+          month: string | null
+          profile_picture_url: string | null
+          qualified_leads: number | null
+          rank_position: number | null
+          salesperson_name: string | null
+          user_id: string | null
         }
         Relationships: []
       }
