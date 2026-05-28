@@ -1,53 +1,61 @@
-# Tally Import System – Company Purchases
-
-Build a full Accounts module to record company purchases (Godrej and others), then export them as Tally-compatible CSV/Excel for one-click import into Tally Prime.
+# Staff Profile System + Monthly Leaderboard
 
 ## Scope
+Build a complete staff profile system in OmniFlow:
+1. Staff profile data (DOB, joining date, address, designation, bio, picture)
+2. First-login profile setup modal (non-dismissible until complete)
+3. Profile view + edit screens
+4. Staff directory (grid of all team members)
+5. Monthly sales leaderboard with winner card + ranked table
+6. Profile picture storage in a public Supabase Storage bucket
 
-### 1. Database (migration)
-- `company_purchases` — header (purchase_number auto via sequence, supplier_name, supplier_invoice_no, purchase_date, voucher_class default `PURCHASE GST`, currency `INR`, status `Draft|Confirmed|Tally Exported`, tally_import_status `Pending|Exported|Failed`, tally_exported_at, totals cache, created_by/at, updated_at).
-- `purchase_line_items` — purchase_id FK, item_name, item_code, quantity, unit, rate, discount_percent, amount, hsn_code, gst_percent (default 5), gst_amount, line_total.
-- `suppliers` (small lookup) seeded with `GODREJ AND BOYCE MANUFACTURING CO LTD`. Admins can add more.
-- RLS: only `admin` and `accounts` roles can read/write. Trigger to auto-compute amount/gst/line_total and update header totals + updated_at. Trigger to assign `purchase_number` (PO-001 style) on insert.
-- Storage bucket `purchase-pdfs` (private) with RLS for admin/accounts to upload/read.
+## Database (single migration)
+- Create `public.staff_profiles` table: `user_id`, `full_name`, `email`, `phone`, `date_of_birth`, `joining_date`, `address`, `city`, `state`, `pincode`, `profile_picture_url`, `department`, `designation`, `bio`, `is_profile_complete`, timestamps
+- GRANTs for `authenticated` + `service_role`; enable RLS
+- RLS:
+  - Anyone authenticated can SELECT (so directory + leaderboard work for all logged-in users)
+  - Users INSERT/UPDATE their own row (`user_id = auth.uid()`)
+  - Admins can UPDATE/DELETE any row (via `has_role(...,'admin')`)
+- Create `public.staff_profiles` storage bucket: `staff-profiles` (public read, authenticated write to own folder)
+- Create `monthly_sales_leaderboard` view based on existing `leads` table, joining `staff_profiles` by `user_id = leads.assigned_to` (the prompt's SQL joined by name, but our schema uses uuid — use uuid). Uses `status = 'won'` for closed deals (matches existing `lead_status` enum).
+- Storage RLS: public read on `staff-profiles`; users can upload/update files under `staff/{user_id}/...`
 
-### 2. Edge function `extract-purchase-pdf`
-- Accepts PDF (file path in storage or base64).
-- Calls Lovable AI (`google/gemini-2.5-flash`) with the PDF to extract: supplier_name, supplier_invoice_no, purchase_date, and line items (name, code, qty, unit, rate, discount%, hsn, gst%).
-- Returns structured JSON for the UI to pre-fill the form.
+## Frontend
+New files:
+- `src/components/staff/ProfileSetupModal.tsx` — non-dismissible Dialog shown when `is_profile_complete = false`; full form with picture upload preview + progress; saves and closes
+- `src/components/staff/ProfileEditScreen.tsx` — same form, editable, mounted at `/profile/edit`
+- `src/components/staff/ProfileViewScreen.tsx` — read-only profile card at `/profile`
+- `src/components/staff/MonthlyLeaderboard.tsx` — winner card (gold gradient) + ranked table with month selector at `/dashboard/leaderboard`
+- `src/components/staff/StaffDirectory.tsx` — search + grid of staff cards at `/directory`
+- `src/components/staff/ProfileGate.tsx` — wraps `AppLayout` children, fetches profile, shows `ProfileSetupModal` when missing/incomplete
+- `src/hooks/useStaffProfile.ts` — fetch/cache current user's profile
+- `src/lib/staffStorage.ts` — upload helper (validates size/type, uploads to `staff-profiles/{user_id}/...`, returns public URL)
 
-### 3. UI — new page `/accounts/purchases` (admin + accounts roles)
-- **List view**: table of purchases with filters (status, supplier, date range), summary cards (total this month, pending Tally import, exported), bulk-select for batch CSV export.
-- **Add / Edit dialog**:
-  - Header: supplier dropdown (with "+ Add supplier"), invoice no, date, voucher class, currency.
-  - Line items: add/remove rows with item name (typeahead from `godrej_products`), code, qty, unit, rate, discount%, hsn, gst%. Auto-calculated amount, gst amount, line total. Footer totals.
-  - Buttons: Save Draft, Confirm, **Upload PDF (auto-extract)**, **Generate Tally CSV**, **Generate Tally Excel**.
-- **Detail drawer**: header info, items, status timeline, actions (Download CSV/Excel, Mark as Imported, Edit, Delete).
+Edits:
+- `src/App.tsx` — register 5 new routes (`/profile`, `/profile/edit`, `/profile/setup`, `/directory`, `/dashboard/leaderboard`) for all authenticated roles; mount `ProfileGate` inside `AppLayout`
+- `src/components/AppLayout.tsx` — sidebar links (Directory, Leaderboard, My Profile) + show current user's avatar + name in topbar
 
-### 4. CSV / Excel generation (client-side)
-- CSV headers: `Voucher Type, Reference Number, Date, Payee Name, Ledger Name, Item Name, Quantity, Unit, Rate, Amount, Discount, Disc Type, Tax Rate, Tax Amount, Narration`.
-- One row per line item. Filename `{Supplier}_{InvoiceNo}.csv`.
-- Excel via `xlsx` package with same columns, currency formatting, header styling.
-- Batch export concatenates rows across selected purchases into a single file.
-- On successful export, update `tally_import_status='Exported'` and `tally_exported_at=now()`, status → `Tally Exported`.
-
-### 5. Routing & navigation
-- Add route in `src/App.tsx` for both `admin` and `accounts` roles.
-- Add sidebar menu link "Company Purchases" under Accounts in `AppLayout`.
-
-### 6. Dashboard summary card
-- Small card on `AccountsApprovals` / Admin dashboard showing month-to-date totals and pending-Tally counts (link through).
+## Leaderboard logic
+View aggregates by `assigned_to` user from `public.leads` filtered to non-deleted, grouped by `date_trunc('month', created_at)`:
+- `leads_count` (total assigned)
+- `qualified_leads` (status in negotiation/follow_up)
+- `closed_deals` (status = 'won')
+- `avg_feedback_score` from `leads.feedback_score`
+- `rank_position` via `ROW_NUMBER() OVER (PARTITION BY month ORDER BY leads_count DESC)`
+Joined to `staff_profiles` for picture/designation/name.
 
 ## Technical notes
-- Use `zod` for line-item validation; show inline errors.
-- All money formatted with `Intl.NumberFormat('en-IN')`.
-- GST auto-calc: `amount = qty*rate*(1-discount/100)`, `gst_amount = amount*gst%/100`, `line_total = amount + gst_amount`. Done in DB trigger and mirrored in UI.
-- Use existing `supabase` client and shadcn components (Dialog, Table, Select, Input).
-- Add `xlsx` dependency (lightweight, already common).
+- Uses existing auth (`AuthContext`) — no auth changes
+- Reuses shadcn `Dialog`, `Card`, `Avatar`, `Table`, `Select`, `Input` components
+- Image upload: 5MB max, JPG/PNG only, generates `staff/{userId}/profile-{timestamp}.{ext}`
+- All HSL semantic tokens — gold/silver/bronze via Tailwind `amber`/`slate`/`orange` utility classes are avoided; use existing tokens + small inline gradient using `primary`/`accent`
+- Picture pre-fill in `ProfileSetupModal` skips fields already saved
+- The schema in the user's prompt joined `assigned_to` (uuid) with `full_name` (text) — that's a bug. We join by uuid (`user_id`) which is correct for this codebase.
 
-## Out of scope (can be added later)
-- Direct Tally API push (Tally requires desktop XML import or ODBC; CSV download is the standard handoff).
-- Multi-currency conversion.
-- Approval workflow beyond Draft → Confirmed → Exported.
-
-Approve and I'll implement.
+## Steps
+1. Run migration (schema + storage bucket + RLS + view) — wait for approval
+2. Build hook + storage helper
+3. Build setup modal + gate
+4. Build view/edit/directory/leaderboard pages
+5. Wire routes + sidebar
+6. Verify build

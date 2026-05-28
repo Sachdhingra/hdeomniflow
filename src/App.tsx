@@ -38,7 +38,12 @@ const FeedbackKiosk = lazy(() => import("@/pages/FeedbackKiosk"));
 const FeedbackAnalyticsDashboard = lazy(() => import("@/pages/FeedbackAnalyticsDashboard"));
 const AdminSchemeBanners = lazy(() => import("@/pages/AdminSchemeBanners"));
 const AdminCompanyPurchases = lazy(() => import("@/pages/AdminCompanyPurchases"));
+const ProfileViewScreen = lazy(() => import("@/pages/ProfileViewScreen"));
+const ProfileEditScreen = lazy(() => import("@/pages/ProfileEditScreen"));
+const StaffDirectory = lazy(() => import("@/pages/StaffDirectory"));
+const MonthlyLeaderboard = lazy(() => import("@/pages/MonthlyLeaderboard"));
 import KioskModeWrapper from "@/components/kiosk/KioskModeWrapper";
+import ProfileGate from "@/components/staff/ProfileGate";
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -153,13 +158,20 @@ const AppRoutes = () => {
 
   return (
     <AppLayout>
-      <Suspense fallback={<PageLoader />}>
-        <Routes>
-          {renderRoutes()}
-          <Route path="/attendance" element={<AttendancePage />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </Suspense>
+      <ProfileGate>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            {renderRoutes()}
+            <Route path="/attendance" element={<AttendancePage />} />
+            <Route path="/profile" element={<ProfileViewScreen />} />
+            <Route path="/profile/edit" element={<ProfileEditScreen />} />
+            <Route path="/profile/setup" element={<ProfileEditScreen />} />
+            <Route path="/directory" element={<StaffDirectory />} />
+            <Route path="/dashboard/leaderboard" element={<MonthlyLeaderboard />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
+      </ProfileGate>
     </AppLayout>
   );
 };

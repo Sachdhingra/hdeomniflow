@@ -5,8 +5,10 @@ import { NavLink, useLocation } from "react-router-dom";
 import {
   Building2, LayoutDashboard, Users, Wrench, Navigation, MapPin,
   LogOut, Menu, X, ChevronRight, CalendarDays, BarChart3,
-  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot, ShieldCheck, MessageSquare, TrendingUp, ShoppingBag, MessagesSquare, Sparkles, Clock, Star, Receipt
+  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot, ShieldCheck, MessageSquare, TrendingUp, ShoppingBag, MessagesSquare, Sparkles, Clock, Star, Receipt, Trophy, UserCircle, BookUser
 } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useStaffProfile } from "@/hooks/useStaffProfile";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import NotificationPanel from "@/components/NotificationPanel";
@@ -35,6 +37,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
 
 const AppLayout = ({ children }: { children: ReactNode }) => {
   const { user, logout, forceLogout } = useAuth();
+  const { profile } = useStaffProfile();
   const { notifications, error, summary } = useData();
   const { totalUnread: chatUnread } = useChatUnread();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -101,7 +104,17 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
   };
 
   const ATTENDANCE_ITEM: NavItem = { to: "/attendance", label: "Attendance", icon: <Clock className="w-5 h-5" /> };
-  const navItems = [...NAV_ITEMS[user.role], ATTENDANCE_ITEM];
+  const DIRECTORY_ITEM: NavItem = { to: "/directory", label: "Directory", icon: <BookUser className="w-5 h-5" /> };
+  const LEADERBOARD_ITEM: NavItem = { to: "/dashboard/leaderboard", label: "Leaderboard", icon: <Trophy className="w-5 h-5" /> };
+  const PROFILE_ITEM: NavItem = { to: "/profile", label: "My Profile", icon: <UserCircle className="w-5 h-5" /> };
+  const showLeaderboard = ["admin", "sales", "service_head", "accounts"].includes(user.role);
+  const navItems = [
+    ...NAV_ITEMS[user.role],
+    ATTENDANCE_ITEM,
+    DIRECTORY_ITEM,
+    ...(showLeaderboard ? [LEADERBOARD_ITEM] : []),
+    PROFILE_ITEM,
+  ];
 
   return (
     <div className="min-h-screen flex bg-background">
@@ -148,9 +161,12 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
 
         <div className="p-3 border-t border-sidebar-border">
           <div className="flex items-center gap-3 px-3 py-2">
-            <div className="w-8 h-8 rounded-full gradient-primary flex items-center justify-center text-primary-foreground text-sm font-bold">
-              {user.name.charAt(0)}
-            </div>
+            <Avatar className="w-8 h-8">
+              <AvatarImage src={profile?.profile_picture_url || undefined} />
+              <AvatarFallback className="gradient-primary text-primary-foreground text-sm font-bold">
+                {user.name.charAt(0)}
+              </AvatarFallback>
+            </Avatar>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-sidebar-foreground truncate">{user.name}</p>
               <p className="text-xs text-sidebar-foreground/50">{ROLE_LABELS[user.role]}</p>
