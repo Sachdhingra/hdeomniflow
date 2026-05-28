@@ -158,13 +158,20 @@ const AppRoutes = () => {
 
   return (
     <AppLayout>
-      <Suspense fallback={<PageLoader />}>
-        <Routes>
-          {renderRoutes()}
-          <Route path="/attendance" element={<AttendancePage />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </Suspense>
+      <ProfileGate>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            {renderRoutes()}
+            <Route path="/attendance" element={<AttendancePage />} />
+            <Route path="/profile" element={<ProfileViewScreen />} />
+            <Route path="/profile/edit" element={<ProfileEditScreen />} />
+            <Route path="/profile/setup" element={<ProfileEditScreen />} />
+            <Route path="/directory" element={<StaffDirectory />} />
+            <Route path="/dashboard/leaderboard" element={<MonthlyLeaderboard />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
+      </ProfileGate>
     </AppLayout>
   );
 };
