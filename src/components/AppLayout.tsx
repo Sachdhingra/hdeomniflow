@@ -161,9 +161,12 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
 
         <div className="p-3 border-t border-sidebar-border">
           <div className="flex items-center gap-3 px-3 py-2">
-            <div className="w-8 h-8 rounded-full gradient-primary flex items-center justify-center text-primary-foreground text-sm font-bold">
-              {user.name.charAt(0)}
-            </div>
+            <Avatar className="w-8 h-8">
+              <AvatarImage src={profile?.profile_picture_url || undefined} />
+              <AvatarFallback className="gradient-primary text-primary-foreground text-sm font-bold">
+                {user.name.charAt(0)}
+              </AvatarFallback>
+            </Avatar>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-sidebar-foreground truncate">{user.name}</p>
               <p className="text-xs text-sidebar-foreground/50">{ROLE_LABELS[user.role]}</p>
