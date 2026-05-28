@@ -38,7 +38,12 @@ const FeedbackKiosk = lazy(() => import("@/pages/FeedbackKiosk"));
 const FeedbackAnalyticsDashboard = lazy(() => import("@/pages/FeedbackAnalyticsDashboard"));
 const AdminSchemeBanners = lazy(() => import("@/pages/AdminSchemeBanners"));
 const AdminCompanyPurchases = lazy(() => import("@/pages/AdminCompanyPurchases"));
+const ProfileViewScreen = lazy(() => import("@/pages/ProfileViewScreen"));
+const ProfileEditScreen = lazy(() => import("@/pages/ProfileEditScreen"));
+const StaffDirectory = lazy(() => import("@/pages/StaffDirectory"));
+const MonthlyLeaderboard = lazy(() => import("@/pages/MonthlyLeaderboard"));
 import KioskModeWrapper from "@/components/kiosk/KioskModeWrapper";
+import ProfileGate from "@/components/staff/ProfileGate";
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
