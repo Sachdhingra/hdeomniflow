@@ -103,7 +103,17 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
   };
 
   const ATTENDANCE_ITEM: NavItem = { to: "/attendance", label: "Attendance", icon: <Clock className="w-5 h-5" /> };
-  const navItems = [...NAV_ITEMS[user.role], ATTENDANCE_ITEM];
+  const DIRECTORY_ITEM: NavItem = { to: "/directory", label: "Directory", icon: <BookUser className="w-5 h-5" /> };
+  const LEADERBOARD_ITEM: NavItem = { to: "/dashboard/leaderboard", label: "Leaderboard", icon: <Trophy className="w-5 h-5" /> };
+  const PROFILE_ITEM: NavItem = { to: "/profile", label: "My Profile", icon: <UserCircle className="w-5 h-5" /> };
+  const showLeaderboard = ["admin", "sales", "service_head", "accounts"].includes(user.role);
+  const navItems = [
+    ...NAV_ITEMS[user.role],
+    ATTENDANCE_ITEM,
+    DIRECTORY_ITEM,
+    ...(showLeaderboard ? [LEADERBOARD_ITEM] : []),
+    PROFILE_ITEM,
+  ];
 
   return (
     <div className="min-h-screen flex bg-background">
