@@ -42,6 +42,7 @@ const ProfileViewScreen = lazy(() => import("@/pages/ProfileViewScreen"));
 const ProfileEditScreen = lazy(() => import("@/pages/ProfileEditScreen"));
 const StaffDirectory = lazy(() => import("@/pages/StaffDirectory"));
 const MonthlyLeaderboard = lazy(() => import("@/pages/MonthlyLeaderboard"));
+const EliteCustomers = lazy(() => import("@/pages/EliteCustomers"));
 import KioskModeWrapper from "@/components/kiosk/KioskModeWrapper";
 import ProfileGate from "@/components/staff/ProfileGate";
 
@@ -168,6 +169,7 @@ const AppRoutes = () => {
             <Route path="/profile/setup" element={<ProfileEditScreen />} />
             <Route path="/directory" element={<StaffDirectory />} />
             <Route path="/dashboard/leaderboard" element={<MonthlyLeaderboard />} />
+            <Route path="/elite-customers" element={<EliteCustomers />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
