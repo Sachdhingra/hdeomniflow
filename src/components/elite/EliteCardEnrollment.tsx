@@ -1,0 +1,85 @@
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Star, Check, X, Circle } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+export type EliteChoice = "opt_in" | "opt_out" | "undecided";
+
+interface Props {
+  choice: EliteChoice;
+  onChoiceChange: (c: EliteChoice) => void;
+  issueDate: string;
+  onIssueDateChange: (d: string) => void;
+}
+
+function addYears(iso: string, years: number): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  d.setFullYear(d.getFullYear() + years);
+  return d.toISOString().slice(0, 10);
+}
+
+function formatLong(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+const EliteCardEnrollment = ({ choice, onChoiceChange, issueDate, onIssueDateChange }: Props) => {
+  const expiry = addYears(issueDate, 3);
+
+  const options: { value: EliteChoice; label: string; icon: JSX.Element; activeCls: string }[] = [
+    { value: "opt_in", label: "Opt In", icon: <Check className="w-4 h-4" />, activeCls: "border-success bg-success/10 text-success" },
+    { value: "opt_out", label: "Opt Out", icon: <X className="w-4 h-4" />, activeCls: "border-destructive bg-destructive/10 text-destructive" },
+    { value: "undecided", label: "Not Decided", icon: <Circle className="w-4 h-4" />, activeCls: "border-muted-foreground bg-muted text-foreground" },
+  ];
+
+  return (
+    <div className="rounded-lg border border-amber-400/40 bg-amber-50/40 dark:bg-amber-950/10 p-4 space-y-3">
+      <div>
+        <p className="font-semibold flex items-center gap-2 text-amber-700 dark:text-amber-400">
+          <Star className="w-4 h-4 fill-current" /> Elite Card Enrollment
+        </p>
+        <p className="text-xs text-muted-foreground">Enroll this customer in the Elite loyalty program</p>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        {options.map(o => {
+          const active = choice === o.value;
+          return (
+            <button
+              key={o.value}
+              type="button"
+              onClick={() => onChoiceChange(o.value)}
+              className={cn(
+                "border-2 rounded-md p-2 text-xs font-medium flex flex-col items-center gap-1 transition-colors",
+                active ? o.activeCls : "border-border bg-background text-muted-foreground hover:bg-muted/50",
+              )}
+            >
+              {o.icon}
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {choice === "opt_in" && (
+        <div className="space-y-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Card Issue Date</Label>
+            <Input type="date" value={issueDate} onChange={e => onIssueDateChange(e.target.value)} />
+          </div>
+          {expiry && (
+            <p className="text-xs text-success font-medium">Valid until: {formatLong(expiry)}</p>
+          )}
+          <p className="text-[11px] text-muted-foreground">Elite card is valid for 3 years from issue date</p>
+        </div>
+      )}
+      {choice === "opt_out" && <p className="text-xs text-muted-foreground">Customer has declined the Elite program</p>}
+      {choice === "undecided" && <p className="text-xs text-muted-foreground">You can update this later</p>}
+    </div>
+  );
+};
+
+export default EliteCardEnrollment;
