@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useData, LEAD_CATEGORIES, LeadCategory, LeadStatus, Lead } from "@/contexts/DataContext";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,18 +9,32 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import EliteCardEnrollment, { EliteChoice } from "@/components/elite/EliteCardEnrollment";
+import EliteBadge from "@/components/elite/EliteBadge";
 
 const STATUS_LABELS: Record<LeadStatus, string> = {
   new: "New", contacted: "Contacted", follow_up: "Follow Up",
-  negotiation: "Negotiation", won: "Won", lost: "Lost", overdue: "Overdue",
-  converted: "Converted",
+  negotiation: "Negotiation", won: "Sold", lost: "Lost", overdue: "Overdue",
+  converted: "Closed",
 };
+
+const SOLD_OR_CLOSED: LeadStatus[] = ["won", "converted"];
 
 interface Props {
   lead: Lead | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSaved?: (leadId: string) => void;
+}
+
+function addYearsISO(iso: string, y: number) {
+  if (!iso) return "";
+  const d = new Date(iso); d.setFullYear(d.getFullYear() + y);
+  return d.toISOString().slice(0, 10);
+}
+function formatLong(iso: string) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
 const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
@@ -33,6 +48,9 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
     next_follow_up_date: "",
     next_follow_up_time: "",
   });
+  const [eliteChoice, setEliteChoice] = useState<EliteChoice>("undecided");
+  const [eliteIssueDate, setEliteIssueDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [hasEliteCard, setHasEliteCard] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -45,16 +63,37 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
         next_follow_up_date: lead.next_follow_up_date || "",
         next_follow_up_time: lead.next_follow_up_time || "",
       });
+      const l: any = lead;
+      const optedIn: boolean | null = l.elite_opted_in ?? null;
+      if (optedIn === true) setEliteChoice("opt_in");
+      else if (optedIn === false) setEliteChoice("opt_out");
+      else setEliteChoice("undecided");
+      setEliteIssueDate(l.elite_opted_date || new Date().toISOString().slice(0, 10));
+      setHasEliteCard(!!l.elite_card_id || optedIn === true);
     }
   }, [lead]);
 
   if (!lead) return null;
+  const showElite = SOLD_OR_CLOSED.includes(form.status);
+  const isElite = !!(lead as any).elite_opted_in;
 
   const handleSave = async () => {
     setSaving(true);
-    // Capture scroll BEFORE state mutates / dialog closes
     const scrollY = window.scrollY;
     try {
+      const elitePatch: Record<string, any> = {};
+      if (showElite) {
+        if (eliteChoice === "opt_in") {
+          elitePatch.elite_opted_in = true;
+          elitePatch.elite_opted_date = eliteIssueDate;
+        } else if (eliteChoice === "opt_out") {
+          elitePatch.elite_opted_in = false;
+          elitePatch.elite_opted_date = new Date().toISOString().slice(0, 10);
+        } else {
+          elitePatch.elite_opted_in = null;
+        }
+      }
+
       await updateLead(lead.id, {
         category: form.category,
         status: form.status,
@@ -62,11 +101,26 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
         notes: form.notes || null,
         next_follow_up_date: form.next_follow_up_date || null,
         next_follow_up_time: form.next_follow_up_time || null,
-      });
-      toast.success("Lead updated", { duration: 2000 });
+        ...elitePatch,
+      } as any);
+
+      if (showElite && eliteChoice === "opt_in") {
+        // Re-fetch to surface the auto-created card details
+        const { data } = await supabase
+          .from("leads")
+          .select("elite_card_id, customer_name")
+          .eq("id", lead.id)
+          .maybeSingle();
+        const expiry = addYearsISO(eliteIssueDate, 3);
+        toast.success(`⭐ Elite card created for ${data?.customer_name || lead.customer_name} — valid until ${formatLong(expiry)}`);
+      } else if (showElite && eliteChoice === "opt_out") {
+        toast(`Elite card enrollment declined for ${lead.customer_name}`);
+      } else {
+        toast.success("Lead updated", { duration: 2000 });
+      }
+
       onSaved?.(lead.id);
       onOpenChange(false);
-      // Restore scroll position after dialog close re-layout
       requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: "instant" as ScrollBehavior }));
     } catch (err: any) {
       toast.error(err.message || "Failed to update");
@@ -78,9 +132,12 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>Edit Lead</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            Edit Lead {isElite && <EliteBadge />}
+          </DialogTitle>
+        </DialogHeader>
         <div className="space-y-4">
-          {/* Locked fields */}
           <div className="p-3 bg-muted rounded-lg space-y-1">
             <p className="text-xs text-muted-foreground font-medium">🔒 Read-only</p>
             <p className="text-sm"><span className="font-medium">Customer:</span> {lead.customer_name}</p>
@@ -119,6 +176,15 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
             <Label>Notes</Label>
             <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3} />
           </div>
+
+          {showElite && (
+            <EliteCardEnrollment
+              choice={eliteChoice}
+              onChoiceChange={setEliteChoice}
+              issueDate={eliteIssueDate}
+              onIssueDateChange={setEliteIssueDate}
+            />
+          )}
 
           <Button className="w-full gradient-primary" onClick={handleSave} disabled={saving}>
             {saving ? "Saving..." : "Save Changes"}

@@ -12,6 +12,7 @@ import { Plus, AlertTriangle, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 import GodrejProductPicker from "@/components/GodrejProductPicker";
 import LeadAssignmentModal from "@/components/LeadAssignmentModal";
+import PhoneInput from "@/components/PhoneInput";
 import {
   DEHRADUN_NEIGHBORHOODS, PREFERRED_STYLES, FAMILY_SITUATIONS,
   DECISION_TIMELINES, BUDGET_RANGES, STATED_NEEDS,
@@ -183,12 +184,11 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
           )}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Phone * (10 digits)</Label>
-              <Input
+              <Label>Phone *</Label>
+              <PhoneInput
                 value={form.customerPhone}
-                onChange={e => handlePhoneChange(e.target.value)}
-                maxLength={10}
-                placeholder="9876543210"
+                onChange={(v) => handlePhoneChange(v)}
+                error={form.customerPhone.length > 0 && form.customerPhone.length < 10 ? "Enter a valid 10-digit mobile number" : undefined}
               />
               {duplicateCheck.checking && (
                 <p className="text-xs text-muted-foreground">Checking...</p>
