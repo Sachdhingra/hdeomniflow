@@ -90,7 +90,7 @@ const EliteCustomers = () => {
       setLoading(false);
       return;
     }
-    const list = (data || []) as EliteRow[];
+    const list = ((data as unknown) || []) as EliteRow[];
     setRows(list);
     const leadIds = list.map(r => r.lead_id).filter(Boolean) as string[];
     if (leadIds.length > 0) {
