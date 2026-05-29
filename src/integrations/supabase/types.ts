@@ -650,6 +650,51 @@ export type Database = {
         }
         Relationships: []
       }
+      elite_customers: {
+        Row: {
+          card_expiry_date: string | null
+          card_issue_date: string
+          created_at: string
+          created_by: string | null
+          customer_name: string
+          id: string
+          lead_id: string | null
+          notes: string | null
+          phone_1: string
+          phone_2: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          card_expiry_date?: string | null
+          card_issue_date?: string
+          created_at?: string
+          created_by?: string | null
+          customer_name: string
+          id?: string
+          lead_id?: string | null
+          notes?: string | null
+          phone_1: string
+          phone_2?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          card_expiry_date?: string | null
+          card_issue_date?: string
+          created_at?: string
+          created_by?: string | null
+          customer_name?: string
+          id?: string
+          lead_id?: string | null
+          notes?: string | null
+          phone_1?: string
+          phone_2?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       godrej_products: {
         Row: {
           active: boolean
@@ -1043,6 +1088,9 @@ export type Database = {
           delivery_assigned_to: string | null
           delivery_date: string | null
           delivery_notes: string | null
+          elite_card_id: string | null
+          elite_opted_date: string | null
+          elite_opted_in: boolean | null
           family_situation: string | null
           family_visit_date: string | null
           feedback_score: number | null
@@ -1123,6 +1171,9 @@ export type Database = {
           delivery_assigned_to?: string | null
           delivery_date?: string | null
           delivery_notes?: string | null
+          elite_card_id?: string | null
+          elite_opted_date?: string | null
+          elite_opted_in?: boolean | null
           family_situation?: string | null
           family_visit_date?: string | null
           feedback_score?: number | null
@@ -1203,6 +1254,9 @@ export type Database = {
           delivery_assigned_to?: string | null
           delivery_date?: string | null
           delivery_notes?: string | null
+          elite_card_id?: string | null
+          elite_opted_date?: string | null
+          elite_opted_in?: boolean | null
           family_situation?: string | null
           family_visit_date?: string | null
           feedback_score?: number | null
@@ -1256,7 +1310,15 @@ export type Database = {
           visit_photo?: string | null
           why_lost?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "leads_elite_card_id_fkey"
+            columns: ["elite_card_id"]
+            isOneToOne: false
+            referencedRelation: "elite_customers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       message_logs: {
         Row: {
