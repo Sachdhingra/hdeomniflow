@@ -38,6 +38,18 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Accepts DD/MM/YYYY or YYYY-MM-DD; always returns YYYY-MM-DD or "" if unparseable.
+function parseDateInput(raw: string): string {
+  if (!raw) return "";
+  const ddmm = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (ddmm) {
+    const [, d, m, y] = ddmm;
+    const iso = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+    return isNaN(new Date(iso).getTime()) ? "" : iso;
+  }
+  return isNaN(new Date(raw).getTime()) ? "" : raw;
+}
+
 function addYearsISO(iso: string, y: number): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -524,7 +536,7 @@ const ImportCsvDialog = ({
   }, [open]);
 
   const downloadTemplate = () => {
-    const csv = "customer_name,phone_1,phone_2,card_issue_date\nRavi Kumar,9876543210,9123456789,2023-05-15\n";
+    const csv = "customer_name,phone_1,phone_2,card_issue_date\nRavi Kumar,9876543210,9123456789,15/05/2023\n";
     const a = document.createElement("a");
     a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
     a.download = "elite_members_template.csv";
@@ -550,11 +562,12 @@ const ImportCsvDialog = ({
         const name = cells[iName] || "";
         const p1 = cells[iP1] || "";
         const p2 = iP2 >= 0 ? (cells[iP2] || "") : "";
-        const date = iDate >= 0 ? (cells[iDate] || "") : todayISO();
+        const rawDate = iDate >= 0 ? (cells[iDate] || "") : todayISO();
+        const date = parseDateInput(rawDate);
         if (!name) errs.push("Name required");
         if (!isValidIndianMobile(p1)) errs.push("Phone 1 invalid");
         if (p2 && !isValidIndianMobile(p2)) errs.push("Phone 2 invalid");
-        if (!date || isNaN(new Date(date).getTime())) errs.push("Date invalid (use YYYY-MM-DD)");
+        if (!date) errs.push("Date invalid (use DD/MM/YYYY)");
         return { customer_name: name, phone_1: p1, phone_2: p2, card_issue_date: date, errors: errs };
       });
 
