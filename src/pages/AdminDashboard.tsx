@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useData, LEAD_CATEGORIES } from "@/contexts/DataContext";
+import CategoryInsights from "@/components/CategoryInsights";
 import { useAuth, User } from "@/contexts/AuthContext";
 import StatCard from "@/components/StatCard";
 import CsvImport from "@/components/CsvImport";
@@ -18,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, Wrench, IndianRupee, TrendingUp, MapPin, BarChart3, UserPlus, Trophy, Truck, KeyRound, Ban, CheckCircle, Trash2, Loader2, Download, Archive, Locate, Search, MessageSquare, Send, ShieldAlert, Target, ExternalLink } from "lucide-react";
+import { Users, Wrench, IndianRupee, TrendingUp, MapPin, UserPlus, Trophy, Truck, KeyRound, Ban, CheckCircle, Trash2, Loader2, Download, Archive, Locate, Search, MessageSquare, Send, ShieldAlert, Target, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import LoadingError from "@/components/LoadingError";
@@ -181,12 +182,6 @@ const AdminDashboard = () => {
       todayVisits: visits.filter(v => v.date === todayStr).length,
     };
   });
-
-  const categoryStats = LEAD_CATEGORIES.map(c => ({
-    ...c,
-    count: leads.filter(l => l.category === c.value).length,
-    totalValue: leads.filter(l => l.category === c.value).reduce((s, l) => s + Number(l.value_in_rupees), 0),
-  })).filter(c => c.count > 0);
 
   const handleAddStaff = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -408,20 +403,7 @@ const AdminDashboard = () => {
               </CardContent>
             </Card>
           </div>
-          <Card className="shadow-card">
-            <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><BarChart3 className="w-4 h-4 text-primary" />Category Breakdown</CardTitle></CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-                {categoryStats.map(c => (
-                  <div key={c.value} className="p-3 bg-muted/50 rounded-lg text-center">
-                    <p className="text-sm font-medium">{c.label}</p>
-                    <p className="text-lg font-bold">{c.count}</p>
-                    <p className="text-xs text-muted-foreground">₹{(c.totalValue / 1000).toFixed(0)}K</p>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+          <CategoryInsights />
         </TabsContent>
 
         <TabsContent value="leads" className="space-y-4 mt-4">
