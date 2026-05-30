@@ -41,6 +41,7 @@ function todayISO(): string {
 function addYearsISO(iso: string, y: number): string {
   if (!iso) return "";
   const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
   d.setFullYear(d.getFullYear() + y);
   return d.toISOString().slice(0, 10);
 }
@@ -515,7 +516,12 @@ const ImportCsvDialog = ({
   const [parsed, setParsed] = useState<ParsedRow[]>([]);
   const [importing, setImporting] = useState(false);
 
-  useEffect(() => { if (!open) setParsed([]); }, [open]);
+  useEffect(() => {
+    if (!open) {
+      setParsed([]);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }, [open]);
 
   const downloadTemplate = () => {
     const csv = "customer_name,phone_1,phone_2,card_issue_date\nRavi Kumar,9876543210,9123456789,2023-05-15\n";
@@ -548,7 +554,7 @@ const ImportCsvDialog = ({
         if (!name) errs.push("Name required");
         if (!isValidIndianMobile(p1)) errs.push("Phone 1 invalid");
         if (p2 && !isValidIndianMobile(p2)) errs.push("Phone 2 invalid");
-        if (!date || isNaN(new Date(date).getTime())) errs.push("Date missing");
+        if (!date || isNaN(new Date(date).getTime())) errs.push("Date invalid (use YYYY-MM-DD)");
         return { customer_name: name, phone_1: p1, phone_2: p2, card_issue_date: date, errors: errs };
       });
 
