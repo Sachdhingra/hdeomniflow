@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import EliteCardEnrollment, { EliteChoice } from "@/components/elite/EliteCardEnrollment";
 import EliteBadge from "@/components/elite/EliteBadge";
+import { formatDate } from "@/lib/dateFormat";
 
 const STATUS_LABELS: Record<LeadStatus, string> = {
   new: "New", contacted: "Contacted", follow_up: "Follow Up",
@@ -32,10 +33,6 @@ function addYearsISO(iso: string, y: number) {
   const d = new Date(iso); d.setFullYear(d.getFullYear() + y);
   return d.toISOString().slice(0, 10);
 }
-function formatLong(iso: string) {
-  if (!iso) return "";
-  return new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-}
 
 const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
   const { user } = useAuth();
@@ -50,7 +47,7 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
   });
   const [eliteChoice, setEliteChoice] = useState<EliteChoice>("undecided");
   const [eliteIssueDate, setEliteIssueDate] = useState<string>(new Date().toISOString().slice(0, 10));
-  const [hasEliteCard, setHasEliteCard] = useState(false);
+  const [eliteDupWarning, setEliteDupWarning] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -69,7 +66,7 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
       else if (optedIn === false) setEliteChoice("opt_out");
       else setEliteChoice("undecided");
       setEliteIssueDate(l.elite_opted_date || new Date().toISOString().slice(0, 10));
-      setHasEliteCard(!!l.elite_card_id || optedIn === true);
+      setEliteDupWarning(null);
     }
   }, [lead]);
 
@@ -81,12 +78,76 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
     setSaving(true);
     const scrollY = window.scrollY;
     try {
+      const l: any = lead;
+      const prevOptedIn: boolean | null = l.elite_opted_in ?? null;
+      const prevCardId: string | null = l.elite_card_id ?? null;
       const elitePatch: Record<string, any> = {};
+      let toastMessage: { kind: "success" | "warn" | "neutral"; text: string } | null = null;
+
       if (showElite) {
-        if (eliteChoice === "opt_in") {
-          elitePatch.elite_opted_in = true;
-          elitePatch.elite_opted_date = eliteIssueDate;
+        // ---- Reversal: previously opted in, now opt_out or undecided ----
+        if (prevOptedIn === true && (eliteChoice === "opt_out" || eliteChoice === "undecided")) {
+          if (prevCardId) {
+            const { error: delErr } = await (supabase.from("elite_customers" as any).delete().eq("id", prevCardId) as any);
+            if (delErr) throw delErr;
+          }
+          if (eliteChoice === "opt_out") {
+            elitePatch.elite_opted_in = false;
+            elitePatch.elite_opted_date = new Date().toISOString().slice(0, 10);
+            elitePatch.elite_card_id = null;
+            toastMessage = { kind: "warn", text: `Elite card removed. ${lead.customer_name} marked as Opted Out` };
+          } else {
+            elitePatch.elite_opted_in = null;
+            elitePatch.elite_opted_date = null;
+            elitePatch.elite_card_id = null;
+            toastMessage = { kind: "neutral", text: `Elite card entry removed for ${lead.customer_name}` };
+          }
+        }
+        // ---- Opt-in (new or unchanged) ----
+        else if (eliteChoice === "opt_in") {
+          // Duplicate guard: another elite record for this phone (not this lead's card)
+          const { data: existing } = await supabase
+            .from("elite_customers" as any)
+            .select("id, customer_name, status, lead_id")
+            .eq("phone_1", lead.customer_phone)
+            .maybeSingle();
+          const ex: any = existing;
+          if (ex && ex.id !== prevCardId) {
+            if (ex.status === "opted_out") {
+              // Reactivate existing record and link
+              const { error: upErr } = await (supabase.from("elite_customers" as any).update({
+                status: "active",
+                card_issue_date: eliteIssueDate,
+                lead_id: lead.id,
+              }).eq("id", ex.id) as any);
+              if (upErr) throw upErr;
+              elitePatch.elite_opted_in = true;
+              elitePatch.elite_opted_date = eliteIssueDate;
+              elitePatch.elite_card_id = ex.id;
+              toastMessage = { kind: "success", text: `⭐ Elite membership reactivated for ${lead.customer_name}` };
+            } else {
+              // Link to existing record instead of creating new
+              if (ex.lead_id && ex.lead_id !== lead.id) {
+                setEliteDupWarning(`This customer (${ex.customer_name}) is already an Elite Member. No new entry will be created.`);
+                setSaving(false);
+                return;
+              }
+              // Available existing record without a lead — link it
+              if (!ex.lead_id) {
+                await (supabase.from("elite_customers" as any).update({ lead_id: lead.id }).eq("id", ex.id) as any);
+              }
+              elitePatch.elite_opted_in = true;
+              elitePatch.elite_opted_date = eliteIssueDate;
+              elitePatch.elite_card_id = ex.id;
+              toastMessage = { kind: "warn", text: `${lead.customer_name} is already an Elite Member — linked to existing card` };
+            }
+          } else {
+            // No conflict: let trigger create on first opt-in, or just update date if already linked
+            elitePatch.elite_opted_in = true;
+            elitePatch.elite_opted_date = eliteIssueDate;
+          }
         } else if (eliteChoice === "opt_out") {
+          // No prior opt-in to reverse — just record opt-out
           elitePatch.elite_opted_in = false;
           elitePatch.elite_opted_date = new Date().toISOString().slice(0, 10);
         } else {
@@ -104,17 +165,13 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
         ...elitePatch,
       } as any);
 
-      if (showElite && eliteChoice === "opt_in") {
-        // Re-fetch to surface the auto-created card details
-        const { data } = await supabase
-          .from("leads")
-          .select("elite_card_id, customer_name")
-          .eq("id", lead.id)
-          .maybeSingle();
+      if (toastMessage) {
+        if (toastMessage.kind === "success") toast.success(toastMessage.text);
+        else if (toastMessage.kind === "warn") toast(toastMessage.text, { className: "bg-amber-50 text-amber-900" });
+        else toast(toastMessage.text);
+      } else if (showElite && eliteChoice === "opt_in" && prevOptedIn !== true) {
         const expiry = addYearsISO(eliteIssueDate, 3);
-        toast.success(`⭐ Elite card created for ${data?.customer_name || lead.customer_name} — valid until ${formatLong(expiry)}`);
-      } else if (showElite && eliteChoice === "opt_out") {
-        toast(`Elite card enrollment declined for ${lead.customer_name}`);
+        toast.success(`⭐ Elite card created for ${lead.customer_name} — valid until ${formatDate(expiry)}`);
       } else {
         toast.success("Lead updated", { duration: 2000 });
       }
@@ -180,9 +237,10 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
           {showElite && (
             <EliteCardEnrollment
               choice={eliteChoice}
-              onChoiceChange={setEliteChoice}
+              onChoiceChange={(c) => { setEliteChoice(c); setEliteDupWarning(null); }}
               issueDate={eliteIssueDate}
               onIssueDateChange={setEliteIssueDate}
+              duplicateWarning={eliteDupWarning}
             />
           )}
 

@@ -9,11 +9,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Star, Plus, Upload, Pencil, Link2, Search, Loader2, Download, CheckCircle2, XCircle } from "lucide-react";
+import { Star, Plus, Upload, Pencil, Search, Loader2, Download, CheckCircle2, XCircle, Lock, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import PhoneInput from "@/components/PhoneInput";
 import { extractTenDigits, isValidIndianMobile, toCanonicalPhone, formatPhoneDisplay } from "@/lib/phone";
+import { formatDate } from "@/lib/dateFormat";
 
 interface EliteRow {
   id: string;
@@ -66,7 +68,8 @@ const STATUS_META: Record<ComputedStatus, { label: string; cls: string }> = {
 
 const EliteCustomers = () => {
   const { user } = useAuth();
-  const canEdit = user?.role === "admin" || user?.role === "sales" || user?.role === "accounts";
+  const isAdmin = user?.role === "admin";
+  const canEdit = isAdmin || user?.role === "sales" || user?.role === "accounts";
 
   const [rows, setRows] = useState<EliteRow[]>([]);
   const [leads, setLeads] = useState<Record<string, LeadLite>>({});
@@ -76,7 +79,8 @@ const EliteCustomers = () => {
 
   const [addOpen, setAddOpen] = useState(false);
   const [editRow, setEditRow] = useState<EliteRow | null>(null);
-  const [linkRow, setLinkRow] = useState<EliteRow | null>(null);
+  const [deleteRow, setDeleteRow] = useState<EliteRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -142,6 +146,27 @@ const EliteCustomers = () => {
     });
   }, [rows, search, tab]);
 
+  const handleDelete = async () => {
+    if (!deleteRow) return;
+    setDeleting(true);
+    try {
+      if (deleteRow.lead_id) {
+        await supabase.from("leads")
+          .update({ elite_card_id: null, elite_opted_in: null, elite_opted_date: null } as any)
+          .eq("id", deleteRow.lead_id);
+      }
+      const { error } = await (supabase.from("elite_customers" as any).delete().eq("id", deleteRow.id) as any);
+      if (error) throw error;
+      toast.success("Elite member deleted");
+      setDeleteRow(null);
+      fetchData();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to delete");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -153,9 +178,11 @@ const EliteCustomers = () => {
         </div>
         {canEdit && (
           <div className="flex gap-2">
-            <Button variant="outline" className="gap-2" onClick={() => setImportOpen(true)}>
-              <Upload className="w-4 h-4" /> Import CSV
-            </Button>
+            {isAdmin && (
+              <Button variant="outline" className="gap-2" onClick={() => setImportOpen(true)}>
+                <Upload className="w-4 h-4" /> Import CSV
+              </Button>
+            )}
             <Button className="gap-2 gradient-primary" onClick={() => setAddOpen(true)}>
               <Plus className="w-4 h-4" /> Add Member
             </Button>
@@ -225,8 +252,8 @@ const EliteCustomers = () => {
                         <TableCell className="font-medium">{r.customer_name}</TableCell>
                         <TableCell className="font-mono text-xs">{formatPhoneDisplay(r.phone_1)}</TableCell>
                         <TableCell className="font-mono text-xs">{r.phone_2 ? formatPhoneDisplay(r.phone_2) : "—"}</TableCell>
-                        <TableCell>{r.card_issue_date}</TableCell>
-                        <TableCell>{r.card_expiry_date}</TableCell>
+                        <TableCell>{formatDate(r.card_issue_date)}</TableCell>
+                        <TableCell>{formatDate(r.card_expiry_date)}</TableCell>
                         <TableCell className={dayCls}>{left}</TableCell>
                         <TableCell><Badge variant="outline" className={meta.cls}>{meta.label}</Badge></TableCell>
                         <TableCell>{lead ? <span className="text-primary">{lead.customer_name}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
@@ -234,7 +261,11 @@ const EliteCustomers = () => {
                           <TableCell>
                             <div className="flex gap-1">
                               <Button size="sm" variant="ghost" onClick={() => setEditRow(r)}><Pencil className="w-3.5 h-3.5" /></Button>
-                              <Button size="sm" variant="ghost" onClick={() => setLinkRow(r)}><Link2 className="w-3.5 h-3.5" /></Button>
+                              {isAdmin && (
+                                <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setDeleteRow(r)}>
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                              )}
                             </div>
                           </TableCell>
                         )}
@@ -263,18 +294,31 @@ const EliteCustomers = () => {
         row={editRow}
         onSaved={() => { setEditRow(null); fetchData(); }}
       />
-      <LinkLeadDialog
-        open={!!linkRow}
-        onOpenChange={(v) => !v && setLinkRow(null)}
-        row={linkRow}
-        onSaved={() => { setLinkRow(null); fetchData(); }}
-      />
-      <ImportCsvDialog
-        open={importOpen}
-        onOpenChange={setImportOpen}
-        userId={user?.id || null}
-        onDone={() => { setImportOpen(false); fetchData(); }}
-      />
+      {isAdmin && (
+        <ImportCsvDialog
+          open={importOpen}
+          onOpenChange={setImportOpen}
+          userId={user?.id || null}
+          onDone={() => { setImportOpen(false); fetchData(); }}
+        />
+      )}
+
+      <AlertDialog open={!!deleteRow} onOpenChange={(v) => !v && !deleting && setDeleteRow(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Elite Member?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove <strong>{deleteRow?.customer_name}</strong> from the Elite program and unlink any associated lead. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
@@ -306,9 +350,11 @@ const MemberFormDialog = ({
   const [notes, setNotes] = useState("");
   const [status, setStatus] = useState<"active" | "opted_out">("active");
   const [saving, setSaving] = useState(false);
+  const [dupError, setDupError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    setDupError(null);
     if (mode === "edit" && row) {
       setName(row.customer_name);
       setP1(extractTenDigits(row.phone_1));
@@ -327,12 +373,27 @@ const MemberFormDialog = ({
     if (!name.trim()) { toast.error("Customer Name required"); return; }
     if (!isValidIndianMobile(p1)) { toast.error("Enter a valid 10-digit mobile number"); return; }
     if (p2 && !isValidIndianMobile(p2)) { toast.error("Phone 2 must be a valid 10-digit mobile"); return; }
+    setDupError(null);
     setSaving(true);
     try {
+      const canonicalP1 = toCanonicalPhone(p1);
       if (mode === "add") {
+        // Duplicate guard
+        const { data: dup } = await supabase
+          .from("elite_customers" as any)
+          .select("id, customer_name, status")
+          .eq("phone_1", canonicalP1)
+          .neq("status", "opted_out")
+          .maybeSingle();
+        if (dup) {
+          const d: any = dup;
+          setDupError(`This number is already registered as an Elite Member (${d.customer_name})`);
+          setSaving(false);
+          return;
+        }
         const { error } = await (supabase.from("elite_customers" as any).insert({
           customer_name: name.trim(),
-          phone_1: toCanonicalPhone(p1),
+          phone_1: canonicalP1,
           phone_2: p2 ? toCanonicalPhone(p2) : null,
           card_issue_date: issue,
           notes: notes.trim() || null,
@@ -343,9 +404,9 @@ const MemberFormDialog = ({
       } else if (row) {
         const { error } = await (supabase.from("elite_customers" as any).update({
           customer_name: name.trim(),
-          phone_1: toCanonicalPhone(p1),
+          phone_1: canonicalP1,
           phone_2: p2 ? toCanonicalPhone(p2) : null,
-          card_issue_date: issue,
+          // Issue date locked in edit mode — do not update it
           notes: notes.trim() || null,
           status,
         }).eq("id", row.id) as any);
@@ -358,11 +419,13 @@ const MemberFormDialog = ({
     } finally { setSaving(false); }
   };
 
+  const isEdit = mode === "edit";
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{mode === "add" ? "Add Elite Member" : "Edit Elite Member"}</DialogTitle>
+          <DialogTitle>{isEdit ? "Edit Elite Member" : "Add Elite Member"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">
@@ -371,7 +434,8 @@ const MemberFormDialog = ({
           </div>
           <div className="space-y-1.5">
             <Label>Phone 1 *</Label>
-            <PhoneInput value={p1} onChange={setP1} />
+            <PhoneInput value={p1} onChange={(v) => { setP1(v); setDupError(null); }} />
+            {dupError && <p className="text-xs text-destructive">{dupError}</p>}
           </div>
           <div className="space-y-1.5">
             <Label>Phone 2 (optional)</Label>
@@ -379,16 +443,33 @@ const MemberFormDialog = ({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Card Issue Date</Label>
-              <Input type="date" value={issue} onChange={e => setIssue(e.target.value)} />
+              <Label className="flex items-center gap-1.5">
+                {isEdit && <Lock className="w-3 h-3 text-muted-foreground" />}
+                Card Issue Date
+              </Label>
+              {isEdit ? (
+                <Input
+                  value={formatDate(issue)}
+                  readOnly
+                  disabled
+                  className="italic text-muted-foreground bg-muted cursor-not-allowed"
+                />
+              ) : (
+                <Input type="date" value={issue} onChange={e => setIssue(e.target.value)} />
+              )}
+              {isEdit && (
+                <p className="text-[11px] text-muted-foreground">Issue date is locked and cannot be changed</p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>Card Expiry Date</Label>
-              <Input value={expiry} readOnly className="italic text-muted-foreground" />
+              <Input value={formatDate(expiry)} readOnly disabled className="italic text-muted-foreground bg-muted cursor-not-allowed" />
             </div>
           </div>
-          <p className="text-[11px] text-muted-foreground -mt-2">Elite card is valid for 3 years from issue date</p>
-          {mode === "edit" && (
+          {!isEdit && (
+            <p className="text-[11px] text-muted-foreground -mt-2">Elite card is valid for 3 years from issue date</p>
+          )}
+          {isEdit && (
             <div className="space-y-1.5">
               <Label>Status</Label>
               <Select value={status} onValueChange={(v) => setStatus(v as "active" | "opted_out")}>
@@ -405,89 +486,8 @@ const MemberFormDialog = ({
             <Textarea rows={3} value={notes} onChange={e => setNotes(e.target.value)} />
           </div>
           <Button className="w-full gradient-primary" onClick={save} disabled={saving}>
-            {saving ? "Saving…" : mode === "add" ? "Add Member" : "Save Changes"}
+            {saving ? "Saving…" : isEdit ? "Save Changes" : "Add Member"}
           </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-};
-
-/* ---------------- Link Lead Dialog ---------------- */
-const LinkLeadDialog = ({
-  open, onOpenChange, row, onSaved,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  row: EliteRow | null;
-  onSaved: () => void;
-}) => {
-  const [q, setQ] = useState("");
-  const [results, setResults] = useState<LeadLite[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [linking, setLinking] = useState(false);
-
-  useEffect(() => {
-    if (!open) { setQ(""); setResults([]); return; }
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const term = q.trim();
-    if (term.length < 2) { setResults([]); return; }
-    setSearching(true);
-    const t = setTimeout(async () => {
-      const { data } = await supabase
-        .from("leads")
-        .select("id, customer_name, customer_phone, elite_card_id")
-        .or(`customer_name.ilike.%${term}%,customer_phone.ilike.%${term}%`)
-        .is("deleted_at", null)
-        .limit(15);
-      setResults((data || []) as LeadLite[]);
-      setSearching(false);
-    }, 250);
-    return () => clearTimeout(t);
-  }, [q, open]);
-
-  const link = async (lead: LeadLite) => {
-    if (!row) return;
-    setLinking(true);
-    try {
-      const { error: e1 } = await (supabase.from("elite_customers" as any)
-        .update({ lead_id: lead.id })
-        .eq("id", row.id) as any);
-      if (e1) throw e1;
-      const { error: e2 } = await supabase.from("leads")
-        .update({ elite_card_id: row.id, elite_opted_in: true, elite_opted_date: row.card_issue_date } as any)
-        .eq("id", lead.id);
-      if (e2) throw e2;
-      toast.success(`Linked to ${lead.customer_name}`);
-      onSaved();
-    } catch (e: any) { toast.error(e.message || "Failed to link"); }
-    finally { setLinking(false); }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader><DialogTitle>Link to Lead</DialogTitle></DialogHeader>
-        <div className="space-y-3">
-          <Input autoFocus placeholder="Search by name or phone…" value={q} onChange={e => setQ(e.target.value)} />
-          <div className="max-h-72 overflow-y-auto rounded-md border border-border">
-            {searching && <div className="p-3 text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Searching…</div>}
-            {!searching && results.length === 0 && <div className="p-3 text-sm text-muted-foreground">Type at least 2 characters</div>}
-            {results.map(l => (
-              <button
-                key={l.id}
-                disabled={linking}
-                onClick={() => link(l)}
-                className="w-full text-left p-3 hover:bg-muted/50 border-b border-border last:border-0 disabled:opacity-50"
-              >
-                <p className="font-medium text-sm">{l.customer_name}</p>
-                <p className="text-xs text-muted-foreground font-mono">{formatPhoneDisplay(l.customer_phone)}</p>
-              </button>
-            ))}
-          </div>
         </div>
       </DialogContent>
     </Dialog>
@@ -501,6 +501,9 @@ interface ParsedRow {
   phone_2: string;
   card_issue_date: string;
   errors: string[];
+  warning?: string;
+  existingId?: string;        // for reactivation case
+  existingName?: string;
 }
 
 const ImportCsvDialog = ({
@@ -525,7 +528,7 @@ const ImportCsvDialog = ({
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]; if (!f) return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       const text = String(ev.target?.result || "");
       const lines = text.split(/\r?\n/).filter(l => l.trim());
       if (lines.length < 2) { toast.error("CSV needs header + rows"); return; }
@@ -548,6 +551,32 @@ const ImportCsvDialog = ({
         if (!date || isNaN(new Date(date).getTime())) errs.push("Date missing");
         return { customer_name: name, phone_1: p1, phone_2: p2, card_issue_date: date, errors: errs };
       });
+
+      // Duplicate check against DB
+      const validPhones = out
+        .filter(r => r.errors.length === 0)
+        .map(r => toCanonicalPhone(r.phone_1));
+      if (validPhones.length > 0) {
+        const { data: existing } = await supabase
+          .from("elite_customers" as any)
+          .select("id, customer_name, phone_1, status")
+          .in("phone_1", validPhones);
+        const map = new Map<string, any>();
+        (existing || []).forEach((e: any) => map.set(e.phone_1, e));
+        out.forEach(r => {
+          if (r.errors.length > 0) return;
+          const e = map.get(toCanonicalPhone(r.phone_1));
+          if (!e) return;
+          if (e.status === "opted_out") {
+            r.warning = "Previously opted out — will be re-enrolled if imported";
+            r.existingId = e.id;
+            r.existingName = e.customer_name;
+          } else {
+            r.errors.push(`Duplicate — ${e.customer_name} already enrolled with this number`);
+          }
+        });
+      }
+
       setParsed(out);
     };
     reader.readAsText(f);
@@ -558,19 +587,29 @@ const ImportCsvDialog = ({
   const confirm = async () => {
     if (valid.length === 0) return;
     setImporting(true);
-    let added = 0, skipped = parsed.length - valid.length;
+    let added = 0, reactivated = 0, skipped = parsed.length - valid.length;
     for (const r of valid) {
-      const { error } = await (supabase.from("elite_customers" as any).insert({
-        customer_name: r.customer_name,
-        phone_1: toCanonicalPhone(r.phone_1),
-        phone_2: r.phone_2 ? toCanonicalPhone(r.phone_2) : null,
-        card_issue_date: r.card_issue_date,
-        created_by: userId,
-      }) as any);
-      if (error) skipped++; else added++;
+      if (r.existingId) {
+        const { error } = await (supabase.from("elite_customers" as any).update({
+          status: "active",
+          card_issue_date: r.card_issue_date,
+          customer_name: r.customer_name,
+          phone_2: r.phone_2 ? toCanonicalPhone(r.phone_2) : null,
+        }).eq("id", r.existingId) as any);
+        if (error) skipped++; else reactivated++;
+      } else {
+        const { error } = await (supabase.from("elite_customers" as any).insert({
+          customer_name: r.customer_name,
+          phone_1: toCanonicalPhone(r.phone_1),
+          phone_2: r.phone_2 ? toCanonicalPhone(r.phone_2) : null,
+          card_issue_date: r.card_issue_date,
+          created_by: userId,
+        }) as any);
+        if (error) skipped++; else added++;
+      }
     }
     setImporting(false);
-    toast.success(`Import complete: ${added} members added, ${skipped} rows skipped`);
+    toast.success(`Import complete: ${added} added, ${reactivated} reactivated, ${skipped} skipped`);
     onDone();
   };
 
@@ -596,7 +635,8 @@ const ImportCsvDialog = ({
                       <TableHead>Phone 1</TableHead>
                       <TableHead>Phone 2</TableHead>
                       <TableHead>Issue Date</TableHead>
-                      <TableHead>Valid?</TableHead>
+                      <TableHead>Expiry</TableHead>
+                      <TableHead>Status</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -605,12 +645,15 @@ const ImportCsvDialog = ({
                         <TableCell className="text-xs">{r.customer_name}</TableCell>
                         <TableCell className="text-xs font-mono">{r.phone_1}</TableCell>
                         <TableCell className="text-xs font-mono">{r.phone_2 || "—"}</TableCell>
-                        <TableCell className="text-xs">{r.card_issue_date}</TableCell>
+                        <TableCell className="text-xs">{formatDate(r.card_issue_date)}</TableCell>
+                        <TableCell className="text-xs">{formatDate(addYearsISO(r.card_issue_date, 3))}</TableCell>
                         <TableCell className="text-xs">
-                          {r.errors.length === 0 ? (
-                            <span className="inline-flex items-center gap-1 text-success"><CheckCircle2 className="w-3.5 h-3.5" /> OK</span>
-                          ) : (
+                          {r.errors.length > 0 ? (
                             <span className="inline-flex items-center gap-1 text-destructive"><XCircle className="w-3.5 h-3.5" /> {r.errors.join(", ")}</span>
+                          ) : r.warning ? (
+                            <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400"><AlertTriangle className="w-3.5 h-3.5" /> {r.warning}</span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-success"><CheckCircle2 className="w-3.5 h-3.5" /> OK</span>
                           )}
                         </TableCell>
                       </TableRow>

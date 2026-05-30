@@ -2,6 +2,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Star, Check, X, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatDate } from "@/lib/dateFormat";
 
 export type EliteChoice = "opt_in" | "opt_out" | "undecided";
 
@@ -10,6 +11,7 @@ interface Props {
   onChoiceChange: (c: EliteChoice) => void;
   issueDate: string;
   onIssueDateChange: (d: string) => void;
+  duplicateWarning?: string | null;
 }
 
 function addYears(iso: string, years: number): string {
@@ -20,13 +22,7 @@ function addYears(iso: string, years: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function formatLong(iso: string): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-}
-
-const EliteCardEnrollment = ({ choice, onChoiceChange, issueDate, onIssueDateChange }: Props) => {
+const EliteCardEnrollment = ({ choice, onChoiceChange, issueDate, onIssueDateChange, duplicateWarning }: Props) => {
   const expiry = addYears(issueDate, 3);
 
   const options: { value: EliteChoice; label: string; icon: JSX.Element; activeCls: string }[] = [
@@ -43,6 +39,12 @@ const EliteCardEnrollment = ({ choice, onChoiceChange, issueDate, onIssueDateCha
         </p>
         <p className="text-xs text-muted-foreground">Enroll this customer in the Elite loyalty program</p>
       </div>
+
+      {duplicateWarning && (
+        <div className="rounded-md border border-amber-500/40 bg-amber-100/60 dark:bg-amber-900/20 p-2 text-xs text-amber-800 dark:text-amber-300">
+          {duplicateWarning}
+        </div>
+      )}
 
       <div className="grid grid-cols-3 gap-2">
         {options.map(o => {
@@ -71,7 +73,7 @@ const EliteCardEnrollment = ({ choice, onChoiceChange, issueDate, onIssueDateCha
             <Input type="date" value={issueDate} onChange={e => onIssueDateChange(e.target.value)} />
           </div>
           {expiry && (
-            <p className="text-xs text-success font-medium">Valid until: {formatLong(expiry)}</p>
+            <p className="text-xs text-success font-medium">Valid until: {formatDate(expiry)}</p>
           )}
           <p className="text-[11px] text-muted-foreground">Elite card is valid for 3 years from issue date</p>
         </div>
