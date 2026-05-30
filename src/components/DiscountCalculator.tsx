@@ -185,7 +185,7 @@ const DiscountCalculator = () => {
     return (
       <button
         onClick={() => { setOpen(true); setMinimized(false); }}
-        className="fixed bottom-4 right-4 z-50 h-12 w-12 rounded-full gradient-primary text-primary-foreground shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
+        className="fixed bottom-20 right-4 z-50 h-12 w-12 rounded-full gradient-primary text-primary-foreground shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
         title="Calculator"
         aria-label="Open calculator"
       >
@@ -200,7 +200,7 @@ const DiscountCalculator = () => {
     return (
       <button
         onClick={() => setMinimized(false)}
-        className="fixed bottom-4 right-4 z-50 px-3 h-10 rounded-full bg-card border border-border shadow-lg flex items-center gap-2 text-sm font-medium hover:bg-accent"
+        className="fixed bottom-20 right-4 z-50 px-3 h-10 rounded-full bg-card border border-border shadow-lg flex items-center gap-2 text-sm font-medium hover:bg-accent"
       >
         <Calculator className="w-4 h-4 text-primary" />
         <span>{pillText}</span>
@@ -219,7 +219,7 @@ const DiscountCalculator = () => {
   );
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 w-[20rem] max-w-[calc(100vw-2rem)] rounded-xl bg-card border border-border shadow-2xl">
+    <div className="fixed bottom-20 right-4 z-50 w-[20rem] max-w-[calc(100vw-2rem)] rounded-xl bg-card border border-border shadow-2xl">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
         <Calculator className="w-4 h-4 text-primary" />
         <span className="text-sm font-semibold flex-1">Calculator</span>
