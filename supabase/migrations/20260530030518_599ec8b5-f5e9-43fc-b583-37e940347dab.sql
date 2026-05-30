@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX IF NOT EXISTS unique_elite_phone1 ON public.elite_customers (phone_1) WHERE status != 'opted_out';
+CREATE UNIQUE INDEX IF NOT EXISTS unique_elite_lead ON public.elite_customers (lead_id) WHERE lead_id IS NOT NULL;
