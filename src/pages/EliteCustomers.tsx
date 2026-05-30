@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Star, Plus, Upload, Pencil, Search, Loader2, Download, CheckCircle2, XCircle, Lock, Trash2, AlertTriangle } from "lucide-react";
+import { Star, Plus, Upload, Pencil, Search, Loader2, Download, CheckCircle2, XCircle, Lock, Trash2, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import PhoneInput from "@/components/PhoneInput";
 import { extractTenDigits, isValidIndianMobile, toCanonicalPhone, formatPhoneDisplay } from "@/lib/phone";
@@ -90,6 +90,9 @@ const EliteCustomers = () => {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<FilterTab>("all");
 
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 200;
+
   const [addOpen, setAddOpen] = useState(false);
   const [editRow, setEditRow] = useState<EliteRow | null>(null);
   const [deleteRow, setDeleteRow] = useState<EliteRow | null>(null);
@@ -98,29 +101,35 @@ const EliteCustomers = () => {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("elite_customers" as any)
-      .select("*")
-      .order("card_expiry_date", { ascending: true });
-    if (error) {
-      toast.error(error.message);
-      setLoading(false);
-      return;
+    // Paginate through all elite customers — Supabase caps single responses at 1000
+    const PAGE = 1000;
+    const all: EliteRow[] = [];
+    let pg = 0;
+    while (true) {
+      const { data, error } = await supabase
+        .from("elite_customers" as any)
+        .select("*")
+        .order("card_expiry_date", { ascending: true })
+        .range(pg * PAGE, (pg + 1) * PAGE - 1);
+      if (error) { toast.error(error.message); setLoading(false); return; }
+      all.push(...((data as unknown as EliteRow[]) || []));
+      if (!data || data.length < PAGE) break;
+      pg++;
     }
-    const list = ((data as unknown) || []) as EliteRow[];
-    setRows(list);
-    const leadIds = list.map(r => r.lead_id).filter(Boolean) as string[];
-    if (leadIds.length > 0) {
+    setRows(all);
+
+    // Fetch linked leads in batches of 500 (safe limit for .in())
+    const leadIds = all.map(r => r.lead_id).filter(Boolean) as string[];
+    const map: Record<string, LeadLite> = {};
+    const BATCH = 500;
+    for (let i = 0; i < leadIds.length; i += BATCH) {
       const { data: lds } = await supabase
         .from("leads")
         .select("id, customer_name, customer_phone, elite_card_id")
-        .in("id", leadIds);
-      const map: Record<string, LeadLite> = {};
+        .in("id", leadIds.slice(i, i + BATCH));
       (lds || []).forEach((l: any) => { map[l.id] = l; });
-      setLeads(map);
-    } else {
-      setLeads({});
     }
+    setLeads(leadIds.length > 0 ? map : {});
     setLoading(false);
   }, []);
 
@@ -158,6 +167,15 @@ const EliteCustomers = () => {
       );
     });
   }, [rows, search, tab]);
+
+  // Reset to page 1 whenever filter/search changes
+  useEffect(() => { setPage(1); }, [search, tab]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = useMemo(
+    () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filtered, page, PAGE_SIZE]
+  );
 
   const handleDelete = async () => {
     if (!deleteRow) return;
@@ -236,58 +254,89 @@ const EliteCustomers = () => {
           ) : filtered.length === 0 ? (
             <div className="text-center py-16 text-sm text-muted-foreground">No elite customers found</div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-10">#</TableHead>
-                    <TableHead>Customer Name</TableHead>
-                    <TableHead>Phone 1</TableHead>
-                    <TableHead>Phone 2</TableHead>
-                    <TableHead>Issue Date</TableHead>
-                    <TableHead>Expiry Date</TableHead>
-                    <TableHead>Days Left</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Linked Lead</TableHead>
-                    {canEdit && <TableHead>Actions</TableHead>}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filtered.map((r, i) => {
-                    const status = computeStatus(r);
-                    const meta = STATUS_META[status];
-                    const left = daysBetween(r.card_expiry_date);
-                    const dayCls = left < 0 ? "text-destructive font-semibold" : left <= 60 ? "text-amber-600 dark:text-amber-400 font-medium" : "text-success";
-                    const lead = r.lead_id ? leads[r.lead_id] : null;
-                    return (
-                      <TableRow key={r.id}>
-                        <TableCell className="text-muted-foreground">{i + 1}</TableCell>
-                        <TableCell className="font-medium">{r.customer_name}</TableCell>
-                        <TableCell className="font-mono text-xs">{formatPhoneDisplay(r.phone_1)}</TableCell>
-                        <TableCell className="font-mono text-xs">{r.phone_2 ? formatPhoneDisplay(r.phone_2) : "—"}</TableCell>
-                        <TableCell>{formatDate(r.card_issue_date)}</TableCell>
-                        <TableCell>{formatDate(r.card_expiry_date)}</TableCell>
-                        <TableCell className={dayCls}>{left}</TableCell>
-                        <TableCell><Badge variant="outline" className={meta.cls}>{meta.label}</Badge></TableCell>
-                        <TableCell>{lead ? <span className="text-primary">{lead.customer_name}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
-                        {canEdit && (
-                          <TableCell>
-                            <div className="flex gap-1">
-                              <Button size="sm" variant="ghost" onClick={() => setEditRow(r)}><Pencil className="w-3.5 h-3.5" /></Button>
-                              {isAdmin && (
-                                <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setDeleteRow(r)}>
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </Button>
-                              )}
-                            </div>
-                          </TableCell>
-                        )}
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+            <>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-10">#</TableHead>
+                      <TableHead>Customer Name</TableHead>
+                      <TableHead>Phone 1</TableHead>
+                      <TableHead>Phone 2</TableHead>
+                      <TableHead>Issue Date</TableHead>
+                      <TableHead>Expiry Date</TableHead>
+                      <TableHead>Days Left</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Linked Lead</TableHead>
+                      {canEdit && <TableHead>Actions</TableHead>}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paginated.map((r, i) => {
+                      const globalIdx = (page - 1) * PAGE_SIZE + i + 1;
+                      const status = computeStatus(r);
+                      const meta = STATUS_META[status];
+                      const left = daysBetween(r.card_expiry_date);
+                      const dayCls = left < 0 ? "text-destructive font-semibold" : left <= 60 ? "text-amber-600 dark:text-amber-400 font-medium" : "text-success";
+                      const lead = r.lead_id ? leads[r.lead_id] : null;
+                      return (
+                        <TableRow key={r.id}>
+                          <TableCell className="text-muted-foreground">{globalIdx}</TableCell>
+                          <TableCell className="font-medium">{r.customer_name}</TableCell>
+                          <TableCell className="font-mono text-xs">{formatPhoneDisplay(r.phone_1)}</TableCell>
+                          <TableCell className="font-mono text-xs">{r.phone_2 ? formatPhoneDisplay(r.phone_2) : "—"}</TableCell>
+                          <TableCell>{formatDate(r.card_issue_date)}</TableCell>
+                          <TableCell>{formatDate(r.card_expiry_date)}</TableCell>
+                          <TableCell className={dayCls}>{left}</TableCell>
+                          <TableCell><Badge variant="outline" className={meta.cls}>{meta.label}</Badge></TableCell>
+                          <TableCell>{lead ? <span className="text-primary">{lead.customer_name}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
+                          {canEdit && (
+                            <TableCell>
+                              <div className="flex gap-1">
+                                <Button size="sm" variant="ghost" onClick={() => setEditRow(r)}><Pencil className="w-3.5 h-3.5" /></Button>
+                                {isAdmin && (
+                                  <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setDeleteRow(r)}>
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Pagination controls */}
+              <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+                <p className="text-xs text-muted-foreground">
+                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm" variant="outline"
+                    onClick={() => setPage(p => p - 1)}
+                    disabled={page === 1}
+                    className="h-7 px-2"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  <span className="text-xs text-muted-foreground min-w-[70px] text-center">
+                    Page {page} of {totalPages}
+                  </span>
+                  <Button
+                    size="sm" variant="outline"
+                    onClick={() => setPage(p => p + 1)}
+                    disabled={page === totalPages}
+                    className="h-7 px-2"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
