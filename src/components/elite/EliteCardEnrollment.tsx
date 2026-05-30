@@ -2,6 +2,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Star, Check, X, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatDate } from "@/lib/dateFormat";
 
 export type EliteChoice = "opt_in" | "opt_out" | "undecided";
 
@@ -10,6 +11,7 @@ interface Props {
   onChoiceChange: (c: EliteChoice) => void;
   issueDate: string;
   onIssueDateChange: (d: string) => void;
+  duplicateWarning?: string | null;
 }
 
 function addYears(iso: string, years: number): string {
@@ -18,12 +20,6 @@ function addYears(iso: string, years: number): string {
   if (isNaN(d.getTime())) return "";
   d.setFullYear(d.getFullYear() + years);
   return d.toISOString().slice(0, 10);
-}
-
-function formatLong(iso: string): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
 const EliteCardEnrollment = ({ choice, onChoiceChange, issueDate, onIssueDateChange }: Props) => {
