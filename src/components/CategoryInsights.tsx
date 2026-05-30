@@ -76,13 +76,23 @@ const CategoryInsights = () => {
     since.setDate(1);
     since.setHours(0, 0, 0, 0);
 
-    const { data, error } = await supabase
-      .from("leads")
-      .select("category, status, value_in_rupees, created_at")
-      .gte("created_at", since.toISOString())
-      .is("deleted_at", null);
-
-    if (!error) setRaw((data || []) as unknown as RawLead[]);
+    // Paginate in 1000-row batches — Supabase caps single responses at 1000
+    const PAGE = 1000;
+    const all: RawLead[] = [];
+    let page = 0;
+    while (true) {
+      const { data, error } = await supabase
+        .from("leads")
+        .select("category, status, value_in_rupees, created_at")
+        .gte("created_at", since.toISOString())
+        .is("deleted_at", null)
+        .range(page * PAGE, (page + 1) * PAGE - 1);
+      if (error) break;
+      all.push(...(data as unknown as RawLead[]));
+      if (!data || data.length < PAGE) break;
+      page++;
+    }
+    setRaw(all);
     setLoading(false);
   }, []);
 
