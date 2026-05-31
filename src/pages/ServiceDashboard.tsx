@@ -47,6 +47,7 @@ const ServiceDashboard = () => {
     return profiles.find(p => p.id === lead.created_by) || null;
   };
   const [dateFilter, setDateFilter] = useState("");
+  const [phoneSearch, setPhoneSearch] = useState("");
   const [tab, setTab] = useState("all");
   const [addOpen, setAddOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState<string | null>(null);
@@ -87,18 +88,32 @@ const ServiceDashboard = () => {
       });
     }
     if (dateFilter) jobs = jobs.filter(j => j.date_received >= dateFilter);
+    if (phoneSearch.trim()) jobs = jobs.filter(j => j.customer_phone?.includes(phoneSearch.trim()));
     if (tab === "deliveries") jobs = jobs.filter(j => j.type === "delivery");
     else if (tab === "services") jobs = jobs.filter(j => j.type === "service");
     else if (tab === "pending") jobs = jobs.filter(j => j.status === "pending");
     else if (tab === "completed") jobs = jobs.filter(j => j.status === "completed");
     return jobs;
-  }, [serviceJobs, dateFilter, tab, isServiceHead, isAdmin]);
+  }, [serviceJobs, dateFilter, phoneSearch, tab, isServiceHead, isAdmin]);
 
   const todayStr = new Date().toISOString().split("T")[0];
   const todayJobs = serviceJobs.filter(j => j.date_to_attend === todayStr);
-  const serviceRevenue = serviceJobs
-    .filter(j => !j.is_foc && j.status === "completed" && j.type === "service")
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
+  const fyStart = new Date(
+    now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1,
+    3, 1
+  ).toISOString().split("T")[0];
+
+  const completedServiceJobs = serviceJobs.filter(j => !j.is_foc && j.status === "completed" && j.type === "service");
+  const serviceRevenueMonth = completedServiceJobs
+    .filter(j => (j.completed_at || j.date_received) >= monthStart)
     .reduce((s, j) => s + Number(j.value), 0);
+  const serviceRevenueFY = completedServiceJobs
+    .filter(j => (j.completed_at || j.date_received) >= fyStart)
+    .reduce((s, j) => s + Number(j.value), 0);
+
   const pendingJobs = serviceJobs.filter(j => j.status === "pending");
   const deliveryJobs = serviceJobs.filter(j => j.type === "delivery");
 
@@ -262,7 +277,12 @@ const ServiceDashboard = () => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard title="Today's Jobs" value={todayJobs.length} icon={<Clock className="w-5 h-5" />} />
         <StatCard title="Pending" value={pendingJobs.length} icon={<AlertCircle className="w-5 h-5" />} />
-        <StatCard title="Service Revenue" value={`₹${serviceRevenue.toLocaleString("en-IN")}`} icon={<IndianRupee className="w-5 h-5" />} />
+        <StatCard
+          title="Service Revenue"
+          value={`₹${serviceRevenueMonth.toLocaleString("en-IN")}`}
+          subtitle={`FY: ₹${serviceRevenueFY.toLocaleString("en-IN")}`}
+          icon={<IndianRupee className="w-5 h-5" />}
+        />
         <StatCard title="Deliveries" value={deliveryJobs.length} icon={<Truck className="w-5 h-5" />} />
       </div>
 
@@ -276,6 +296,14 @@ const ServiceDashboard = () => {
             <TabsTrigger value="completed">Completed</TabsTrigger>
           </TabsList>
         </Tabs>
+        <Input
+          type="tel"
+          placeholder="Search by phone…"
+          className="w-40"
+          value={phoneSearch}
+          onChange={e => setPhoneSearch(e.target.value.replace(/\D/g, "").slice(0, 10))}
+          maxLength={10}
+        />
         <Input type="date" className="w-40" value={dateFilter} onChange={e => setDateFilter(e.target.value)} />
       </div>
 
