@@ -137,19 +137,22 @@ const ServiceDashboard = () => {
         .gte("date_received", fyStart);
       if (cancelled || !data) return;
 
-      let month = 0;
+      // Cap future completed_at to date_received so no revenue leaks into future months
+      const today = new Date().toISOString().slice(0, 10);
+      const currentMonthKey = monthStart.slice(0, 7);
       let fy = 0;
       const byMonth: Record<string, number> = {};
       for (const j of data) {
-        const d = (j.completed_at?.slice(0, 10)) || j.date_received;
+        const raw = j.completed_at?.slice(0, 10) || j.date_received;
+        const d = raw > today ? j.date_received : raw;
         const v = Number(j.value) || 0;
         fy += v;
-        if (d >= monthStart) month += v;
         const mk = d.slice(0, 7);
         byMonth[mk] = (byMonth[mk] || 0) + v;
       }
-      setRevMonth(month);
+      // Derive month total from the same bucket so card always equals table row
       setRevFY(fy);
+      setRevMonth(byMonth[currentMonthKey] || 0);
       setMonthlyBreakdown(fyMonths.map(m => ({ ...m, revenue: byMonth[m.key] || 0 })));
     };
     fetch();
