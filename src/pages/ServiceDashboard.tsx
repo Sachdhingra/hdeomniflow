@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useData, LEAD_CATEGORIES, LeadCategory } from "@/contexts/DataContext";
 import StatCard from "@/components/StatCard";
@@ -14,9 +14,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Wrench, IndianRupee, Clock, Plus, AlertCircle, MapPin, Phone, Truck, UserPlus, CalendarClock, Pencil } from "lucide-react";
+import { Wrench, IndianRupee, Clock, Plus, AlertCircle, MapPin, Phone, Truck, UserPlus, CalendarClock, Pencil, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import LoadingError from "@/components/LoadingError";
 import { DashboardSkeleton } from "@/components/DashboardSkeleton";
 import { supabase } from "@/integrations/supabase/client";
@@ -98,24 +99,62 @@ const ServiceDashboard = () => {
 
   const todayStr = new Date().toISOString().split("T")[0];
   const todayJobs = serviceJobs.filter(j => j.date_to_attend === todayStr);
-
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
-  const fyStart = new Date(
-    now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1,
-    3, 1
-  ).toISOString().split("T")[0];
-
-  const completedServiceJobs = serviceJobs.filter(j => !j.is_foc && j.status === "completed" && j.type === "service");
-  const serviceRevenueMonth = completedServiceJobs
-    .filter(j => (j.completed_at || j.date_received) >= monthStart)
-    .reduce((s, j) => s + Number(j.value), 0);
-  const serviceRevenueFY = completedServiceJobs
-    .filter(j => (j.completed_at || j.date_received) >= fyStart)
-    .reduce((s, j) => s + Number(j.value), 0);
-
   const pendingJobs = serviceJobs.filter(j => j.status === "pending");
   const deliveryJobs = serviceJobs.filter(j => j.type === "delivery");
+
+  // Revenue date anchors (stable within a session)
+  const { monthStart, fyStart, fyMonths } = useMemo(() => {
+    const now = new Date();
+    const ms = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
+    const fyY = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+    const fys = new Date(fyY, 3, 1).toISOString().split("T")[0];
+    const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const months: { key: string; label: string }[] = [];
+    const cur = new Date(fyY, 3, 1);
+    while (cur <= now) {
+      months.push({ key: cur.toISOString().slice(0, 7), label: `${MONTH_NAMES[cur.getMonth()]} ${cur.getFullYear()}` });
+      cur.setMonth(cur.getMonth() + 1);
+    }
+    return { monthStart: ms, fyStart: fys, fyMonths: months };
+  }, []);
+
+  // Revenue state fetched directly from DB (not paginated)
+  const [revMonth, setRevMonth] = useState(0);
+  const [revFY, setRevFY] = useState(0);
+  const [monthlyBreakdown, setMonthlyBreakdown] = useState<{ key: string; label: string; revenue: number }[]>([]);
+  const [revOpen, setRevOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetch = async () => {
+      const { data } = await supabase
+        .from("service_jobs")
+        .select("value, date_received, completed_at")
+        .eq("status", "completed")
+        .eq("is_foc", false)
+        .eq("type", "service")
+        .is("deleted_at", null)
+        .gte("date_received", fyStart);
+      if (cancelled || !data) return;
+
+      let month = 0;
+      let fy = 0;
+      const byMonth: Record<string, number> = {};
+      for (const j of data) {
+        const d = (j.completed_at?.slice(0, 10)) || j.date_received;
+        const v = Number(j.value) || 0;
+        fy += v;
+        if (d >= monthStart) month += v;
+        const mk = d.slice(0, 7);
+        byMonth[mk] = (byMonth[mk] || 0) + v;
+      }
+      setRevMonth(month);
+      setRevFY(fy);
+      setMonthlyBreakdown(fyMonths.map(m => ({ ...m, revenue: byMonth[m.key] || 0 })));
+    };
+    fetch();
+    return () => { cancelled = true; };
+  }, [fyStart, monthStart, fyMonths]);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -278,13 +317,62 @@ const ServiceDashboard = () => {
         <StatCard title="Today's Jobs" value={todayJobs.length} icon={<Clock className="w-5 h-5" />} />
         <StatCard title="Pending" value={pendingJobs.length} icon={<AlertCircle className="w-5 h-5" />} />
         <StatCard
-          title="Service Revenue"
-          value={`₹${serviceRevenueMonth.toLocaleString("en-IN")}`}
-          subtitle={`FY: ₹${serviceRevenueFY.toLocaleString("en-IN")}`}
+          title="Service Revenue (Month)"
+          value={`₹${revMonth.toLocaleString("en-IN")}`}
+          subtitle={`FY Total: ₹${revFY.toLocaleString("en-IN")}`}
           icon={<IndianRupee className="w-5 h-5" />}
         />
         <StatCard title="Deliveries" value={deliveryJobs.length} icon={<Truck className="w-5 h-5" />} />
       </div>
+
+      {/* Admin-only: month-wise revenue breakdown */}
+      {isAdmin && monthlyBreakdown.length > 0 && (
+        <Collapsible open={revOpen} onOpenChange={setRevOpen}>
+          <CollapsibleTrigger asChild>
+            <Button variant="outline" size="sm" className="gap-2 text-xs">
+              <IndianRupee className="w-3.5 h-3.5" />
+              Month-wise Revenue
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${revOpen ? "rotate-180" : ""}`} />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <Card className="shadow-card mt-2">
+              <CardContent className="p-4">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Service Revenue by Month (Current FY)</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left py-1.5 pr-4 font-medium text-muted-foreground">Month</th>
+                        <th className="text-right py-1.5 font-medium text-muted-foreground">Revenue</th>
+                        <th className="text-right py-1.5 pl-4 font-medium text-muted-foreground">Share</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {monthlyBreakdown.map(m => (
+                        <tr key={m.key} className={`border-b border-border/50 ${m.key === monthStart.slice(0, 7) ? "bg-primary/5 font-semibold" : ""}`}>
+                          <td className="py-1.5 pr-4">{m.label}{m.key === monthStart.slice(0, 7) ? " ●" : ""}</td>
+                          <td className="text-right tabular-nums">₹{m.revenue.toLocaleString("en-IN")}</td>
+                          <td className="text-right pl-4 text-muted-foreground tabular-nums">
+                            {revFY > 0 ? `${((m.revenue / revFY) * 100).toFixed(1)}%` : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-border font-bold">
+                        <td className="pt-2">FY Total</td>
+                        <td className="text-right tabular-nums pt-2">₹{revFY.toLocaleString("en-IN")}</td>
+                        <td className="text-right pl-4 pt-2">100%</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
 
       <div className="flex gap-3 flex-wrap items-center">
         <Tabs value={tab} onValueChange={setTab}>
