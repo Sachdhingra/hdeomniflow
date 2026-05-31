@@ -102,18 +102,25 @@ const ServiceDashboard = () => {
   const pendingJobs = serviceJobs.filter(j => j.status === "pending");
   const deliveryJobs = serviceJobs.filter(j => j.type === "delivery");
 
-  // Revenue date anchors (stable within a session)
+  // Revenue date anchors — use local calendar values, never toISOString()
+  // (toISOString converts local→UTC which shifts the date in IST/+5:30 timezones)
   const { monthStart, fyStart, fyMonths } = useMemo(() => {
     const now = new Date();
-    const ms = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
-    const fyY = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
-    const fys = new Date(fyY, 3, 1).toISOString().split("T")[0];
+    const y = now.getFullYear();
+    const mo = now.getMonth(); // 0-based
+    const pad = (n: number) => String(n).padStart(2, "0");
+
+    const ms = `${y}-${pad(mo + 1)}-01`;
+    const fyY = mo >= 3 ? y : y - 1;
+    const fys = `${fyY}-04-01`;
+
     const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
     const months: { key: string; label: string }[] = [];
-    const cur = new Date(fyY, 3, 1);
-    while (cur <= now) {
-      months.push({ key: cur.toISOString().slice(0, 7), label: `${MONTH_NAMES[cur.getMonth()]} ${cur.getFullYear()}` });
-      cur.setMonth(cur.getMonth() + 1);
+    let cy = fyY, cm = 3; // start at April (index 3)
+    while (cy < y || (cy === y && cm <= mo)) {
+      months.push({ key: `${cy}-${pad(cm + 1)}`, label: `${MONTH_NAMES[cm]} ${cy}` });
+      cm++;
+      if (cm > 11) { cm = 0; cy++; }
     }
     return { monthStart: ms, fyStart: fys, fyMonths: months };
   }, []);
@@ -138,7 +145,9 @@ const ServiceDashboard = () => {
       if (cancelled || !data) return;
 
       // Cap future completed_at to date_received so no revenue leaks into future months
-      const today = new Date().toISOString().slice(0, 10);
+      const nd = new Date();
+      const pad2 = (n: number) => String(n).padStart(2, "0");
+      const today = `${nd.getFullYear()}-${pad2(nd.getMonth() + 1)}-${pad2(nd.getDate())}`;
       const currentMonthKey = monthStart.slice(0, 7);
       let fy = 0;
       const byMonth: Record<string, number> = {};
