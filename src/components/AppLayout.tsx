@@ -57,6 +57,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/sales", label: "Sales", icon: <Users className="w-5 h-5" />, badge: overdueCount || undefined },
       { to: "/leads/board", label: "Leads Board", icon: <KanbanSquare className="w-5 h-5" /> },
       ELITE_NAV,
+      INVENTORY_NAV,
       { to: "/service", label: "Service", icon: <Wrench className="w-5 h-5" />, badge: pendingJobCount || undefined },
       { to: "/accounts/approvals", label: "Accounts Approvals", icon: <ShieldCheck className="w-5 h-5" /> },
       { to: "/accounts/purchases", label: "Company Purchases", icon: <Receipt className="w-5 h-5" /> },
