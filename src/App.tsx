@@ -43,6 +43,7 @@ const ProfileEditScreen = lazy(() => import("@/pages/ProfileEditScreen"));
 const StaffDirectory = lazy(() => import("@/pages/StaffDirectory"));
 const MonthlyLeaderboard = lazy(() => import("@/pages/MonthlyLeaderboard"));
 const EliteCustomers = lazy(() => import("@/pages/EliteCustomers"));
+const InventoryManager = lazy(() => import("@/pages/InventoryManager"));
 import KioskModeWrapper from "@/components/kiosk/KioskModeWrapper";
 import ProfileGate from "@/components/staff/ProfileGate";
 
