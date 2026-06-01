@@ -49,6 +49,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
   const myUnread = notifications.filter(n => (n.user_id === user.id || user.role === "admin") && !n.read).length;
 
   const ELITE_NAV: NavItem = { to: "/elite-customers", label: "Elite Customers", icon: <Star className="w-5 h-5 text-amber-500" /> };
+  const INVENTORY_NAV: NavItem = { to: "/inventory", label: "Inventory", icon: <Boxes className="w-5 h-5" /> };
 
   const NAV_ITEMS: Record<UserRole, NavItem[]> = {
     admin: [
