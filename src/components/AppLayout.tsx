@@ -5,7 +5,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import {
   Building2, LayoutDashboard, Users, Wrench, Navigation, MapPin,
   LogOut, Menu, X, ChevronRight, CalendarDays, BarChart3,
-  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot, ShieldCheck, MessageSquare, TrendingUp, ShoppingBag, MessagesSquare, Sparkles, Clock, Star, Receipt, Trophy, UserCircle, BookUser
+  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot, ShieldCheck, MessageSquare, TrendingUp, ShoppingBag, MessagesSquare, Sparkles, Clock, Star, Receipt, Trophy, UserCircle, BookUser, Boxes
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useStaffProfile } from "@/hooks/useStaffProfile";
@@ -49,6 +49,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
   const myUnread = notifications.filter(n => (n.user_id === user.id || user.role === "admin") && !n.read).length;
 
   const ELITE_NAV: NavItem = { to: "/elite-customers", label: "Elite Customers", icon: <Star className="w-5 h-5 text-amber-500" /> };
+  const INVENTORY_NAV: NavItem = { to: "/inventory", label: "Inventory", icon: <Boxes className="w-5 h-5" /> };
 
   const NAV_ITEMS: Record<UserRole, NavItem[]> = {
     admin: [
@@ -56,6 +57,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/sales", label: "Sales", icon: <Users className="w-5 h-5" />, badge: overdueCount || undefined },
       { to: "/leads/board", label: "Leads Board", icon: <KanbanSquare className="w-5 h-5" /> },
       ELITE_NAV,
+      INVENTORY_NAV,
       { to: "/service", label: "Service", icon: <Wrench className="w-5 h-5" />, badge: pendingJobCount || undefined },
       { to: "/accounts/approvals", label: "Accounts Approvals", icon: <ShieldCheck className="w-5 h-5" /> },
       { to: "/accounts/purchases", label: "Company Purchases", icon: <Receipt className="w-5 h-5" /> },
@@ -76,6 +78,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/leads", label: "My Leads", icon: <ClipboardList className="w-5 h-5" /> },
       { to: "/leads/board", label: "Leads Board", icon: <KanbanSquare className="w-5 h-5" /> },
       ELITE_NAV,
+      INVENTORY_NAV,
       { to: "/pipeline", label: "Pipeline", icon: <BarChart3 className="w-5 h-5" /> },
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
       { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" />, badge: chatUnread || undefined },

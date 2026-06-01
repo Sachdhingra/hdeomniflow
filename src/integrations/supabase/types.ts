@@ -650,6 +650,35 @@ export type Database = {
         }
         Relationships: []
       }
+      display_inventory: {
+        Row: {
+          id: string
+          last_updated: string
+          product_id: string
+          quantity_on_display: number
+        }
+        Insert: {
+          id?: string
+          last_updated?: string
+          product_id: string
+          quantity_on_display?: number
+        }
+        Update: {
+          id?: string
+          last_updated?: string
+          product_id?: string
+          quantity_on_display?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "display_inventory_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: true
+            referencedRelation: "inventory_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       elite_customers: {
         Row: {
           card_expiry_date: string | null
@@ -782,6 +811,83 @@ export type Database = {
           started_at?: string
           status?: string
           urls_discovered?: number
+        }
+        Relationships: []
+      }
+      inventory_audit_log: {
+        Row: {
+          action: string
+          created_at: string
+          created_by: string | null
+          id: string
+          lead_id: string | null
+          product_id: string
+          quantity_change: number
+          service_job_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          lead_id?: string | null
+          product_id: string
+          quantity_change: number
+          service_job_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          lead_id?: string | null
+          product_id?: string
+          quantity_change?: number
+          service_job_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_audit_log_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_products: {
+        Row: {
+          category: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          name: string
+          photo_url: string | null
+          reorder_threshold: number
+          updated_at: string
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          photo_url?: string | null
+          reorder_threshold?: number
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          photo_url?: string | null
+          reorder_threshold?: number
+          updated_at?: string
         }
         Relationships: []
       }
@@ -1478,6 +1584,35 @@ export type Database = {
         }
         Relationships: []
       }
+      pending_display: {
+        Row: {
+          date_marked: string
+          id: string
+          product_id: string
+          quantity_pending: number
+        }
+        Insert: {
+          date_marked?: string
+          id?: string
+          product_id: string
+          quantity_pending?: number
+        }
+        Update: {
+          date_marked?: string
+          id?: string
+          product_id?: string
+          quantity_pending?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pending_display_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: true
+            referencedRelation: "inventory_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pending_thank_you_messages: {
         Row: {
           created_at: string
@@ -1798,6 +1933,7 @@ export type Database = {
           deleted_by: string | null
           description: string
           id: string
+          inventory_product_id: string | null
           is_foc: boolean
           location_lat: number | null
           location_lng: number | null
@@ -1838,6 +1974,7 @@ export type Database = {
           deleted_by?: string | null
           description?: string
           id?: string
+          inventory_product_id?: string | null
           is_foc?: boolean
           location_lat?: number | null
           location_lng?: number | null
@@ -1878,6 +2015,7 @@ export type Database = {
           deleted_by?: string | null
           description?: string
           id?: string
+          inventory_product_id?: string | null
           is_foc?: boolean
           location_lat?: number | null
           location_lng?: number | null
@@ -1893,6 +2031,13 @@ export type Database = {
           value?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "service_jobs_inventory_product_id_fkey"
+            columns: ["inventory_product_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_products"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "service_jobs_source_lead_id_fkey"
             columns: ["source_lead_id"]
