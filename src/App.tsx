@@ -171,6 +171,7 @@ const AppRoutes = () => {
             <Route path="/directory" element={<StaffDirectory />} />
             <Route path="/dashboard/leaderboard" element={<MonthlyLeaderboard />} />
             <Route path="/elite-customers" element={<EliteCustomers />} />
+            <Route path="/inventory" element={<InventoryManager />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
