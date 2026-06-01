@@ -5,7 +5,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import {
   Building2, LayoutDashboard, Users, Wrench, Navigation, MapPin,
   LogOut, Menu, X, ChevronRight, CalendarDays, BarChart3,
-  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot, ShieldCheck, MessageSquare, TrendingUp, ShoppingBag, MessagesSquare, Sparkles, Clock, Star, Receipt, Trophy, UserCircle, BookUser
+  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot, ShieldCheck, MessageSquare, TrendingUp, ShoppingBag, MessagesSquare, Sparkles, Clock, Star, Receipt, Trophy, UserCircle, BookUser, Boxes
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useStaffProfile } from "@/hooks/useStaffProfile";
