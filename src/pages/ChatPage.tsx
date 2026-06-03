@@ -146,6 +146,62 @@ const ChatPage = () => {
     };
   }, [activeId]);
 
+  // Load + subscribe to read receipts for the active channel
+  useEffect(() => {
+    if (!activeId || !user) return;
+    let cancel = false;
+    (async () => {
+      const { data } = await supabase
+        .from("message_reads")
+        .select("message_id, user_id")
+        .eq("channel_id", activeId);
+      if (cancel) return;
+      const map: Record<string, Set<string>> = {};
+      (data ?? []).forEach(r => {
+        if (!map[r.message_id]) map[r.message_id] = new Set();
+        map[r.message_id].add(r.user_id);
+      });
+      setReads(map);
+    })();
+
+    const ch = supabase
+      .channel(`reads-${activeId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "message_reads", filter: `channel_id=eq.${activeId}` },
+        (payload) => {
+          const r = payload.new as { message_id: string; user_id: string };
+          setReads(prev => {
+            const next = { ...prev };
+            const set = new Set(next[r.message_id] ?? []);
+            set.add(r.user_id);
+            next[r.message_id] = set;
+            return next;
+          });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      cancel = true;
+      supabase.removeChannel(ch);
+    };
+  }, [activeId, user?.id]);
+
+  // Mark visible messages from others as read (debounced via messages change)
+  useEffect(() => {
+    if (!activeId || !user || messages.length === 0) return;
+    const unread = messages
+      .filter(m => m.sender_id !== user.id && !(reads[m.id]?.has(user.id)))
+      .map(m => ({ message_id: m.id, user_id: user.id, channel_id: activeId }));
+    if (unread.length === 0) return;
+    supabase
+      .from("message_reads")
+      .upsert(unread, { onConflict: "message_id,user_id", ignoreDuplicates: true })
+      .then(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, activeId, user?.id]);
+
   // Sync active channel with ChatUnreadContext so ChatNotifier doesn't double-count
   useEffect(() => {
     setActiveChannel(activeId);
