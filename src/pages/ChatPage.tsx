@@ -564,7 +564,7 @@ const ChatPage = () => {
                   </div>
                   {(m.body || editingId === m.id) && (
                     <div
-                      className={`rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words ${
+                      className={`rounded-lg px-3 py-2 text-sm break-words ${
                         mine ? "bg-primary text-primary-foreground" : "bg-muted"
                       }`}
                     >
@@ -581,7 +581,12 @@ const ChatPage = () => {
                           </div>
                         </div>
                       ) : (
-                        m.body
+                        <MessageBody
+                          body={m.body}
+                          mine={mine}
+                          profiles={allProfiles}
+                          currentUserId={user!.id}
+                        />
                       )}
                     </div>
                   )}
@@ -604,35 +609,46 @@ const ChatPage = () => {
                       ))}
                     </div>
                   )}
+                  <MessageReactions
+                    messageId={m.id}
+                    channelId={activeChannel?.id ?? ""}
+                    currentUserId={user!.id}
+                  />
                   <div className="flex gap-2 mt-0.5">
                     <button onClick={() => togglePin(m)} className="text-[11px] text-muted-foreground hover:text-foreground">
                       {m.pinned ? "Unpin" : "Pin"}
                     </button>
-                    {mine && editingId !== m.id && (
-                      <>
-                        <button
-                          onClick={() => {
-                            setEditingId(m.id);
-                            setEditBody(m.body);
-                          }}
-                          className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-                        >
-                          <Edit2 className="w-3 h-3" /> Edit
-                        </button>
-                        <button
-                          onClick={() => deleteMsg(m.id)}
-                          className="text-[11px] text-destructive/80 hover:text-destructive inline-flex items-center gap-1"
-                        >
-                          <Trash2 className="w-3 h-3" /> Delete
-                        </button>
-                      </>
-                    )}
+                    {mine && editingId !== m.id && (() => {
+                      const editable = Date.now() - new Date(m.created_at).getTime() < EDIT_WINDOW_MS;
+                      return (
+                        <>
+                          {editable && (
+                            <button
+                              onClick={() => {
+                                setEditingId(m.id);
+                                setEditBody(m.body);
+                              }}
+                              className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                            >
+                              <Edit2 className="w-3 h-3" /> Edit
+                            </button>
+                          )}
+                          <button
+                            onClick={() => deleteMsg(m.id)}
+                            className="text-[11px] text-destructive/80 hover:text-destructive inline-flex items-center gap-1"
+                          >
+                            <Trash2 className="w-3 h-3" /> Delete
+                          </button>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
             );
           })}
         </div>
+
 
         <footer className="p-3 border-t border-border flex flex-col gap-2">
           {pendingFiles.length > 0 && (
