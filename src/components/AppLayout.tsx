@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import NotificationPanel from "@/components/NotificationPanel";
 import NetworkStatusBadge from "@/components/NetworkStatusBadge";
 import ChatNotifier from "@/components/ChatNotifier";
+import ChatArrivalFlash from "@/components/ChatArrivalFlash";
 import LeadNotifier from "@/components/LeadNotifier";
 import AttendanceClockButton from "@/components/AttendanceClockButton";
 import DiscountCalculator from "@/components/DiscountCalculator";
@@ -129,6 +130,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
     <div className="min-h-screen flex bg-background">
       <ChatNotifier />
       <LeadNotifier />
+      <ChatArrivalFlash />
       {sidebarOpen && (
         <div className="fixed inset-0 bg-foreground/20 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
@@ -162,7 +164,13 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
               {item.icon}
               {item.label}
               {item.badge && item.badge > 0 && (
-                <Badge className="ml-auto bg-destructive text-destructive-foreground text-xs px-1.5 py-0">{item.badge}</Badge>
+                <Badge
+                  className={`ml-auto bg-destructive text-destructive-foreground text-xs px-2 py-0.5 ${
+                    item.label === "Chat" ? "animate-pulse shadow-lg shadow-destructive/50" : ""
+                  }`}
+                >
+                  {item.badge}
+                </Badge>
               )}
             </NavLink>
           ))}
