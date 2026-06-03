@@ -650,6 +650,16 @@ const ChatPage = () => {
         </div>
 
 
+        {Object.keys(typing).length > 0 && (
+          <div className="px-4 py-1 text-xs text-muted-foreground italic border-t border-border bg-muted/30">
+            {Object.keys(typing)
+              .map(uid => allProfiles.find(p => p.id === uid)?.name)
+              .filter(Boolean)
+              .slice(0, 3)
+              .join(", ")}{" "}
+            typing…
+          </div>
+        )}
         <footer className="p-3 border-t border-border flex flex-col gap-2">
           {pendingFiles.length > 0 && (
             <div className="flex flex-wrap gap-2">
