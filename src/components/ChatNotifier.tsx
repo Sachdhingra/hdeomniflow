@@ -106,6 +106,7 @@ const ChatNotifier = () => {
           const preview = String(m.body ?? "").slice(0, 120) || "(attachment)";
 
           playPing();
+          emitChatArrival({ sender: name, role: sender?.role, preview });
 
           toast.message(`💬 ${name}${role}`, {
             description: preview,
