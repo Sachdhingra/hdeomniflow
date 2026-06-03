@@ -244,6 +244,14 @@ const FieldAgentDashboard = () => {
                   {job.travel_started_at && <p>🚗 On Route: {new Date(job.travel_started_at).toLocaleTimeString("en-IN")}</p>}
                   {job.agent_reached_at && <p className="text-success">📍 On Site: {new Date(job.agent_reached_at).toLocaleTimeString("en-IN")}</p>}
                   {job.completed_at && <p className="text-success">🎉 Completed: {new Date(job.completed_at).toLocaleTimeString("en-IN")}</p>}
+                  {!job.agent_reached_at && distances[job.id] != null && ["on_route", "in_progress", "assigned"].includes(job.status) && (
+                    <p className="text-primary font-medium">
+                      📡 {distances[job.id] < 1000
+                        ? `${Math.round(distances[job.id])} m away`
+                        : `${(distances[job.id] / 1000).toFixed(2)} km away`}
+                      {distances[job.id] <= AUTO_REACH_RADIUS_M && " — auto-marking…"}
+                    </p>
+                  )}
                 </div>
 
                 {job.photos && job.photos.length > 0 && job.photos[0] !== "" && (
