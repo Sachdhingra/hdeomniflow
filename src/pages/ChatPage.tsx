@@ -376,7 +376,9 @@ const ChatPage = () => {
                   activeId === c.id ? "bg-accent text-accent-foreground" : "hover:bg-muted"
                 }`}
               >
-                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                <PresenceDot
+                  userId={(members[c.id] ?? []).find(id => id !== user!.id) ?? ""}
+                />
                 <span className="truncate flex-1">{dmCounterpartName(c.id)}</span>
                 {channelUnread[c.id] > 0 && (
                   <Badge className="h-4 min-w-4 px-1 text-[10px] bg-destructive text-destructive-foreground shrink-0">
