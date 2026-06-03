@@ -486,6 +486,19 @@ const ChatPage = () => {
                     <span>· {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                     {m.edited_at && <span className="italic">(edited)</span>}
                     {m.pinned && <Pin className="w-3 h-3 text-amber-500" />}
+                    {mine && (() => {
+                      const readers = reads[m.id];
+                      const recipientIds = (members[activeChannel?.id ?? ""] ?? []).filter(uid => uid !== user!.id);
+                      const readCount = recipientIds.filter(uid => readers?.has(uid)).length;
+                      if (recipientIds.length === 0) return null;
+                      if (readCount === 0) {
+                        return <Check className="w-3 h-3" aria-label="Sent" />;
+                      }
+                      if (readCount < recipientIds.length) {
+                        return <CheckCheck className="w-3 h-3" aria-label="Delivered" />;
+                      }
+                      return <CheckCheck className="w-3 h-3 text-sky-500" aria-label="Read by all" />;
+                    })()}
                   </div>
                   {(m.body || editingId === m.id) && (
                     <div
