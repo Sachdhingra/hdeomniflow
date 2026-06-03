@@ -1471,6 +1471,38 @@ export type Database = {
         }
         Relationships: []
       }
+      message_reactions: {
+        Row: {
+          created_at: string
+          emoji: string
+          id: string
+          message_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          emoji: string
+          id?: string
+          message_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          emoji?: string
+          id?: string
+          message_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_reactions_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "chat_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       message_reads: {
         Row: {
           channel_id: string
@@ -2331,6 +2363,27 @@ export type Database = {
         Update: {
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_status: {
+        Row: {
+          away_message: string | null
+          is_away: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          away_message?: string | null
+          is_away?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          away_message?: string | null
+          is_away?: boolean
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
