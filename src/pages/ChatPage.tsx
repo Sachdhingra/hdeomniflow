@@ -9,6 +9,9 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 import { useChatUnread } from "@/contexts/ChatUnreadContext";
 import PresenceDot from "@/components/chat/PresenceDot";
+import MessageReactions from "@/components/chat/MessageReactions";
+import MessageBody from "@/components/chat/MessageBody";
+import AwayStatusEditor from "@/components/chat/AwayStatusEditor";
 
 interface Channel {
   id: string;
