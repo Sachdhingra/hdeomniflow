@@ -4,10 +4,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Hash, Send, Plus, Search, Trash2, Edit2, Pin, ArrowLeft, Paperclip, FileText, X, Download, Loader2 } from "lucide-react";
+import { Hash, Send, Plus, Search, Trash2, Edit2, Pin, ArrowLeft, Paperclip, FileText, X, Download, Loader2, Check, CheckCheck } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 import { useChatUnread } from "@/contexts/ChatUnreadContext";
+import PresenceDot from "@/components/chat/PresenceDot";
 
 interface Channel {
   id: string;
@@ -63,6 +64,8 @@ const ChatPage = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
+  // message_id -> set of user_ids who have read it (excluding the sender)
+  const [reads, setReads] = useState<Record<string, Set<string>>>({});
 
   // Bootstrap: ensure default channels for this user, then load
   useEffect(() => {
@@ -142,6 +145,62 @@ const ChatPage = () => {
       supabase.removeChannel(channel);
     };
   }, [activeId]);
+
+  // Load + subscribe to read receipts for the active channel
+  useEffect(() => {
+    if (!activeId || !user) return;
+    let cancel = false;
+    (async () => {
+      const { data } = await supabase
+        .from("message_reads")
+        .select("message_id, user_id")
+        .eq("channel_id", activeId);
+      if (cancel) return;
+      const map: Record<string, Set<string>> = {};
+      (data ?? []).forEach(r => {
+        if (!map[r.message_id]) map[r.message_id] = new Set();
+        map[r.message_id].add(r.user_id);
+      });
+      setReads(map);
+    })();
+
+    const ch = supabase
+      .channel(`reads-${activeId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "message_reads", filter: `channel_id=eq.${activeId}` },
+        (payload) => {
+          const r = payload.new as { message_id: string; user_id: string };
+          setReads(prev => {
+            const next = { ...prev };
+            const set = new Set(next[r.message_id] ?? []);
+            set.add(r.user_id);
+            next[r.message_id] = set;
+            return next;
+          });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      cancel = true;
+      supabase.removeChannel(ch);
+    };
+  }, [activeId, user?.id]);
+
+  // Mark visible messages from others as read (debounced via messages change)
+  useEffect(() => {
+    if (!activeId || !user || messages.length === 0) return;
+    const unread = messages
+      .filter(m => m.sender_id !== user.id && !(reads[m.id]?.has(user.id)))
+      .map(m => ({ message_id: m.id, user_id: user.id, channel_id: activeId }));
+    if (unread.length === 0) return;
+    supabase
+      .from("message_reads")
+      .upsert(unread, { onConflict: "message_id,user_id", ignoreDuplicates: true })
+      .then(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, activeId, user?.id]);
 
   // Sync active channel with ChatUnreadContext so ChatNotifier doesn't double-count
   useEffect(() => {
@@ -317,7 +376,9 @@ const ChatPage = () => {
                   activeId === c.id ? "bg-accent text-accent-foreground" : "hover:bg-muted"
                 }`}
               >
-                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                <PresenceDot
+                  userId={(members[c.id] ?? []).find(id => id !== user!.id) ?? ""}
+                />
                 <span className="truncate flex-1">{dmCounterpartName(c.id)}</span>
                 {channelUnread[c.id] > 0 && (
                   <Badge className="h-4 min-w-4 px-1 text-[10px] bg-destructive text-destructive-foreground shrink-0">
@@ -337,7 +398,10 @@ const ChatPage = () => {
                   onClick={() => startDM(p.id)}
                   className="w-full text-left flex items-center justify-between px-2 py-1.5 rounded text-sm hover:bg-muted"
                 >
-                  <span className="truncate">{p.name}</span>
+                  <span className="flex items-center gap-2 truncate">
+                    <PresenceDot userId={p.id} />
+                    <span className="truncate">{p.name}</span>
+                  </span>
                   <Badge variant="outline" className="text-[10px]">{p.role}</Badge>
                 </button>
               ))}
@@ -355,7 +419,9 @@ const ChatPage = () => {
             </Button>
           )}
           {activeChannel?.kind === "dm" ? (
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <PresenceDot
+              userId={(members[activeChannel.id] ?? []).find(id => id !== user!.id) ?? ""}
+            />
           ) : (
             <Hash className="w-4 h-4 text-muted-foreground" />
           )}
@@ -369,6 +435,35 @@ const ChatPage = () => {
             {(members[activeChannel?.id ?? ""] ?? []).length} members
           </span>
         </header>
+
+        {messages.some(m => m.pinned) && (
+          <div className="px-3 py-2 border-b border-border bg-amber-500/5 flex items-start gap-2 max-h-28 overflow-y-auto">
+            <Pin className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
+            <div className="flex-1 space-y-1">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+                Pinned ({messages.filter(m => m.pinned).length})
+              </div>
+              {messages
+                .filter(m => m.pinned)
+                .slice(0, 5)
+                .map(m => {
+                  const s = allProfiles.find(p => p.id === m.sender_id);
+                  return (
+                    <div key={m.id} className="text-xs flex items-center gap-2">
+                      <span className="font-medium shrink-0">{s?.name ?? "Unknown"}:</span>
+                      <span className="truncate flex-1">{m.body || "(attachment)"}</span>
+                      <button
+                        onClick={() => togglePin(m)}
+                        className="text-[10px] text-muted-foreground hover:text-foreground shrink-0"
+                      >
+                        Unpin
+                      </button>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
           {filteredMessages.length === 0 && (
@@ -391,6 +486,19 @@ const ChatPage = () => {
                     <span>· {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                     {m.edited_at && <span className="italic">(edited)</span>}
                     {m.pinned && <Pin className="w-3 h-3 text-amber-500" />}
+                    {mine && (() => {
+                      const readers = reads[m.id];
+                      const recipientIds = (members[activeChannel?.id ?? ""] ?? []).filter(uid => uid !== user!.id);
+                      const readCount = recipientIds.filter(uid => readers?.has(uid)).length;
+                      if (recipientIds.length === 0) return null;
+                      if (readCount === 0) {
+                        return <Check className="w-3 h-3" aria-label="Sent" />;
+                      }
+                      if (readCount < recipientIds.length) {
+                        return <CheckCheck className="w-3 h-3" aria-label="Delivered" />;
+                      }
+                      return <CheckCheck className="w-3 h-3 text-sky-500" aria-label="Read by all" />;
+                    })()}
                   </div>
                   {(m.body || editingId === m.id) && (
                     <div

@@ -1471,6 +1471,45 @@ export type Database = {
         }
         Relationships: []
       }
+      message_reads: {
+        Row: {
+          channel_id: string
+          id: string
+          message_id: string
+          read_at: string
+          user_id: string
+        }
+        Insert: {
+          channel_id: string
+          id?: string
+          message_id: string
+          read_at?: string
+          user_id: string
+        }
+        Update: {
+          channel_id?: string
+          id?: string
+          message_id?: string
+          read_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_reads_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "chat_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_reads_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "chat_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       message_template_variants: {
         Row: {
           body: string
@@ -1653,6 +1692,45 @@ export type Database = {
             columns: ["feedback_id"]
             isOneToOne: false
             referencedRelation: "customer_feedback"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pinned_messages: {
+        Row: {
+          channel_id: string
+          id: string
+          message_id: string
+          pinned_at: string
+          pinned_by: string
+        }
+        Insert: {
+          channel_id: string
+          id?: string
+          message_id: string
+          pinned_at?: string
+          pinned_by: string
+        }
+        Update: {
+          channel_id?: string
+          id?: string
+          message_id?: string
+          pinned_at?: string
+          pinned_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pinned_messages_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "chat_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pinned_messages_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: true
+            referencedRelation: "chat_messages"
             referencedColumns: ["id"]
           },
         ]
@@ -2215,6 +2293,27 @@ export type Database = {
           is_active?: boolean
           name?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      user_presence: {
+        Row: {
+          last_activity: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          last_activity?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          last_activity?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }

@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { DataProvider } from "@/contexts/DataContext";
 import { ChatUnreadProvider } from "@/contexts/ChatUnreadContext";
+import { PresenceProvider } from "@/contexts/PresenceContext";
 import AppLayout from "@/components/AppLayout";
 import Login from "@/pages/Login";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
@@ -204,8 +205,10 @@ const App = () => (
                 <AuthProvider>
                   <DataProvider>
                     <ChatUnreadProvider>
-                      <AppRoutes />
-                      <PWAInstallPrompt />
+                      <PresenceProvider>
+                        <AppRoutes />
+                        <PWAInstallPrompt />
+                      </PresenceProvider>
                     </ChatUnreadProvider>
                   </DataProvider>
                 </AuthProvider>
