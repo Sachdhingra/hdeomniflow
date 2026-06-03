@@ -205,8 +205,10 @@ const App = () => (
                 <AuthProvider>
                   <DataProvider>
                     <ChatUnreadProvider>
-                      <AppRoutes />
-                      <PWAInstallPrompt />
+                      <PresenceProvider>
+                        <AppRoutes />
+                        <PWAInstallPrompt />
+                      </PresenceProvider>
                     </ChatUnreadProvider>
                   </DataProvider>
                 </AuthProvider>
