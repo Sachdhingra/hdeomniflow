@@ -64,6 +64,8 @@ const ChatPage = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
+  // message_id -> set of user_ids who have read it (excluding the sender)
+  const [reads, setReads] = useState<Record<string, Set<string>>>({});
 
   // Bootstrap: ensure default channels for this user, then load
   useEffect(() => {
