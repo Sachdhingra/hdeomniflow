@@ -389,6 +389,10 @@ const ChatPage = () => {
     <div className="h-[calc(100vh-7rem)] flex gap-2 sm:gap-3">
       {/* Sidebar */}
       <aside className={`${isMobile ? (activeId ? "hidden" : "flex w-full") : "flex w-72"} bg-card border border-border rounded-lg flex-col overflow-hidden`}>
+        <div className="px-2 pt-2 pb-1 border-b border-border flex items-center justify-between">
+          <div className="text-xs font-semibold text-muted-foreground px-1">My status</div>
+          <AwayStatusEditor />
+        </div>
         <div className="p-3 border-b border-border">
           <div className="relative">
             <Search className="absolute left-2 top-2.5 w-4 h-4 text-muted-foreground" />
