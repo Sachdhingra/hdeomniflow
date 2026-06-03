@@ -348,7 +348,12 @@ const ChatPage = () => {
   };
 
   const deleteMsg = async (id: string) => {
-    await supabase.from("chat_messages").delete().eq("id", id);
+    const { error } = await supabase
+      .from("chat_messages")
+      .update({ deleted_at: new Date().toISOString(), body: "" })
+      .eq("id", id);
+    if (error) return toast.error(error.message);
+    setMessages(prev => prev.filter(m => m.id !== id));
   };
   const saveEdit = async () => {
     if (!editingId) return;
