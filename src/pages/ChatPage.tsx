@@ -419,7 +419,9 @@ const ChatPage = () => {
             </Button>
           )}
           {activeChannel?.kind === "dm" ? (
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <PresenceDot
+              userId={(members[activeChannel.id] ?? []).find(id => id !== user!.id) ?? ""}
+            />
           ) : (
             <Hash className="w-4 h-4 text-muted-foreground" />
           )}
