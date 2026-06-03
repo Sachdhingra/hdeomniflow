@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import NotificationPanel from "@/components/NotificationPanel";
 import NetworkStatusBadge from "@/components/NetworkStatusBadge";
 import ChatNotifier from "@/components/ChatNotifier";
+import ChatArrivalFlash from "@/components/ChatArrivalFlash";
 import LeadNotifier from "@/components/LeadNotifier";
 import AttendanceClockButton from "@/components/AttendanceClockButton";
 import DiscountCalculator from "@/components/DiscountCalculator";
