@@ -164,7 +164,13 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
               {item.icon}
               {item.label}
               {item.badge && item.badge > 0 && (
-                <Badge className="ml-auto bg-destructive text-destructive-foreground text-xs px-1.5 py-0">{item.badge}</Badge>
+                <Badge
+                  className={`ml-auto bg-destructive text-destructive-foreground text-xs px-2 py-0.5 ${
+                    item.label === "Chat" ? "animate-pulse shadow-lg shadow-destructive/50" : ""
+                  }`}
+                >
+                  {item.badge}
+                </Badge>
               )}
             </NavLink>
           ))}
