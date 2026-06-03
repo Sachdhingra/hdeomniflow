@@ -9,6 +9,9 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 import { useChatUnread } from "@/contexts/ChatUnreadContext";
 import PresenceDot from "@/components/chat/PresenceDot";
+import MessageReactions from "@/components/chat/MessageReactions";
+import MessageBody from "@/components/chat/MessageBody";
+import AwayStatusEditor from "@/components/chat/AwayStatusEditor";
 
 interface Channel {
   id: string;
@@ -40,6 +43,8 @@ const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
 const ALLOWED_EXT = ["pdf","doc","docx","xlsx","xls","txt","pptx","ppt","csv","jpg","jpeg","png","webp"];
 const MANAGEMENT_ROLES = ["admin","sales","accounts","service_head"];
 
+const EDIT_WINDOW_MS = 15 * 60 * 1000;
+
 const formatBytes = (b: number) => {
   if (b < 1024) return `${b} B`;
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
@@ -66,6 +71,13 @@ const ChatPage = () => {
   const [uploading, setUploading] = useState(false);
   // message_id -> set of user_ids who have read it (excluding the sender)
   const [reads, setReads] = useState<Record<string, Set<string>>>({});
+  // typing users (uid -> last typing ts) for active channel
+  const [typing, setTyping] = useState<Record<string, number>>({});
+  const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const lastTypingSentRef = useRef(0);
+  // @mention autocomplete
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Bootstrap: ensure default channels for this user, then load
   useEffect(() => {
@@ -129,6 +141,7 @@ const ChatPage = () => {
             }
             if (payload.eventType === "UPDATE") {
               const n = payload.new as unknown as Message;
+              if (n.deleted_at) return prev.filter(m => m.id !== n.id);
               return prev.map(m => (m.id === n.id ? n : m));
             }
             if (payload.eventType === "DELETE") {
@@ -207,6 +220,52 @@ const ChatPage = () => {
     setActiveChannel(activeId);
     return () => setActiveChannel(null);
   }, [activeId, setActiveChannel]);
+
+  // Typing indicator: broadcast channel per active conversation
+  useEffect(() => {
+    if (!activeId || !user) return;
+    setTyping({});
+    const ch = supabase.channel(`typing-${activeId}`, {
+      config: { broadcast: { self: false } },
+    });
+    ch.on("broadcast", { event: "typing" }, (payload) => {
+      const uid = (payload.payload as { user_id?: string })?.user_id;
+      if (!uid || uid === user.id) return;
+      setTyping(prev => ({ ...prev, [uid]: Date.now() }));
+    });
+    ch.subscribe();
+    typingChannelRef.current = ch;
+
+    const tick = setInterval(() => {
+      setTyping(prev => {
+        const now = Date.now();
+        const next: Record<string, number> = {};
+        let changed = false;
+        for (const [k, v] of Object.entries(prev)) {
+          if (now - v < 4000) next[k] = v;
+          else changed = true;
+        }
+        return changed ? next : prev;
+      });
+    }, 1500);
+
+    return () => {
+      clearInterval(tick);
+      supabase.removeChannel(ch);
+      typingChannelRef.current = null;
+    };
+  }, [activeId, user?.id]);
+
+  const sendTyping = () => {
+    const now = Date.now();
+    if (now - lastTypingSentRef.current < 1500) return;
+    lastTypingSentRef.current = now;
+    typingChannelRef.current?.send({
+      type: "broadcast",
+      event: "typing",
+      payload: { user_id: user?.id },
+    });
+  };
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -290,7 +349,12 @@ const ChatPage = () => {
   };
 
   const deleteMsg = async (id: string) => {
-    await supabase.from("chat_messages").delete().eq("id", id);
+    const { error } = await supabase
+      .from("chat_messages")
+      .update({ deleted_at: new Date().toISOString(), body: "" })
+      .eq("id", id);
+    if (error) return toast.error(error.message);
+    setMessages(prev => prev.filter(m => m.id !== id));
   };
   const saveEdit = async () => {
     if (!editingId) return;
@@ -331,6 +395,10 @@ const ChatPage = () => {
     <div className="h-[calc(100vh-7rem)] flex gap-2 sm:gap-3">
       {/* Sidebar */}
       <aside className={`${isMobile ? (activeId ? "hidden" : "flex w-full") : "flex w-72"} bg-card border border-border rounded-lg flex-col overflow-hidden`}>
+        <div className="px-2 pt-2 pb-1 border-b border-border flex items-center justify-between">
+          <div className="text-xs font-semibold text-muted-foreground px-1">My status</div>
+          <AwayStatusEditor />
+        </div>
         <div className="p-3 border-b border-border">
           <div className="relative">
             <Search className="absolute left-2 top-2.5 w-4 h-4 text-muted-foreground" />
@@ -502,7 +570,7 @@ const ChatPage = () => {
                   </div>
                   {(m.body || editingId === m.id) && (
                     <div
-                      className={`rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words ${
+                      className={`rounded-lg px-3 py-2 text-sm break-words ${
                         mine ? "bg-primary text-primary-foreground" : "bg-muted"
                       }`}
                     >
@@ -519,7 +587,12 @@ const ChatPage = () => {
                           </div>
                         </div>
                       ) : (
-                        m.body
+                        <MessageBody
+                          body={m.body}
+                          mine={mine}
+                          profiles={allProfiles}
+                          currentUserId={user!.id}
+                        />
                       )}
                     </div>
                   )}
@@ -542,29 +615,39 @@ const ChatPage = () => {
                       ))}
                     </div>
                   )}
+                  <MessageReactions
+                    messageId={m.id}
+                    channelId={activeChannel?.id ?? ""}
+                    currentUserId={user!.id}
+                  />
                   <div className="flex gap-2 mt-0.5">
                     <button onClick={() => togglePin(m)} className="text-[11px] text-muted-foreground hover:text-foreground">
                       {m.pinned ? "Unpin" : "Pin"}
                     </button>
-                    {mine && editingId !== m.id && (
-                      <>
-                        <button
-                          onClick={() => {
-                            setEditingId(m.id);
-                            setEditBody(m.body);
-                          }}
-                          className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-                        >
-                          <Edit2 className="w-3 h-3" /> Edit
-                        </button>
-                        <button
-                          onClick={() => deleteMsg(m.id)}
-                          className="text-[11px] text-destructive/80 hover:text-destructive inline-flex items-center gap-1"
-                        >
-                          <Trash2 className="w-3 h-3" /> Delete
-                        </button>
-                      </>
-                    )}
+                    {mine && editingId !== m.id && (() => {
+                      const editable = Date.now() - new Date(m.created_at).getTime() < EDIT_WINDOW_MS;
+                      return (
+                        <>
+                          {editable && (
+                            <button
+                              onClick={() => {
+                                setEditingId(m.id);
+                                setEditBody(m.body);
+                              }}
+                              className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                            >
+                              <Edit2 className="w-3 h-3" /> Edit
+                            </button>
+                          )}
+                          <button
+                            onClick={() => deleteMsg(m.id)}
+                            className="text-[11px] text-destructive/80 hover:text-destructive inline-flex items-center gap-1"
+                          >
+                            <Trash2 className="w-3 h-3" /> Delete
+                          </button>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -572,6 +655,17 @@ const ChatPage = () => {
           })}
         </div>
 
+
+        {Object.keys(typing).length > 0 && (
+          <div className="px-4 py-1 text-xs text-muted-foreground italic border-t border-border bg-muted/30">
+            {Object.keys(typing)
+              .map(uid => allProfiles.find(p => p.id === uid)?.name)
+              .filter(Boolean)
+              .slice(0, 3)
+              .join(", ")}{" "}
+            typing…
+          </div>
+        )}
         <footer className="p-3 border-t border-border flex flex-col gap-2">
           {pendingFiles.length > 0 && (
             <div className="flex flex-wrap gap-2">
@@ -632,18 +726,61 @@ const ChatPage = () => {
                 </Button>
               </>
             )}
-            <Input
-              placeholder="Type a message…"
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              disabled={uploading}
-              onKeyDown={e => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  sendMessage();
-                }
-              }}
-            />
+            <div className="relative flex-1">
+              {mentionQuery !== null && (() => {
+                const q = mentionQuery.toLowerCase();
+                const memberIds = members[activeId ?? ""] ?? [];
+                const matches = allProfiles
+                  .filter(p => p.id !== user?.id && memberIds.includes(p.id))
+                  .filter(p => !q || p.name.toLowerCase().includes(q))
+                  .slice(0, 6);
+                if (matches.length === 0) return null;
+                return (
+                  <div className="absolute bottom-full mb-1 left-0 w-64 bg-popover border border-border rounded-md shadow-md overflow-hidden z-10">
+                    {matches.map(p => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          // Replace the trailing @query in input with @Name
+                          const updated = input.replace(/@(\S*)$/, `@${p.name} `);
+                          setInput(updated);
+                          setMentionQuery(null);
+                          inputRef.current?.focus();
+                        }}
+                        className="w-full text-left px-2.5 py-1.5 text-sm hover:bg-accent flex items-center gap-2"
+                      >
+                        <PresenceDot userId={p.id} />
+                        <span className="truncate">{p.name}</span>
+                        <Badge variant="outline" className="ml-auto text-[10px]">{p.role}</Badge>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
+              <Input
+                ref={inputRef}
+                placeholder="Type a message… (markdown supported, @mention members)"
+                value={input}
+                onChange={e => {
+                  const v = e.target.value;
+                  setInput(v);
+                  sendTyping();
+                  const m = /@(\S*)$/.exec(v);
+                  setMentionQuery(m ? m[1] : null);
+                }}
+                disabled={uploading}
+                onKeyDown={e => {
+                  if (e.key === "Escape") setMentionQuery(null);
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    setMentionQuery(null);
+                    sendMessage();
+                  }
+                }}
+              />
+            </div>
             <Button onClick={sendMessage} disabled={uploading || (!input.trim() && pendingFiles.length === 0)}>
               {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </Button>
