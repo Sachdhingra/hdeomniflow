@@ -71,6 +71,13 @@ const ChatPage = () => {
   const [uploading, setUploading] = useState(false);
   // message_id -> set of user_ids who have read it (excluding the sender)
   const [reads, setReads] = useState<Record<string, Set<string>>>({});
+  // typing users (uid -> last typing ts) for active channel
+  const [typing, setTyping] = useState<Record<string, number>>({});
+  const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const lastTypingSentRef = useRef(0);
+  // @mention autocomplete
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Bootstrap: ensure default channels for this user, then load
   useEffect(() => {
