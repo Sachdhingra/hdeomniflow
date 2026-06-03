@@ -43,6 +43,8 @@ const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
 const ALLOWED_EXT = ["pdf","doc","docx","xlsx","xls","txt","pptx","ppt","csv","jpg","jpeg","png","webp"];
 const MANAGEMENT_ROLES = ["admin","sales","accounts","service_head"];
 
+const EDIT_WINDOW_MS = 15 * 60 * 1000;
+
 const formatBytes = (b: number) => {
   if (b < 1024) return `${b} B`;
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
