@@ -141,6 +141,7 @@ const ChatPage = () => {
             }
             if (payload.eventType === "UPDATE") {
               const n = payload.new as unknown as Message;
+              if (n.deleted_at) return prev.filter(m => m.id !== n.id);
               return prev.map(m => (m.id === n.id ? n : m));
             }
             if (payload.eventType === "DELETE") {
