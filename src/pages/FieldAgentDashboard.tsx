@@ -16,7 +16,23 @@ import { toast } from "sonner";
 import LoadingError from "@/components/LoadingError";
 import { DashboardSkeleton } from "@/components/DashboardSkeleton";
 
-const AUTO_REACH_RADIUS_M = 100;
+const AUTO_REACH_RADIUS_M = 120;
+const MAX_ACCURACY_M = 150;
+
+async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(address)}`,
+      { headers: { "Accept-Language": "en" } }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!Array.isArray(data) || data.length === 0) return null;
+    return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+  } catch {
+    return null;
+  }
+}
 
 const FieldAgentDashboard = () => {
   const { user } = useAuth();
@@ -30,6 +46,11 @@ const FieldAgentDashboard = () => {
   const [completeDialog, setCompleteDialog] = useState<string | null>(null);
   const [remarks, setRemarks] = useState("");
   const [uploadedUrls, setUploadedUrls] = useState<string[]>([]);
+  // job.id -> distance in meters (live)
+  const [distances, setDistances] = useState<Record<string, number>>({});
+  // local geocode cache for jobs missing lat/lng
+  const [geocoded, setGeocoded] = useState<Record<string, { lat: number; lng: number }>>({});
+  const geocodingRef = useRef<Set<string>>(new Set());
 
   // Auto-start GPS as soon as the field agent dashboard mounts
   const { position: gps, error: gpsError } = useGeolocation(true);
@@ -51,17 +72,45 @@ const FieldAgentDashboard = () => {
     toast.success("Job accepted! On route. 🚗");
   };
 
+  // Geocode active jobs that are missing lat/lng so auto-reach works from address alone
+  useEffect(() => {
+    for (const job of myJobs) {
+      if (!["on_route", "in_progress", "assigned"].includes(job.status)) continue;
+      if (job.agent_reached_at || job.status === "completed") continue;
+      const lat = (job as any).location_lat;
+      const lng = (job as any).location_lng;
+      if (lat != null && lng != null) continue;
+      if (geocoded[job.id] || geocodingRef.current.has(job.id)) continue;
+      if (!job.address) continue;
+      geocodingRef.current.add(job.id);
+      geocodeAddress(job.address).then(coords => {
+        if (!coords) return;
+        setGeocoded(prev => ({ ...prev, [job.id]: coords }));
+        // Persist back to the job so other agents/dashboards benefit
+        updateServiceJob(job.id, {
+          location_lat: coords.lat,
+          location_lng: coords.lng,
+        } as any).catch(() => {});
+      });
+    }
+  }, [myJobs, geocoded, updateServiceJob]);
+
   // Auto-mark "reached" when within AUTO_REACH_RADIUS_M of a job's location
   useEffect(() => {
     if (!gps) return;
+    const nextDistances: Record<string, number> = {};
     for (const job of myJobs) {
+      if (!["on_route", "in_progress", "assigned", "on_site"].includes(job.status)) continue;
+      const jLat = (job as any).location_lat ?? geocoded[job.id]?.lat;
+      const jLng = (job as any).location_lng ?? geocoded[job.id]?.lng;
+      if (jLat == null || jLng == null) continue;
+      const d = distanceMeters(gps, { lat: Number(jLat), lng: Number(jLng) });
+      nextDistances[job.id] = d;
+
       if (autoReachedRef.current.has(job.id)) continue;
-      if (job.agent_reached_at || job.status === "completed") continue;
-      if (!["on_route", "in_progress", "assigned"].includes(job.status)) continue;
-      const lat = (job as any).location_lat;
-      const lng = (job as any).location_lng;
-      if (lat == null || lng == null) continue;
-      const d = distanceMeters(gps, { lat: Number(lat), lng: Number(lng) });
+      if (job.agent_reached_at || job.status === "completed" || job.status === "on_site") continue;
+      // Guard against poor GPS — only auto-mark when fix is reasonably accurate
+      if (gps.accuracy > MAX_ACCURACY_M) continue;
       if (d <= AUTO_REACH_RADIUS_M) {
         autoReachedRef.current.add(job.id);
         updateServiceJob(job.id, {
@@ -70,7 +119,8 @@ const FieldAgentDashboard = () => {
         }).then(() => toast.success(`📍 Auto-reached: ${job.customer_name}`)).catch(() => {});
       }
     }
-  }, [gps, myJobs, updateServiceJob]);
+    setDistances(nextDistances);
+  }, [gps, myJobs, updateServiceJob, geocoded]);
 
   const handleReached = async (id: string) => {
     await updateServiceJob(id, {
@@ -194,6 +244,14 @@ const FieldAgentDashboard = () => {
                   {job.travel_started_at && <p>🚗 On Route: {new Date(job.travel_started_at).toLocaleTimeString("en-IN")}</p>}
                   {job.agent_reached_at && <p className="text-success">📍 On Site: {new Date(job.agent_reached_at).toLocaleTimeString("en-IN")}</p>}
                   {job.completed_at && <p className="text-success">🎉 Completed: {new Date(job.completed_at).toLocaleTimeString("en-IN")}</p>}
+                  {!job.agent_reached_at && distances[job.id] != null && ["on_route", "in_progress", "assigned"].includes(job.status) && (
+                    <p className="text-primary font-medium">
+                      📡 {distances[job.id] < 1000
+                        ? `${Math.round(distances[job.id])} m away`
+                        : `${(distances[job.id] / 1000).toFixed(2)} km away`}
+                      {distances[job.id] <= AUTO_REACH_RADIUS_M && " — auto-marking…"}
+                    </p>
+                  )}
                 </div>
 
                 {job.photos && job.photos.length > 0 && job.photos[0] !== "" && (
