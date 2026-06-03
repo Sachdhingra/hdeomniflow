@@ -690,18 +690,61 @@ const ChatPage = () => {
                 </Button>
               </>
             )}
-            <Input
-              placeholder="Type a message…"
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              disabled={uploading}
-              onKeyDown={e => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  sendMessage();
-                }
-              }}
-            />
+            <div className="relative flex-1">
+              {mentionQuery !== null && (() => {
+                const q = mentionQuery.toLowerCase();
+                const memberIds = members[activeId ?? ""] ?? [];
+                const matches = allProfiles
+                  .filter(p => p.id !== user?.id && memberIds.includes(p.id))
+                  .filter(p => !q || p.name.toLowerCase().includes(q))
+                  .slice(0, 6);
+                if (matches.length === 0) return null;
+                return (
+                  <div className="absolute bottom-full mb-1 left-0 w-64 bg-popover border border-border rounded-md shadow-md overflow-hidden z-10">
+                    {matches.map(p => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          // Replace the trailing @query in input with @Name
+                          const updated = input.replace(/@(\S*)$/, `@${p.name} `);
+                          setInput(updated);
+                          setMentionQuery(null);
+                          inputRef.current?.focus();
+                        }}
+                        className="w-full text-left px-2.5 py-1.5 text-sm hover:bg-accent flex items-center gap-2"
+                      >
+                        <PresenceDot userId={p.id} />
+                        <span className="truncate">{p.name}</span>
+                        <Badge variant="outline" className="ml-auto text-[10px]">{p.role}</Badge>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
+              <Input
+                ref={inputRef}
+                placeholder="Type a message… (markdown supported, @mention members)"
+                value={input}
+                onChange={e => {
+                  const v = e.target.value;
+                  setInput(v);
+                  sendTyping();
+                  const m = /@(\S*)$/.exec(v);
+                  setMentionQuery(m ? m[1] : null);
+                }}
+                disabled={uploading}
+                onKeyDown={e => {
+                  if (e.key === "Escape") setMentionQuery(null);
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    setMentionQuery(null);
+                    sendMessage();
+                  }
+                }}
+              />
+            </div>
             <Button onClick={sendMessage} disabled={uploading || (!input.trim() && pendingFiles.length === 0)}>
               {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </Button>
