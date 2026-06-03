@@ -398,7 +398,10 @@ const ChatPage = () => {
                   onClick={() => startDM(p.id)}
                   className="w-full text-left flex items-center justify-between px-2 py-1.5 rounded text-sm hover:bg-muted"
                 >
-                  <span className="truncate">{p.name}</span>
+                  <span className="flex items-center gap-2 truncate">
+                    <PresenceDot userId={p.id} />
+                    <span className="truncate">{p.name}</span>
+                  </span>
                   <Badge variant="outline" className="text-[10px]">{p.role}</Badge>
                 </button>
               ))}
