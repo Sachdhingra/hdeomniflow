@@ -36,6 +36,7 @@ interface Message {
   pinned: boolean;
   edited_at: string | null;
   deleted_at: string | null;
+  parent_message_id?: string | null;
   created_at: string;
 }
 
