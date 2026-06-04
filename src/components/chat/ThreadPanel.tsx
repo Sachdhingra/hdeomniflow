@@ -35,10 +35,10 @@ const ThreadPanel = ({ parentId, channelId, currentUserId, profiles, onClose }: 
         .eq("id", parentId)
         .maybeSingle();
       if (!cancel) setParent(p as Reply | null);
-      const { data: r } = await supabase
-        .from("chat_messages")
+      const { data: r } = await (supabase
+        .from("chat_messages") as any)
         .select("id, body, sender_id, created_at")
-        .eq("parent_message_id" as any, parentId)
+        .eq("parent_message_id", parentId)
         .is("deleted_at", null)
         .order("created_at");
       if (!cancel) setReplies((r ?? []) as Reply[]);
