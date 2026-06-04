@@ -483,6 +483,22 @@ const ChatPage = () => {
     );
   }
 
+  const toggleMute = async (targetId: string, mute: boolean, reason?: string) => {
+    const { error } = await (supabase.from("user_status") as any).upsert(
+      { user_id: targetId, is_muted: mute, muted_reason: mute ? (reason ?? null) : null, muted_until: null },
+      { onConflict: "user_id" },
+    );
+    if (error) return toast.error(error.message);
+    await (supabase.from("chat_moderation_log") as any).insert({
+      action: mute ? "mute" : "unmute",
+      target_user_id: targetId,
+      channel_id: activeId,
+      moderator_id: user!.id,
+      reason: reason ?? null,
+    });
+    toast.success(mute ? "User muted" : "User unmuted");
+  };
+
   return (
     <div className="h-[calc(100vh-7rem)] flex gap-2 sm:gap-3">
       {/* Sidebar */}
