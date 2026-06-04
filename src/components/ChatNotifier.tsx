@@ -40,17 +40,60 @@ const playPing = () => {
     playTone(659.25, 0, 0.6);
     playTone(523.25, 0.18, 0.7);
   } catch {
-    // AudioContext not supported or blocked
+    // AudioContext not supported or blocked by autoplay policy
+  }
+};
+
+// Show a system notification that appears in the phone's notification shade.
+// Android Chrome (62+) dropped support for new Notification() from a page
+// context; it must go through ServiceWorkerRegistration.showNotification().
+const showSystemNotification = async (
+  title: string,
+  body: string,
+  tag: string,
+) => {
+  if (typeof window === "undefined") return;
+  if (!("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+
+  try {
+    if ("serviceWorker" in navigator) {
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification(title, {
+        body,
+        tag,
+        icon: "/icon-192.png",
+        badge: "/icon-192.png",
+        data: { url: "/chat" },
+        vibrate: [200, 100, 200],
+        requireInteraction: false,
+      } as any);
+      return;
+    }
+  } catch {
+    // Service worker not available — fall through to legacy API
+  }
+
+  // Fallback: desktop browsers where new Notification() still works
+  try {
+    const n = new Notification(title, {
+      body,
+      tag,
+      icon: "/icon-192.png",
+    });
+    n.onclick = () => { window.focus(); n.close(); };
+    setTimeout(() => n.close(), 15000);
+  } catch {
+    // ignore
   }
 };
 
 /**
  * Listens for new chat_messages and shows:
- *  - In-app sonner toast (cloud banner) on any dashboard
- *  - Browser system notification when the tab is hidden / app backgrounded
- *  - Soft audio ping on each new message
- * Tracks per-channel unread counts via ChatUnreadContext.
- * Suppresses toast while user is on /chat with the tab visible.
+ *  - In-app sonner toast for any message NOT in the currently-viewed channel
+ *  - System notification (home screen shade on mobile) when app is backgrounded
+ *  - Soft audio ping on each notification
+ * Only suppressed when the user is actively viewing the exact channel the message arrived in.
  */
 const ChatNotifier = () => {
   const { user, allProfiles } = useAuth();
@@ -60,9 +103,11 @@ const ChatNotifier = () => {
 
   const profilesRef = useRef(allProfiles);
   profilesRef.current = allProfiles;
+
   const onChatPage = location.pathname.startsWith("/chat");
   const onChatRef = useRef(onChatPage);
   onChatRef.current = onChatPage;
+
   const activeChannelRef = useRef(activeChannelId);
   activeChannelRef.current = activeChannelId;
 
@@ -79,7 +124,8 @@ const ChatNotifier = () => {
 
   useEffect(() => {
     if (!allowed || !user) return;
-    const channel = supabase
+
+    const sub = supabase
       .channel(`chat-notifier-${user.id}`)
       .on(
         "postgres_changes",
@@ -88,64 +134,51 @@ const ChatNotifier = () => {
           const m: any = payload.new;
           if (!m || m.sender_id === user.id) return;
 
-          const tabVisible = typeof document !== "undefined" && document.visibilityState === "visible";
-          const isActiveChannel = onChatRef.current && tabVisible && activeChannelRef.current === m.channel_id;
+          const tabVisible =
+            typeof document !== "undefined" && document.visibilityState === "visible";
 
-          // Track unread for any channel the user isn't currently viewing
-          if (!isActiveChannel) {
-            addUnread(m.channel_id);
-          }
+          // Only suppress when user is ACTIVELY viewing this exact channel
+          const isActiveChannel =
+            onChatRef.current && tabVisible && activeChannelRef.current === m.channel_id;
 
-          // Suppress toast when user is on chat page with tab in focus
-          const suppressToast = onChatRef.current && tabVisible;
-          if (suppressToast) return;
+          if (isActiveChannel) return;
 
-          const sender = profilesRef.current.find(p => p.id === m.sender_id);
+          // Track unread for the channel
+          addUnread(m.channel_id);
+
+          const sender = profilesRef.current.find((p) => p.id === m.sender_id);
           const name = sender?.name ?? "Teammate";
           const role = sender?.role ? ` (${sender.role})` : "";
           const preview = String(m.body ?? "").slice(0, 120) || "(attachment)";
 
+          // Always play ping + show in-app toast
           playPing();
           emitChatArrival({ sender: name, role: sender?.role, preview });
 
           toast.message(`💬 ${name}${role}`, {
             description: preview,
             icon: <MessagesSquare className="w-4 h-4 text-primary" />,
-            duration: 20000,
+            duration: 15000,
             action: {
               label: "Open Chat",
               onClick: () => navigate("/chat"),
             },
           });
 
-          // System notification when tab not visible
-          if (
-            typeof window !== "undefined" &&
-            "Notification" in window &&
-            Notification.permission === "granted" &&
-            !tabVisible
-          ) {
-            try {
-              const n = new Notification(`💬 ${name}${role}`, {
-                body: preview,
-                tag: `chat-${m.channel_id}`,
-                icon: "/placeholder.svg",
-              });
-              n.onclick = () => {
-                window.focus();
-                navigate("/chat");
-                n.close();
-              };
-              setTimeout(() => n.close(), 20000);
-            } catch {
-              // ignore
-            }
+          // System notification when tab is not visible (home screen / notification shade)
+          if (!tabVisible) {
+            showSystemNotification(
+              `💬 ${name}${role}`,
+              preview,
+              `chat-${m.channel_id}`,
+            );
           }
         },
       )
       .subscribe();
+
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(sub);
     };
   }, [allowed, user?.id, navigate, addUnread]);
 

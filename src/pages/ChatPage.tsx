@@ -419,6 +419,14 @@ const ChatPage = () => {
     await supabase.from("chat_messages").update({ pinned: !m.pinned }).eq("id", m.id);
   };
 
+  const deleteChannel = async (channelId: string) => {
+    if (!confirm("Delete this conversation? All messages will be permanently removed.")) return;
+    const { error } = await supabase.from("chat_channels").delete().eq("id", channelId);
+    if (error) { toast.error("Could not delete: " + error.message); return; }
+    if (activeId === channelId) setActiveId(null);
+    await loadChannels();
+  };
+
   const replyCounts = useMemo(() => {
     const m: Record<string, number> = {};
     messages.forEach(x => {
@@ -545,23 +553,34 @@ const ChatPage = () => {
               <span>Direct messages</span>
             </div>
             {dmChannels.map(c => (
-              <button
+              <div
                 key={c.id}
-                onClick={() => setActiveId(c.id)}
-                className={`w-full text-left flex items-center gap-2 px-2 py-1.5 rounded text-sm ${
+                className={`group flex items-center gap-1 px-2 py-1.5 rounded text-sm ${
                   activeId === c.id ? "bg-accent text-accent-foreground" : "hover:bg-muted"
                 }`}
               >
-                <PresenceDot
-                  userId={(members[c.id] ?? []).find(id => id !== user!.id) ?? ""}
-                />
-                <span className="truncate flex-1">{dmCounterpartName(c.id)}</span>
-                {channelUnread[c.id] > 0 && (
-                  <Badge className="h-4 min-w-4 px-1 text-[10px] bg-destructive text-destructive-foreground shrink-0">
-                    {channelUnread[c.id] > 99 ? "99+" : channelUnread[c.id]}
-                  </Badge>
-                )}
-              </button>
+                <button
+                  className="flex-1 flex items-center gap-2 min-w-0 text-left"
+                  onClick={() => setActiveId(c.id)}
+                >
+                  <PresenceDot
+                    userId={(members[c.id] ?? []).find(id => id !== user!.id) ?? ""}
+                  />
+                  <span className="truncate flex-1">{dmCounterpartName(c.id)}</span>
+                  {channelUnread[c.id] > 0 && (
+                    <Badge className="h-4 min-w-4 px-1 text-[10px] bg-destructive text-destructive-foreground shrink-0">
+                      {channelUnread[c.id] > 99 ? "99+" : channelUnread[c.id]}
+                    </Badge>
+                  )}
+                </button>
+                <button
+                  onClick={() => deleteChannel(c.id)}
+                  className="opacity-40 hover:opacity-100 group-hover:opacity-60 hover:text-destructive text-muted-foreground shrink-0 p-0.5 rounded transition-opacity"
+                  title="Delete conversation"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
             ))}
 
             <div className="text-xs uppercase font-semibold text-muted-foreground px-2 mt-3 mb-1 flex items-center gap-1">
