@@ -440,6 +440,9 @@ const ChatPage = () => {
 
   if (!allowed) {
     return (
+      <div className="p-6">
+        <h1 className="text-xl font-bold mb-2">Chat unavailable</h1>
+        <p className="text-muted-foreground">Your role does not have access to internal chat.</p>
       </div>
     );
   }
