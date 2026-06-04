@@ -793,6 +793,20 @@ const ChatPage = () => {
                           <Shield className="w-3 h-3" /> Remove
                         </button>
                       )}
+                      {!mine && isAdmin && editingId !== m.id && (
+                        <button
+                          onClick={() => {
+                            const isM = mutedIds.has(m.sender_id);
+                            if (isM) { toggleMute(m.sender_id, false); return; }
+                            const reason = prompt("Mute this user? Optional reason:") ?? undefined;
+                            toggleMute(m.sender_id, true, reason);
+                          }}
+                          className="text-[11px] text-amber-600 hover:text-amber-700 inline-flex items-center gap-1"
+                          title={mutedIds.has(m.sender_id) ? "Unmute user" : "Mute user (admin)"}
+                        >
+                          <VolumeX className="w-3 h-3" /> {mutedIds.has(m.sender_id) ? "Unmute" : "Mute"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
