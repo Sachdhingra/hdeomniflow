@@ -826,6 +826,12 @@ const ChatPage = () => {
             typing…
           </div>
         )}
+        {iAmMuted && (
+          <div className="px-4 py-2 text-xs bg-destructive/10 text-destructive border-t border-destructive/30 flex items-center gap-2">
+            <VolumeX className="w-3.5 h-3.5" />
+            You have been muted by an admin. Sending is disabled.
+          </div>
+        )}
         <footer className="p-3 border-t border-border flex flex-col gap-2">
           {pendingFiles.length > 0 && (
             <div className="flex flex-wrap gap-2">
