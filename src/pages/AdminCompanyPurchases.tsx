@@ -11,8 +11,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Plus, Trash2, FileDown, FileSpreadsheet, Upload, Loader2, FileText, CheckCircle2, Edit, Download } from "lucide-react";
-import { buildTallyCsv, downloadCsv, downloadTallyExcel, tallyFilename, type TallyPurchase } from "@/lib/tallyExport";
+import { Plus, Trash2, FileDown, FileSpreadsheet, Upload, Loader2, FileText, CheckCircle2, Edit, Download, FileCode2, Settings2 } from "lucide-react";
+import {
+  buildTallyCsv, downloadCsv, downloadTallyExcel, buildTallyXml, downloadXml,
+  tallyFilename, loadTallySettings, type TallyPurchase,
+} from "@/lib/tallyExport";
+import TallySettingsDialog from "@/components/TallySettingsDialog";
 
 type Status = "Draft" | "Confirmed" | "Tally Exported";
 
@@ -69,6 +73,7 @@ export default function AdminCompanyPurchases() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Purchase | null>(null);
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
+  const [tallySettingsOpen, setTallySettingsOpen] = useState(false);
 
   // Form state
   const [supplierName, setSupplierName] = useState("GODREJ AND BOYCE MANUFACTURING CO LTD");
@@ -243,23 +248,35 @@ export default function AdminCompanyPurchases() {
     }
   }
 
-  async function exportPurchase(p: Purchase, format: "csv" | "xlsx") {
-    const { data: lis } = await supabase
-      .from("purchase_line_items" as any)
-      .select("*").eq("purchase_id", p.id).order("sort_order");
-    const tp: TallyPurchase = {
+  function buildTallyPurchase(p: Purchase, lis: any[]): TallyPurchase {
+    return {
       supplier_name: p.supplier_name,
       supplier_invoice_no: p.supplier_invoice_no,
       purchase_date: p.purchase_date,
-      line_items: ((lis as any) || []).map((it: any) => ({
-        item_name: it.item_name, quantity: Number(it.quantity), unit: it.unit,
-        rate: Number(it.rate), amount: Number(it.amount),
+      line_items: lis.map((it: any) => ({
+        item_name: it.item_name,
+        item_code: it.item_code ?? "",
+        hsn_code: it.hsn_code ?? "",
+        quantity: Number(it.quantity),
+        unit: it.unit,
+        rate: Number(it.rate),
+        amount: Number(it.amount),
         discount_percent: Number(it.discount_percent),
-        gst_percent: Number(it.gst_percent), gst_amount: Number(it.gst_amount),
+        gst_percent: Number(it.gst_percent),
+        gst_amount: Number(it.gst_amount),
       })),
     };
+  }
+
+  async function exportPurchase(p: Purchase, format: "csv" | "xlsx" | "xml") {
+    const { data: lis } = await supabase
+      .from("purchase_line_items" as any)
+      .select("*").eq("purchase_id", p.id).order("sort_order");
+    const tp = buildTallyPurchase(p, (lis as any) || []);
+
     if (format === "csv") downloadCsv(tallyFilename(tp, "csv"), buildTallyCsv([tp]));
-    else downloadTallyExcel(tallyFilename(tp, "xlsx"), [tp]);
+    else if (format === "xlsx") downloadTallyExcel(tallyFilename(tp, "xlsx"), [tp]);
+    else downloadXml(tallyFilename(tp, "xml"), buildTallyXml([tp], loadTallySettings()));
 
     await supabase.from("company_purchases" as any).update({
       status: "Tally Exported",
@@ -270,7 +287,7 @@ export default function AdminCompanyPurchases() {
     load();
   }
 
-  async function exportSelected(format: "csv" | "xlsx") {
+  async function exportSelected(format: "csv" | "xlsx" | "xml") {
     if (!selected.size) return toast.error("Select at least one purchase");
     const ids = Array.from(selected);
     const chosen = purchases.filter((p) => ids.includes(p.id));
@@ -281,20 +298,11 @@ export default function AdminCompanyPurchases() {
       if (!byPid.has(it.purchase_id)) byPid.set(it.purchase_id, []);
       byPid.get(it.purchase_id)!.push(it);
     }
-    const tps: TallyPurchase[] = chosen.map((p) => ({
-      supplier_name: p.supplier_name,
-      supplier_invoice_no: p.supplier_invoice_no,
-      purchase_date: p.purchase_date,
-      line_items: (byPid.get(p.id) || []).map((it: any) => ({
-        item_name: it.item_name, quantity: Number(it.quantity), unit: it.unit,
-        rate: Number(it.rate), amount: Number(it.amount),
-        discount_percent: Number(it.discount_percent),
-        gst_percent: Number(it.gst_percent), gst_amount: Number(it.gst_amount),
-      })),
-    }));
-    const name = `Tally_Batch_${new Date().toISOString().slice(0, 10)}.${format}`;
-    if (format === "csv") downloadCsv(name, buildTallyCsv(tps));
-    else downloadTallyExcel(name, tps);
+    const tps: TallyPurchase[] = chosen.map((p) => buildTallyPurchase(p, byPid.get(p.id) || []));
+    const date = new Date().toISOString().slice(0, 10);
+    if (format === "csv") downloadCsv(`Tally_Batch_${date}.csv`, buildTallyCsv(tps));
+    else if (format === "xlsx") downloadTallyExcel(`Tally_Batch_${date}.xlsx`, tps);
+    else downloadXml(`Tally_Batch_${date}.xml`, buildTallyXml(tps, loadTallySettings()));
     await supabase.from("company_purchases" as any).update({
       status: "Tally Exported", tally_import_status: "Exported",
       tally_exported_at: new Date().toISOString(),
@@ -325,12 +333,19 @@ export default function AdminCompanyPurchases() {
           <h1 className="text-2xl font-bold">Company Purchases</h1>
           <p className="text-sm text-muted-foreground">Manage supplier purchases and export to Tally Prime</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" disabled={!selected.size} onClick={() => exportSelected("xml")}
+            title="Recommended — imports directly into Tally Prime via Gateway → Import → Data">
+            <FileCode2 className="w-4 h-4" /> Export XML
+          </Button>
           <Button variant="outline" disabled={!selected.size} onClick={() => exportSelected("csv")}>
-            <FileDown className="w-4 h-4" /> Export Selected CSV
+            <FileDown className="w-4 h-4" /> Export CSV
           </Button>
           <Button variant="outline" disabled={!selected.size} onClick={() => exportSelected("xlsx")}>
-            <FileSpreadsheet className="w-4 h-4" /> Export Selected Excel
+            <FileSpreadsheet className="w-4 h-4" /> Export Excel
+          </Button>
+          <Button variant="ghost" size="icon" title="Tally Ledger Settings" onClick={() => setTallySettingsOpen(true)}>
+            <Settings2 className="w-4 h-4" />
           </Button>
           <Button onClick={() => { resetForm(); setDialogOpen(true); }}>
             <Plus className="w-4 h-4" /> Add Purchase
@@ -414,6 +429,7 @@ export default function AdminCompanyPurchases() {
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
                         <Button size="icon" variant="ghost" title="Edit" onClick={() => openEdit(p)}><Edit className="w-4 h-4" /></Button>
+                        <Button size="icon" variant="ghost" title="Export Tally XML (recommended)" onClick={() => exportPurchase(p, "xml")}><FileCode2 className="w-4 h-4" /></Button>
                         <Button size="icon" variant="ghost" title="Download CSV" onClick={() => exportPurchase(p, "csv")}><Download className="w-4 h-4" /></Button>
                         <Button size="icon" variant="ghost" title="Download Excel" onClick={() => exportPurchase(p, "xlsx")}><FileSpreadsheet className="w-4 h-4" /></Button>
                         {p.tally_import_status !== "Exported" && (
@@ -537,6 +553,8 @@ export default function AdminCompanyPurchases() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TallySettingsDialog open={tallySettingsOpen} onClose={() => setTallySettingsOpen(false)} />
     </div>
   );
 }
