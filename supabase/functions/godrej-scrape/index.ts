@@ -112,6 +112,44 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
+
+    // research mode: general-purpose URL scrape, returns markdown content
+    if (body.mode === 'research') {
+      const url: string = (body.url ?? '').trim();
+      if (!url) return new Response(JSON.stringify({ success: false, error: 'url is required' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      new URL(url); // validate — throws on bad URL
+
+      const fcRes = await fetch(`${FIRECRAWL_V2}/scrape`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, formats: ['markdown', 'links'], onlyMainContent: true, waitFor: 2000 }),
+      });
+      const fcData = await fcRes.json();
+      if (!fcRes.ok) {
+        const errMsg = fcData?.error || fcData?.message || `Firecrawl error [${fcRes.status}]`;
+        return new Response(JSON.stringify({ success: false, error: errMsg }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      const markdown: string = (fcData.markdown || fcData.data?.markdown || '').slice(0, 50000);
+      const meta = fcData.metadata || fcData.data?.metadata || {};
+      const title: string = meta.title || '';
+      const description: string = meta.description || '';
+      const links: string[] = (fcData.links || fcData.data?.links || []).slice(0, 100);
+
+      // Best-effort persist to firecrawl_research table
+      const { data: row, error: insertErr } = await admin
+        .from('firecrawl_research')
+        .insert({ url, title, description, markdown, links, created_by: userId })
+        .select('id, scraped_at')
+        .single();
+      if (insertErr) console.error('research insert error:', insertErr.message);
+
+      return new Response(
+        JSON.stringify({ success: true, id: row?.id, url, title, description, markdown, links, scraped_at: row?.scraped_at ?? new Date().toISOString() }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
     const mode: 'map' | 'discover' | 'scrape' =
       body.mode === 'scrape' ? 'scrape' : body.mode === 'discover' ? 'discover' : 'map';
     const categoryFilter: string | undefined = body.category;

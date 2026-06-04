@@ -6,8 +6,13 @@ import { toast } from "sonner";
 import { MessagesSquare } from "lucide-react";
 import { useChatUnread } from "@/contexts/ChatUnreadContext";
 
+import { emitChatArrival } from "@/components/ChatArrivalFlash";
+
 let sharedAudioCtx: AudioContext | null = null;
 
+/**
+ * Loud two-tone ding-dong (E5 → C5), ~3× louder than the previous soft ping.
+ */
 const playPing = () => {
   try {
     if (!sharedAudioCtx) {
@@ -16,17 +21,24 @@ const playPing = () => {
     const ctx = sharedAudioCtx;
     if (ctx.state === "suspended") ctx.resume();
 
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.frequency.value = 880;
-    osc.type = "sine";
-    gain.gain.setValueAtTime(0, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.35);
+    const playTone = (freq: number, startOffset: number, durationSec: number) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const start = ctx.currentTime + startOffset;
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(freq, start);
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.45, start + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + durationSec);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + durationSec + 0.05);
+    };
+
+    // Ding (E5) then Dong (C5)
+    playTone(659.25, 0, 0.6);
+    playTone(523.25, 0.18, 0.7);
   } catch {
     // AudioContext not supported or blocked by autoplay policy
   }
@@ -141,6 +153,7 @@ const ChatNotifier = () => {
 
           // Always play ping + show in-app toast
           playPing();
+          emitChatArrival({ sender: name, role: sender?.role, preview });
 
           toast.message(`💬 ${name}${role}`, {
             description: preview,

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useData, LEAD_CATEGORIES, LeadCategory } from "@/contexts/DataContext";
 import StatCard from "@/components/StatCard";
@@ -14,9 +14,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Wrench, IndianRupee, Clock, Plus, AlertCircle, MapPin, Phone, Truck, UserPlus, CalendarClock, Pencil } from "lucide-react";
+import { Wrench, IndianRupee, Clock, Plus, AlertCircle, MapPin, Phone, Truck, UserPlus, CalendarClock, Pencil, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import LoadingError from "@/components/LoadingError";
 import { DashboardSkeleton } from "@/components/DashboardSkeleton";
 import { supabase } from "@/integrations/supabase/client";
@@ -47,6 +48,7 @@ const ServiceDashboard = () => {
     return profiles.find(p => p.id === lead.created_by) || null;
   };
   const [dateFilter, setDateFilter] = useState("");
+  const [phoneSearch, setPhoneSearch] = useState("");
   const [tab, setTab] = useState("all");
   const [addOpen, setAddOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState<string | null>(null);
@@ -87,20 +89,84 @@ const ServiceDashboard = () => {
       });
     }
     if (dateFilter) jobs = jobs.filter(j => j.date_received >= dateFilter);
+    if (phoneSearch.trim()) jobs = jobs.filter(j => j.customer_phone?.includes(phoneSearch.trim()));
     if (tab === "deliveries") jobs = jobs.filter(j => j.type === "delivery");
     else if (tab === "services") jobs = jobs.filter(j => j.type === "service");
     else if (tab === "pending") jobs = jobs.filter(j => j.status === "pending");
     else if (tab === "completed") jobs = jobs.filter(j => j.status === "completed");
     return jobs;
-  }, [serviceJobs, dateFilter, tab, isServiceHead, isAdmin]);
+  }, [serviceJobs, dateFilter, phoneSearch, tab, isServiceHead, isAdmin]);
 
   const todayStr = new Date().toISOString().split("T")[0];
   const todayJobs = serviceJobs.filter(j => j.date_to_attend === todayStr);
-  const serviceRevenue = serviceJobs
-    .filter(j => !j.is_foc && j.status === "completed" && j.type === "service")
-    .reduce((s, j) => s + Number(j.value), 0);
   const pendingJobs = serviceJobs.filter(j => j.status === "pending");
   const deliveryJobs = serviceJobs.filter(j => j.type === "delivery");
+
+  // Revenue date anchors — use local calendar values, never toISOString()
+  // (toISOString converts local→UTC which shifts the date in IST/+5:30 timezones)
+  const { monthStart, fyStart, fyMonths } = useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const mo = now.getMonth(); // 0-based
+    const pad = (n: number) => String(n).padStart(2, "0");
+
+    const ms = `${y}-${pad(mo + 1)}-01`;
+    const fyY = mo >= 3 ? y : y - 1;
+    const fys = `${fyY}-04-01`;
+
+    const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const months: { key: string; label: string }[] = [];
+    let cy = fyY, cm = 3; // start at April (index 3)
+    while (cy < y || (cy === y && cm <= mo)) {
+      months.push({ key: `${cy}-${pad(cm + 1)}`, label: `${MONTH_NAMES[cm]} ${cy}` });
+      cm++;
+      if (cm > 11) { cm = 0; cy++; }
+    }
+    return { monthStart: ms, fyStart: fys, fyMonths: months };
+  }, []);
+
+  // Revenue state fetched directly from DB (not paginated)
+  const [revMonth, setRevMonth] = useState(0);
+  const [revFY, setRevFY] = useState(0);
+  const [monthlyBreakdown, setMonthlyBreakdown] = useState<{ key: string; label: string; revenue: number }[]>([]);
+  const [revOpen, setRevOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetch = async () => {
+      const { data } = await supabase
+        .from("service_jobs")
+        .select("value, date_received, completed_at")
+        .eq("status", "completed")
+        .eq("is_foc", false)
+        .eq("type", "service")
+        .is("deleted_at", null)
+        .gte("date_received", fyStart);
+      if (cancelled || !data) return;
+
+      // Cap future completed_at to date_received so no revenue leaks into future months
+      const nd = new Date();
+      const pad2 = (n: number) => String(n).padStart(2, "0");
+      const today = `${nd.getFullYear()}-${pad2(nd.getMonth() + 1)}-${pad2(nd.getDate())}`;
+      const currentMonthKey = monthStart.slice(0, 7);
+      let fy = 0;
+      const byMonth: Record<string, number> = {};
+      for (const j of data) {
+        const raw = j.completed_at?.slice(0, 10) || j.date_received;
+        const d = raw > today ? j.date_received : raw;
+        const v = Number(j.value) || 0;
+        fy += v;
+        const mk = d.slice(0, 7);
+        byMonth[mk] = (byMonth[mk] || 0) + v;
+      }
+      // Derive month total from the same bucket so card always equals table row
+      setRevFY(fy);
+      setRevMonth(byMonth[currentMonthKey] || 0);
+      setMonthlyBreakdown(fyMonths.map(m => ({ ...m, revenue: byMonth[m.key] || 0 })));
+    };
+    fetch();
+    return () => { cancelled = true; };
+  }, [fyStart, monthStart, fyMonths]);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -262,9 +328,63 @@ const ServiceDashboard = () => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard title="Today's Jobs" value={todayJobs.length} icon={<Clock className="w-5 h-5" />} />
         <StatCard title="Pending" value={pendingJobs.length} icon={<AlertCircle className="w-5 h-5" />} />
-        <StatCard title="Service Revenue" value={`₹${serviceRevenue.toLocaleString("en-IN")}`} icon={<IndianRupee className="w-5 h-5" />} />
+        <StatCard
+          title="Service Revenue (Month)"
+          value={`₹${revMonth.toLocaleString("en-IN")}`}
+          subtitle={`FY Total: ₹${revFY.toLocaleString("en-IN")}`}
+          icon={<IndianRupee className="w-5 h-5" />}
+        />
         <StatCard title="Deliveries" value={deliveryJobs.length} icon={<Truck className="w-5 h-5" />} />
       </div>
+
+      {/* Admin-only: month-wise revenue breakdown */}
+      {isAdmin && monthlyBreakdown.length > 0 && (
+        <Collapsible open={revOpen} onOpenChange={setRevOpen}>
+          <CollapsibleTrigger asChild>
+            <Button variant="outline" size="sm" className="gap-2 text-xs">
+              <IndianRupee className="w-3.5 h-3.5" />
+              Month-wise Revenue
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${revOpen ? "rotate-180" : ""}`} />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <Card className="shadow-card mt-2">
+              <CardContent className="p-4">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Service Revenue by Month (Current FY)</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left py-1.5 pr-4 font-medium text-muted-foreground">Month</th>
+                        <th className="text-right py-1.5 font-medium text-muted-foreground">Revenue</th>
+                        <th className="text-right py-1.5 pl-4 font-medium text-muted-foreground">Share</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {monthlyBreakdown.map(m => (
+                        <tr key={m.key} className={`border-b border-border/50 ${m.key === monthStart.slice(0, 7) ? "bg-primary/5 font-semibold" : ""}`}>
+                          <td className="py-1.5 pr-4">{m.label}{m.key === monthStart.slice(0, 7) ? " ●" : ""}</td>
+                          <td className="text-right tabular-nums">₹{m.revenue.toLocaleString("en-IN")}</td>
+                          <td className="text-right pl-4 text-muted-foreground tabular-nums">
+                            {revFY > 0 ? `${((m.revenue / revFY) * 100).toFixed(1)}%` : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-border font-bold">
+                        <td className="pt-2">FY Total</td>
+                        <td className="text-right tabular-nums pt-2">₹{revFY.toLocaleString("en-IN")}</td>
+                        <td className="text-right pl-4 pt-2">100%</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
 
       <div className="flex gap-3 flex-wrap items-center">
         <Tabs value={tab} onValueChange={setTab}>
@@ -276,6 +396,14 @@ const ServiceDashboard = () => {
             <TabsTrigger value="completed">Completed</TabsTrigger>
           </TabsList>
         </Tabs>
+        <Input
+          type="tel"
+          placeholder="Search by phone…"
+          className="w-40"
+          value={phoneSearch}
+          onChange={e => setPhoneSearch(e.target.value.replace(/\D/g, "").slice(0, 10))}
+          maxLength={10}
+        />
         <Input type="date" className="w-40" value={dateFilter} onChange={e => setDateFilter(e.target.value)} />
       </div>
 

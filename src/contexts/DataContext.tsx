@@ -58,8 +58,16 @@ interface SummaryData {
   pendingJobs: number;
   overdueLeads: number;
   myTotalLeads: number;
+  teamTotalLeads: number;
   myMonthWonCount: number;
   myMonthWonValue: number;
+  myFyWonCount: number;
+  myFyWonValue: number;
+  teamMonthWonCount: number;
+  teamMonthWonValue: number;
+  teamFyWonCount: number;
+  teamFyWonValue: number;
+  fyStart: string | null;
 }
 
 interface DataContextType {
@@ -72,7 +80,7 @@ interface DataContextType {
   summaryLoading: boolean;
   summary: SummaryData;
   error: string | null;
-  addLead: (lead: TablesInsert<"leads">) => Promise<void>;
+  addLead: (lead: TablesInsert<"leads">) => Promise<Lead | null>;
   updateLead: (id: string, updates: Partial<Lead>) => Promise<void>;
   softDeleteLead: (id: string) => Promise<void>;
   restoreLead: (id: string) => Promise<void>;
@@ -116,7 +124,11 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const [allRoles, setAllRoles] = useState<{ user_id: string; role: string }[]>(() => getCache<any[]>("roles") || []);
   const [loading, setLoading] = useState(true);
   const [summaryLoading, setSummaryLoading] = useState(true);
-  const [summary, setSummary] = useState<SummaryData>(() => getCache<SummaryData>("summary") || { totalLeads: 0, totalPipelineValue: 0, pendingJobs: 0, overdueLeads: 0, myTotalLeads: 0, myMonthWonCount: 0, myMonthWonValue: 0 });
+  const [summary, setSummary] = useState<SummaryData>(() => {
+    const cached = getCache<SummaryData>("summary");
+    const empty: SummaryData = { totalLeads: 0, totalPipelineValue: 0, pendingJobs: 0, overdueLeads: 0, myTotalLeads: 0, teamTotalLeads: 0, myMonthWonCount: 0, myMonthWonValue: 0, myFyWonCount: 0, myFyWonValue: 0, teamMonthWonCount: 0, teamMonthWonValue: 0, teamFyWonCount: 0, teamFyWonValue: 0, fyStart: null };
+    return cached ? { ...empty, ...cached } : empty;
+  });
   const [error, setError] = useState<string | null>(null);
   const [hasMoreLeads, setHasMoreLeads] = useState(false);
   const [hasMoreJobs, setHasMoreJobs] = useState(false);
@@ -140,8 +152,16 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         pendingJobs: d?.pending_jobs || 0,
         overdueLeads: d?.overdue_leads || 0,
         myTotalLeads: d?.my_total_leads || 0,
+        teamTotalLeads: d?.team_total_leads || 0,
         myMonthWonCount: d?.my_month_won_count || 0,
         myMonthWonValue: Number(d?.my_month_won_value) || 0,
+        myFyWonCount: d?.my_fy_won_count || 0,
+        myFyWonValue: Number(d?.my_fy_won_value) || 0,
+        teamMonthWonCount: d?.team_month_won_count || 0,
+        teamMonthWonValue: Number(d?.team_month_won_value) || 0,
+        teamFyWonCount: d?.team_fy_won_count || 0,
+        teamFyWonValue: Number(d?.team_fy_won_value) || 0,
+        fyStart: d?.fy_start || null,
       };
       setSummary(s);
       setCache("summary", s);
@@ -449,11 +469,11 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [user, fetchLeads, fetchServiceJobs, fetchNotifications, fetchSiteVisits, fetchSummary]);
 
-  const addLead = async (lead: TablesInsert<"leads">) => {
+  const addLead = async (lead: TablesInsert<"leads">): Promise<Lead | null> => {
     const { data, error } = await supabase.from("leads").insert(lead).select().single();
     if (error) throw error;
-    // Optimistic: prepend to local state immediately
     if (data) setLeads(prev => [data, ...prev]);
+    return data as Lead | null;
   };
 
   const updateLead = async (id: string, updates: Partial<Lead>) => {

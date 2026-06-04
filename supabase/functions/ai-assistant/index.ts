@@ -27,10 +27,18 @@ ANALYSIS STRUCTURE (adapt length to the question):
 4. **Specific actions** — 3-5 items, name names, mention lead values
 5. **Forecast** — realistic month-end projection
 
+DISPATCH SCHEDULING: When asked to plan a dispatch schedule, use the calendar entries, agent details, job locations, and BOQ to build a time-ordered plan. Consider:
+- Agent working hours (09:00–18:00 default, adjust for known constraints)
+- Travel time between locations (cluster nearby jobs to the same agent)
+- Job complexity from BOQ/description (simple service ~1h, complex install ~2-4h)
+- Agent efficiency score if provided (high efficiency = tighter schedule)
+- Prioritise overdue jobs and jobs with earlier date_to_attend
+- Output as a table: Time | Agent | Customer | Address | Job Type | Est. Duration
+
 RULES:
 - ALWAYS use numbers from the context. Never invent figures.
 - Always name specific leads and salespeople when analyzing problems.
-- Use markdown tables when listing multiple leads.
+- Use markdown tables when listing multiple leads or jobs.
 - For stale leads: days_in_stage > 7 with no upcoming follow-up = needs action now.
 - For at-risk leads: high value + overdue or stuck = highest priority.
 - Days left in month matters for pace calculation.`;
@@ -367,51 +375,84 @@ Deno.serve(async (req) => {
     // ─────────────────────────────────────────────
     } else if (role === "service_head") {
       const today = now.toISOString().slice(0, 10);
+      const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+
       const { data: jobs } = await admin
         .from("service_jobs")
-        .select("id,type,status,date_to_attend,assigned_agent,customer_name,address,accounts_approval_status,created_at,completed_at,value")
-        .is("deleted_at", null)
-        .order("date_to_attend");
+        .select("id,type,status,date_to_attend,assigned_agent,customer_name,address,description,category,value,is_foc,accounts_approval_status,created_at,completed_at")
+        .is("deleted_at", null);
 
       const { data: agentProfiles } = await admin
         .from("profiles")
-        .select("id, name")
-        .eq("active", true);
-      const agentMap: Record<string, string> = {};
-      (agentProfiles ?? []).forEach((p: any) => (agentMap[p.id] = p.name));
+        .select("id,name,phone_number");
+      const { data: agentRoles } = await admin
+        .from("user_roles")
+        .select("user_id")
+        .eq("role", "field_agent");
+      const agentIds = new Set((agentRoles ?? []).map((r: any) => r.user_id));
+      const agents = (agentProfiles ?? []).filter((p: any) => agentIds.has(p.id));
+
+      const activeJobs = (jobs ?? []).filter((j: any) => !["completed", "cancelled"].includes(j.status));
+      const agentLoad: Record<string, number> = {};
+      activeJobs.forEach((j: any) => {
+        if (j.assigned_agent) agentLoad[j.assigned_agent] = (agentLoad[j.assigned_agent] || 0) + 1;
+      });
+
+      const { data: completedLast30 } = await admin
+        .from("service_jobs")
+        .select("assigned_agent,completed_at")
+        .eq("status", "completed")
+        .gte("completed_at", new Date(Date.now() - 30 * 86400000).toISOString())
+        .is("deleted_at", null);
+      const agentCompletions: Record<string, number> = {};
+      (completedLast30 ?? []).forEach((j: any) => {
+        if (j.assigned_agent) agentCompletions[j.assigned_agent] = (agentCompletions[j.assigned_agent] || 0) + 1;
+      });
 
       const todayJobs = (jobs ?? []).filter((j: any) => j.date_to_attend === today);
+      const tomorrowJobs = (jobs ?? []).filter((j: any) => j.date_to_attend === tomorrow);
+      const upcomingUnassigned = (jobs ?? []).filter(
+        (j: any) => !j.assigned_agent && j.date_to_attend >= today && !["completed", "cancelled"].includes(j.status),
+      );
       const overdue = (jobs ?? []).filter(
-        (j: any) =>
-          j.date_to_attend &&
-          j.date_to_attend < today &&
-          !["completed", "cancelled"].includes(j.status),
+        (j: any) => j.date_to_attend && j.date_to_attend < today && !["completed", "cancelled"].includes(j.status),
       );
       const completedThisMonth = (jobs ?? []).filter(
         (j: any) => j.completed_at && j.completed_at >= mStart,
-      );
-      const pending = (jobs ?? []).filter(
-        (j: any) => !["completed", "cancelled"].includes(j.status),
       );
 
       ctx.deliveries = {
         today_count: todayJobs.length,
         today: todayJobs.map((j: any) => ({
-          customer: j.customer_name,
-          status: j.status,
-          agent: j.assigned_agent ? (agentMap[j.assigned_agent] ?? j.assigned_agent) : "Unassigned",
-          address: j.address,
+          id: j.id, customer: j.customer_name, address: j.address,
+          status: j.status, type: j.type, category: j.category,
+          description: j.description, agent_id: j.assigned_agent,
+          agent_name: agents.find((a: any) => a.id === j.assigned_agent)?.name ?? null,
+        })),
+        tomorrow_count: tomorrowJobs.length,
+        tomorrow: tomorrowJobs.map((j: any) => ({
+          id: j.id, customer: j.customer_name, address: j.address,
+          status: j.status, type: j.type, category: j.category,
+          description: j.description, agent_id: j.assigned_agent,
+          agent_name: agents.find((a: any) => a.id === j.assigned_agent)?.name ?? null,
+        })),
+        unassigned_upcoming: upcomingUnassigned.map((j: any) => ({
+          id: j.id, customer: j.customer_name, address: j.address,
+          date: j.date_to_attend, type: j.type, category: j.category, description: j.description,
         })),
         overdue_count: overdue.length,
-        overdue_jobs: overdue.slice(0, 10).map((j: any) => ({
-          customer: j.customer_name,
-          date: j.date_to_attend,
-          status: j.status,
-          agent: j.assigned_agent ? (agentMap[j.assigned_agent] ?? "?") : "Unassigned",
+        overdue: overdue.map((j: any) => ({
+          id: j.id, customer: j.customer_name, address: j.address,
+          date: j.date_to_attend, agent_name: agents.find((a: any) => a.id === j.assigned_agent)?.name ?? null,
         })),
         completed_this_month: completedThisMonth.length,
-        total_pending: pending.length,
+        total_active: activeJobs.length,
       };
+      ctx.field_agents = agents.map((a: any) => ({
+        id: a.id, name: a.name,
+        current_load: agentLoad[a.id] || 0,
+        completions_last_30d: agentCompletions[a.id] || 0,
+      }));
     }
 
     // ─────────────────────────────────────────────
