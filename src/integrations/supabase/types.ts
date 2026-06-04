@@ -418,6 +418,7 @@ export type Database = {
           file_url: string | null
           files: Json
           id: string
+          parent_message_id: string | null
           pinned: boolean
           sender_id: string
         }
@@ -430,6 +431,7 @@ export type Database = {
           file_url?: string | null
           files?: Json
           id?: string
+          parent_message_id?: string | null
           pinned?: boolean
           sender_id: string
         }
@@ -442,6 +444,7 @@ export type Database = {
           file_url?: string | null
           files?: Json
           id?: string
+          parent_message_id?: string | null
           pinned?: boolean
           sender_id?: string
         }
@@ -451,6 +454,61 @@ export type Database = {
             columns: ["channel_id"]
             isOneToOne: false
             referencedRelation: "chat_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_messages_parent_message_id_fkey"
+            columns: ["parent_message_id"]
+            isOneToOne: false
+            referencedRelation: "chat_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chat_moderation_log: {
+        Row: {
+          action: string
+          channel_id: string | null
+          created_at: string
+          id: string
+          moderator_id: string
+          reason: string | null
+          target_message_id: string | null
+          target_user_id: string | null
+        }
+        Insert: {
+          action: string
+          channel_id?: string | null
+          created_at?: string
+          id?: string
+          moderator_id: string
+          reason?: string | null
+          target_message_id?: string | null
+          target_user_id?: string | null
+        }
+        Update: {
+          action?: string
+          channel_id?: string | null
+          created_at?: string
+          id?: string
+          moderator_id?: string
+          reason?: string | null
+          target_message_id?: string | null
+          target_user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_moderation_log_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "chat_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_moderation_log_target_message_id_fkey"
+            columns: ["target_message_id"]
+            isOneToOne: false
+            referencedRelation: "chat_messages"
             referencedColumns: ["id"]
           },
         ]
@@ -2371,18 +2429,27 @@ export type Database = {
         Row: {
           away_message: string | null
           is_away: boolean
+          is_muted: boolean
+          muted_reason: string | null
+          muted_until: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
           away_message?: string | null
           is_away?: boolean
+          is_muted?: boolean
+          muted_reason?: string | null
+          muted_until?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
           away_message?: string | null
           is_away?: boolean
+          is_muted?: boolean
+          muted_reason?: string | null
+          muted_until?: string | null
           updated_at?: string
           user_id?: string
         }

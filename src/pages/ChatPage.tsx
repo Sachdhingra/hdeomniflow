@@ -12,6 +12,8 @@ import PresenceDot from "@/components/chat/PresenceDot";
 import MessageReactions from "@/components/chat/MessageReactions";
 import MessageBody from "@/components/chat/MessageBody";
 import AwayStatusEditor from "@/components/chat/AwayStatusEditor";
+import ThreadPanel from "@/components/chat/ThreadPanel";
+import { MessageSquareReply, VolumeX } from "lucide-react";
 
 interface Channel {
   id: string;
@@ -36,6 +38,7 @@ interface Message {
   pinned: boolean;
   edited_at: string | null;
   deleted_at: string | null;
+  parent_message_id?: string | null;
   created_at: string;
 }
 
@@ -84,6 +87,8 @@ const ChatPage = () => {
   const [members, setMembers] = useState<Record<string, string[]>>({});
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [threadParentId, setThreadParentId] = useState<string | null>(null);
+  const [mutedIds, setMutedIds] = useState<Set<string>>(new Set());
   const [input, setInput] = useState("");
   const [search, setSearch] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -111,6 +116,25 @@ const ChatPage = () => {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
+
+  // Load muted users (admins maintain this in user_status)
+  useEffect(() => {
+    let cancel = false;
+    const load = async () => {
+      const { data } = await (supabase.from("user_status") as any)
+        .select("user_id, is_muted")
+        .eq("is_muted", true);
+      if (cancel) return;
+      setMutedIds(new Set(((data ?? []) as { user_id: string }[]).map(r => r.user_id)));
+    };
+    load();
+    const ch = supabase
+      .channel("user-status-mute")
+      .on("postgres_changes", { event: "*", schema: "public", table: "user_status" }, load)
+      .subscribe();
+    return () => { cancel = true; supabase.removeChannel(ch); };
+  }, []);
+
 
   const loadChannels = async () => {
     const { data: ch } = await supabase
@@ -306,8 +330,11 @@ const ChatPage = () => {
 
   const canAttach = !!user && MANAGEMENT_ROLES.includes(user.role);
 
+  const iAmMuted = !!user && mutedIds.has(user.id);
+
   const sendMessage = async () => {
     if (!activeId || !user) return;
+    if (iAmMuted) { toast.error("You have been muted by an admin"); return; }
     if (!input.trim() && pendingFiles.length === 0) return;
     const body = input.trim();
     const filesToUpload = pendingFiles;
@@ -392,10 +419,19 @@ const ChatPage = () => {
     await supabase.from("chat_messages").update({ pinned: !m.pinned }).eq("id", m.id);
   };
 
+  const replyCounts = useMemo(() => {
+    const m: Record<string, number> = {};
+    messages.forEach(x => {
+      if (x.parent_message_id) m[x.parent_message_id] = (m[x.parent_message_id] ?? 0) + 1;
+    });
+    return m;
+  }, [messages]);
+
   const filteredMessages = useMemo(() => {
-    if (!search.trim()) return messages;
+    const top = messages.filter(m => !m.parent_message_id);
+    if (!search.trim()) return top;
     const q = search.toLowerCase();
-    return messages.filter(m =>
+    return top.filter(m =>
       m.body.toLowerCase().includes(q) ||
       (Array.isArray(m.files) && m.files.some(f => f.name.toLowerCase().includes(q)))
     );
@@ -446,6 +482,22 @@ const ChatPage = () => {
       </div>
     );
   }
+
+  const toggleMute = async (targetId: string, mute: boolean, reason?: string) => {
+    const { error } = await (supabase.from("user_status") as any).upsert(
+      { user_id: targetId, is_muted: mute, muted_reason: mute ? (reason ?? null) : null, muted_until: null },
+      { onConflict: "user_id" },
+    );
+    if (error) return toast.error(error.message);
+    await (supabase.from("chat_moderation_log") as any).insert({
+      action: mute ? "mute" : "unmute",
+      target_user_id: targetId,
+      channel_id: activeId,
+      moderator_id: user!.id,
+      reason: reason ?? null,
+    });
+    toast.success(mute ? "User muted" : "User unmuted");
+  };
 
   return (
     <div className="h-[calc(100vh-7rem)] flex gap-2 sm:gap-3">
@@ -695,9 +747,16 @@ const ChatPage = () => {
                       channelId={activeChannel?.id ?? ""}
                       currentUserId={user!.id}
                     />
-                    <div className="flex gap-2 mt-0.5">
+                    <div className="flex gap-2 mt-0.5 flex-wrap">
                       <button onClick={() => togglePin(m)} className="text-[11px] text-muted-foreground hover:text-foreground">
                         {m.pinned ? "Unpin" : "Pin"}
+                      </button>
+                      <button
+                        onClick={() => setThreadParentId(m.id)}
+                        className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                      >
+                        <MessageSquareReply className="w-3 h-3" />
+                        {replyCounts[m.id] ? `${replyCounts[m.id]} ${replyCounts[m.id] === 1 ? "reply" : "replies"}` : "Reply in thread"}
                       </button>
                       {mine && editingId !== m.id && (() => {
                         const editable = Date.now() - new Date(m.created_at).getTime() < EDIT_WINDOW_MS;
@@ -734,6 +793,20 @@ const ChatPage = () => {
                           <Shield className="w-3 h-3" /> Remove
                         </button>
                       )}
+                      {!mine && isAdmin && editingId !== m.id && (
+                        <button
+                          onClick={() => {
+                            const isM = mutedIds.has(m.sender_id);
+                            if (isM) { toggleMute(m.sender_id, false); return; }
+                            const reason = prompt("Mute this user? Optional reason:") ?? undefined;
+                            toggleMute(m.sender_id, true, reason);
+                          }}
+                          className="text-[11px] text-amber-600 hover:text-amber-700 inline-flex items-center gap-1"
+                          title={mutedIds.has(m.sender_id) ? "Unmute user" : "Mute user (admin)"}
+                        >
+                          <VolumeX className="w-3 h-3" /> {mutedIds.has(m.sender_id) ? "Unmute" : "Mute"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -751,6 +824,12 @@ const ChatPage = () => {
               .slice(0, 3)
               .join(", ")}{" "}
             typing…
+          </div>
+        )}
+        {iAmMuted && (
+          <div className="px-4 py-2 text-xs bg-destructive/10 text-destructive border-t border-destructive/30 flex items-center gap-2">
+            <VolumeX className="w-3.5 h-3.5" />
+            You have been muted by an admin. Sending is disabled.
           </div>
         )}
         <footer className="p-3 border-t border-border flex flex-col gap-2">
@@ -868,12 +947,21 @@ const ChatPage = () => {
                 }}
               />
             </div>
-            <Button onClick={sendMessage} disabled={uploading || (!input.trim() && pendingFiles.length === 0)}>
+            <Button onClick={sendMessage} disabled={iAmMuted || uploading || (!input.trim() && pendingFiles.length === 0)}>
               {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </Button>
           </div>
         </footer>
       </section>
+      {threadParentId && activeId && user && (
+        <ThreadPanel
+          parentId={threadParentId}
+          channelId={activeId}
+          currentUserId={user.id}
+          profiles={allProfiles}
+          onClose={() => setThreadParentId(null)}
+        />
+      )}
     </div>
   );
 };
