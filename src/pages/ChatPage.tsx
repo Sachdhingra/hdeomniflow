@@ -12,6 +12,8 @@ import PresenceDot from "@/components/chat/PresenceDot";
 import MessageReactions from "@/components/chat/MessageReactions";
 import MessageBody from "@/components/chat/MessageBody";
 import AwayStatusEditor from "@/components/chat/AwayStatusEditor";
+import ThreadPanel from "@/components/chat/ThreadPanel";
+import { MessageSquareReply, VolumeX } from "lucide-react";
 
 interface Channel {
   id: string;
