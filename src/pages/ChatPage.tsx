@@ -405,7 +405,6 @@ const ChatPage = () => {
     p => p.id !== user?.id && ["admin", "sales", "accounts", "service_head"].includes(p.role),
   );
 
-  if (!allowed) {
   const isAdmin = user?.role === "admin";
 
   const exportChannelCsv = () => {
@@ -439,10 +438,8 @@ const ChatPage = () => {
     toast.success("Channel exported");
   };
 
-  return (
-      <div className="p-6">
-        <h1 className="text-xl font-bold mb-2">Chat unavailable</h1>
-        <p className="text-muted-foreground">Your role does not have access to internal chat.</p>
+  if (!allowed) {
+    return (
       </div>
     );
   }
