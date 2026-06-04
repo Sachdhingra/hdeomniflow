@@ -117,6 +117,25 @@ const ChatPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
+  // Load muted users (admins maintain this in user_status)
+  useEffect(() => {
+    let cancel = false;
+    const load = async () => {
+      const { data } = await (supabase.from("user_status") as any)
+        .select("user_id, is_muted")
+        .eq("is_muted", true);
+      if (cancel) return;
+      setMutedIds(new Set(((data ?? []) as { user_id: string }[]).map(r => r.user_id)));
+    };
+    load();
+    const ch = supabase
+      .channel("user-status-mute")
+      .on("postgres_changes", { event: "*", schema: "public", table: "user_status" }, load)
+      .subscribe();
+    return () => { cancel = true; supabase.removeChannel(ch); };
+  }, []);
+
+
   const loadChannels = async () => {
     const { data: ch } = await supabase
       .from("chat_channels")
