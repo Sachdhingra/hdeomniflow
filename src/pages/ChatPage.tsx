@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Hash, Send, Plus, Search, Trash2, Edit2, Pin, ArrowLeft, Paperclip, FileText, X, Download, Loader2, Check, CheckCheck } from "lucide-react";
+import { Hash, Send, Plus, Search, Trash2, Edit2, Pin, ArrowLeft, Paperclip, FileText, X, Download, Loader2, Check, CheckCheck, Shield, FileDown } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 import { useChatUnread } from "@/contexts/ChatUnreadContext";
@@ -49,6 +49,29 @@ const formatBytes = (b: number) => {
   if (b < 1024) return `${b} B`;
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
   return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const dayKey = (iso: string) => {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+const dayLabel = (iso: string) => {
+  const d = new Date(iso);
+  const today = new Date();
+  const yest = new Date(); yest.setDate(today.getDate() - 1);
+  const sameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  if (sameDay(d, today)) return "Today";
+  if (sameDay(d, yest)) return "Yesterday";
+  return d.toLocaleDateString(undefined, { weekday: "short", day: "2-digit", month: "short", year: "numeric" });
+};
+const stampLabel = (iso: string) => {
+  const d = new Date(iso);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yy = String(d.getFullYear()).slice(-2);
+  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return `${dd}/${mm}/${yy} · ${time}`;
 };
 
 const ChatPage = () => {
@@ -382,6 +405,39 @@ const ChatPage = () => {
     p => p.id !== user?.id && ["admin", "sales", "accounts", "service_head"].includes(p.role),
   );
 
+  const isAdmin = user?.role === "admin";
+
+  const exportChannelCsv = () => {
+    if (!activeChannel) return;
+    const rows = [["timestamp", "sender", "role", "body", "attachments", "pinned", "edited"]];
+    messages.forEach(m => {
+      const s = allProfiles.find(p => p.id === m.sender_id);
+      rows.push([
+        new Date(m.created_at).toISOString(),
+        s?.name ?? "Unknown",
+        s?.role ?? "",
+        (m.body ?? "").replace(/\r?\n/g, " "),
+        Array.isArray(m.files) ? m.files.map(f => f.name).join("|") : "",
+        m.pinned ? "yes" : "",
+        m.edited_at ? "yes" : "",
+      ]);
+    });
+    const csv = rows
+      .map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const name = activeChannel.kind === "dm" ? dmCounterpartName(activeChannel.id) : activeChannel.name;
+    a.download = `chat-${name.replace(/[^a-z0-9]+/gi, "_")}-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success("Channel exported");
+  };
+
   if (!allowed) {
     return (
       <div className="p-6">
@@ -502,6 +558,17 @@ const ChatPage = () => {
           <span className="ml-auto text-xs text-muted-foreground">
             {(members[activeChannel?.id ?? ""] ?? []).length} members
           </span>
+          {isAdmin && activeChannel && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-xs"
+              onClick={exportChannelCsv}
+              title="Export channel as CSV"
+            >
+              <FileDown className="w-3.5 h-3.5 mr-1" /> Export
+            </Button>
+          )}
         </header>
 
         {messages.some(m => m.pinned) && (
@@ -537,117 +604,137 @@ const ChatPage = () => {
           {filteredMessages.length === 0 && (
             <div className="text-center text-muted-foreground text-sm mt-8">No messages yet. Say hi 👋</div>
           )}
-          {filteredMessages.map(m => {
+          {filteredMessages.map((m, idx) => {
             const sender = allProfiles.find(p => p.id === m.sender_id);
             const mine = m.sender_id === user!.id;
+            const prev = idx > 0 ? filteredMessages[idx - 1] : null;
+            const showDateSep = !prev || dayKey(prev.created_at) !== dayKey(m.created_at);
             return (
-              <div key={m.id} className={`flex gap-2 ${mine ? "justify-end" : ""}`}>
-                {!mine && (
-                  <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0">
-                    {(sender?.name ?? "?").charAt(0)}
+              <div key={m.id}>
+                {showDateSep && (
+                  <div className="flex items-center gap-3 my-3" aria-label="Date separator">
+                    <div className="flex-1 h-px bg-border" />
+                    <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground bg-muted/60 px-2 py-0.5 rounded-full">
+                      {dayLabel(m.created_at)}
+                    </span>
+                    <div className="flex-1 h-px bg-border" />
                   </div>
                 )}
-                <div className={`max-w-[70%] ${mine ? "items-end" : ""}`}>
-                  <div className="text-xs text-muted-foreground mb-0.5 flex items-center gap-1 flex-wrap">
-                    <span className="font-medium">{sender?.name ?? "Unknown"}</span>
-                    {sender?.role && <span className="text-[10px] uppercase tracking-wide opacity-70">({sender.role})</span>}
-                    <span>· {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                    {m.edited_at && <span className="italic">(edited)</span>}
-                    {m.pinned && <Pin className="w-3 h-3 text-amber-500" />}
-                    {mine && (() => {
-                      const readers = reads[m.id];
-                      const recipientIds = (members[activeChannel?.id ?? ""] ?? []).filter(uid => uid !== user!.id);
-                      const readCount = recipientIds.filter(uid => readers?.has(uid)).length;
-                      if (recipientIds.length === 0) return null;
-                      if (readCount === 0) {
-                        return <Check className="w-3 h-3" aria-label="Sent" />;
-                      }
-                      if (readCount < recipientIds.length) {
-                        return <CheckCheck className="w-3 h-3" aria-label="Delivered" />;
-                      }
-                      return <CheckCheck className="w-3 h-3 text-sky-500" aria-label="Read by all" />;
-                    })()}
-                  </div>
-                  {(m.body || editingId === m.id) && (
-                    <div
-                      className={`rounded-lg px-3 py-2 text-sm break-words ${
-                        mine ? "bg-primary text-primary-foreground" : "bg-muted"
-                      }`}
-                    >
-                      {editingId === m.id ? (
-                        <div className="flex flex-col gap-2">
-                          <Input
-                            value={editBody}
-                            onChange={e => setEditBody(e.target.value)}
-                            onKeyDown={e => e.key === "Enter" && saveEdit()}
-                          />
-                          <div className="flex gap-2">
-                            <Button size="sm" onClick={saveEdit}>Save</Button>
-                            <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancel</Button>
+                <div className={`flex gap-2 ${mine ? "justify-end" : ""}`}>
+                  {!mine && (
+                    <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0">
+                      {(sender?.name ?? "?").charAt(0)}
+                    </div>
+                  )}
+                  <div className={`max-w-[70%] ${mine ? "items-end" : ""}`}>
+                    <div className="text-xs text-muted-foreground mb-0.5 flex items-center gap-1 flex-wrap">
+                      <span className="font-medium">{sender?.name ?? "Unknown"}</span>
+                      {sender?.role && <span className="text-[10px] uppercase tracking-wide opacity-70">({sender.role})</span>}
+                      <span title={new Date(m.created_at).toLocaleString()}>· {stampLabel(m.created_at)}</span>
+                      {m.edited_at && <span className="italic">(edited)</span>}
+                      {m.pinned && <Pin className="w-3 h-3 text-amber-500" />}
+                      {mine && (() => {
+                        const readers = reads[m.id];
+                        const recipientIds = (members[activeChannel?.id ?? ""] ?? []).filter(uid => uid !== user!.id);
+                        const readCount = recipientIds.filter(uid => readers?.has(uid)).length;
+                        if (recipientIds.length === 0) return null;
+                        if (readCount === 0) return <Check className="w-3 h-3" aria-label="Sent" />;
+                        if (readCount < recipientIds.length) return <CheckCheck className="w-3 h-3" aria-label="Delivered" />;
+                        return <CheckCheck className="w-3 h-3 text-sky-500" aria-label="Read by all" />;
+                      })()}
+                    </div>
+                    {(m.body || editingId === m.id) && (
+                      <div
+                        className={`rounded-lg px-3 py-2 text-sm break-words ${
+                          mine ? "bg-primary text-primary-foreground" : "bg-muted"
+                        }`}
+                      >
+                        {editingId === m.id ? (
+                          <div className="flex flex-col gap-2">
+                            <Input
+                              value={editBody}
+                              onChange={e => setEditBody(e.target.value)}
+                              onKeyDown={e => e.key === "Enter" && saveEdit()}
+                            />
+                            <div className="flex gap-2">
+                              <Button size="sm" onClick={saveEdit}>Save</Button>
+                              <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancel</Button>
+                            </div>
                           </div>
-                        </div>
-                      ) : (
-                        <MessageBody
-                          body={m.body}
-                          mine={mine}
-                          profiles={allProfiles}
-                          currentUserId={user!.id}
-                        />
+                        ) : (
+                          <MessageBody
+                            body={m.body}
+                            mine={mine}
+                            profiles={allProfiles}
+                            currentUserId={user!.id}
+                          />
+                        )}
+                      </div>
+                    )}
+                    {Array.isArray(m.files) && m.files.length > 0 && editingId !== m.id && (
+                      <div className={`mt-1 flex flex-col gap-1 ${mine ? "items-end" : "items-start"}`}>
+                        {m.files.map((f, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => downloadAttachment(f)}
+                            className="flex items-center gap-2 text-left bg-card border border-border rounded-md px-2.5 py-2 hover:bg-muted transition-colors max-w-full"
+                          >
+                            <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                            <div className="min-w-0">
+                              <div className="text-xs font-medium truncate">{f.name}</div>
+                              <div className="text-[10px] text-muted-foreground">{formatBytes(f.size)}</div>
+                            </div>
+                            <Download className="w-3.5 h-3.5 text-muted-foreground shrink-0 ml-1" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <MessageReactions
+                      messageId={m.id}
+                      channelId={activeChannel?.id ?? ""}
+                      currentUserId={user!.id}
+                    />
+                    <div className="flex gap-2 mt-0.5">
+                      <button onClick={() => togglePin(m)} className="text-[11px] text-muted-foreground hover:text-foreground">
+                        {m.pinned ? "Unpin" : "Pin"}
+                      </button>
+                      {mine && editingId !== m.id && (() => {
+                        const editable = Date.now() - new Date(m.created_at).getTime() < EDIT_WINDOW_MS;
+                        return (
+                          <>
+                            {editable && (
+                              <button
+                                onClick={() => {
+                                  setEditingId(m.id);
+                                  setEditBody(m.body);
+                                }}
+                                className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                              >
+                                <Edit2 className="w-3 h-3" /> Edit
+                              </button>
+                            )}
+                            <button
+                              onClick={() => deleteMsg(m.id)}
+                              className="text-[11px] text-destructive/80 hover:text-destructive inline-flex items-center gap-1"
+                            >
+                              <Trash2 className="w-3 h-3" /> Delete
+                            </button>
+                          </>
+                        );
+                      })()}
+                      {!mine && isAdmin && editingId !== m.id && (
+                        <button
+                          onClick={() => {
+                            if (confirm("Delete this message as admin? This cannot be undone.")) deleteMsg(m.id);
+                          }}
+                          className="text-[11px] text-destructive/80 hover:text-destructive inline-flex items-center gap-1"
+                          title="Admin moderation: delete message"
+                        >
+                          <Shield className="w-3 h-3" /> Remove
+                        </button>
                       )}
                     </div>
-                  )}
-                  {Array.isArray(m.files) && m.files.length > 0 && editingId !== m.id && (
-                    <div className={`mt-1 flex flex-col gap-1 ${mine ? "items-end" : "items-start"}`}>
-                      {m.files.map((f, i) => (
-                        <button
-                          key={i}
-                          type="button"
-                          onClick={() => downloadAttachment(f)}
-                          className="flex items-center gap-2 text-left bg-card border border-border rounded-md px-2.5 py-2 hover:bg-muted transition-colors max-w-full"
-                        >
-                          <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
-                          <div className="min-w-0">
-                            <div className="text-xs font-medium truncate">{f.name}</div>
-                            <div className="text-[10px] text-muted-foreground">{formatBytes(f.size)}</div>
-                          </div>
-                          <Download className="w-3.5 h-3.5 text-muted-foreground shrink-0 ml-1" />
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <MessageReactions
-                    messageId={m.id}
-                    channelId={activeChannel?.id ?? ""}
-                    currentUserId={user!.id}
-                  />
-                  <div className="flex gap-2 mt-0.5">
-                    <button onClick={() => togglePin(m)} className="text-[11px] text-muted-foreground hover:text-foreground">
-                      {m.pinned ? "Unpin" : "Pin"}
-                    </button>
-                    {mine && editingId !== m.id && (() => {
-                      const editable = Date.now() - new Date(m.created_at).getTime() < EDIT_WINDOW_MS;
-                      return (
-                        <>
-                          {editable && (
-                            <button
-                              onClick={() => {
-                                setEditingId(m.id);
-                                setEditBody(m.body);
-                              }}
-                              className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-                            >
-                              <Edit2 className="w-3 h-3" /> Edit
-                            </button>
-                          )}
-                          <button
-                            onClick={() => deleteMsg(m.id)}
-                            className="text-[11px] text-destructive/80 hover:text-destructive inline-flex items-center gap-1"
-                          >
-                            <Trash2 className="w-3 h-3" /> Delete
-                          </button>
-                        </>
-                      );
-                    })()}
                   </div>
                 </div>
               </div>
