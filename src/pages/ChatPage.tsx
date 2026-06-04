@@ -558,6 +558,17 @@ const ChatPage = () => {
           <span className="ml-auto text-xs text-muted-foreground">
             {(members[activeChannel?.id ?? ""] ?? []).length} members
           </span>
+          {isAdmin && activeChannel && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-xs"
+              onClick={exportChannelCsv}
+              title="Export channel as CSV"
+            >
+              <FileDown className="w-3.5 h-3.5 mr-1" /> Export
+            </Button>
+          )}
         </header>
 
         {messages.some(m => m.pinned) && (
