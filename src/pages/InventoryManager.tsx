@@ -15,8 +15,9 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Package, Plus, Minus, Trash2, Download, X } from "lucide-react";
+import { Package, Plus, Minus, Trash2, Download, X, Upload } from "lucide-react";
 import { toast } from "sonner";
+import TallyStockImport from "@/components/TallyStockImport";
 
 const CATEGORIES = [
   { value: "safe", label: "Safe" },
@@ -51,6 +52,7 @@ const InventoryManager = () => {
   const [filter, setFilter] = useState<string>("all");
   const [showAdd, setShowAdd] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [tallyImportOpen, setTallyImportOpen] = useState(false);
 
   const [form, setForm] = useState({
     name: "", category: "other", description: "", photo_url: "",
@@ -170,10 +172,15 @@ const InventoryManager = () => {
           <h1 className="text-2xl font-bold">Inventory</h1>
           <p className="text-sm text-muted-foreground">Track on-display stock and reorder needs.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button variant="outline" onClick={exportCsv}>
             <Download className="w-4 h-4 mr-1" /> Export CSV
           </Button>
+          {isAdmin && (
+            <Button variant="outline" onClick={() => setTallyImportOpen(true)}>
+              <Upload className="w-4 h-4 mr-1" /> Import from Tally
+            </Button>
+          )}
           {isAdmin && (
             <Button onClick={() => setShowAdd(s => !s)}>
               {showAdd ? <X className="w-4 h-4 mr-1" /> : <Plus className="w-4 h-4 mr-1" />}
@@ -292,6 +299,12 @@ const InventoryManager = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <TallyStockImport
+        open={tallyImportOpen}
+        onClose={() => setTallyImportOpen(false)}
+        onDone={() => { setTallyImportOpen(false); load(); }}
+      />
     </div>
   );
 };
