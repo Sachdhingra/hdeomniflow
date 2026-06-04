@@ -747,9 +747,16 @@ const ChatPage = () => {
                       channelId={activeChannel?.id ?? ""}
                       currentUserId={user!.id}
                     />
-                    <div className="flex gap-2 mt-0.5">
+                    <div className="flex gap-2 mt-0.5 flex-wrap">
                       <button onClick={() => togglePin(m)} className="text-[11px] text-muted-foreground hover:text-foreground">
                         {m.pinned ? "Unpin" : "Pin"}
+                      </button>
+                      <button
+                        onClick={() => setThreadParentId(m.id)}
+                        className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                      >
+                        <MessageSquareReply className="w-3 h-3" />
+                        {replyCounts[m.id] ? `${replyCounts[m.id]} ${replyCounts[m.id] === 1 ? "reply" : "replies"}` : "Reply in thread"}
                       </button>
                       {mine && editingId !== m.id && (() => {
                         const editable = Date.now() - new Date(m.created_at).getTime() < EDIT_WINDOW_MS;
