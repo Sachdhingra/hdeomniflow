@@ -419,10 +419,19 @@ const ChatPage = () => {
     await supabase.from("chat_messages").update({ pinned: !m.pinned }).eq("id", m.id);
   };
 
+  const replyCounts = useMemo(() => {
+    const m: Record<string, number> = {};
+    messages.forEach(x => {
+      if (x.parent_message_id) m[x.parent_message_id] = (m[x.parent_message_id] ?? 0) + 1;
+    });
+    return m;
+  }, [messages]);
+
   const filteredMessages = useMemo(() => {
-    if (!search.trim()) return messages;
+    const top = messages.filter(m => !m.parent_message_id);
+    if (!search.trim()) return top;
     const q = search.toLowerCase();
-    return messages.filter(m =>
+    return top.filter(m =>
       m.body.toLowerCase().includes(q) ||
       (Array.isArray(m.files) && m.files.some(f => f.name.toLowerCase().includes(q)))
     );
