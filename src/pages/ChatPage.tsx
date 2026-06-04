@@ -330,8 +330,11 @@ const ChatPage = () => {
 
   const canAttach = !!user && MANAGEMENT_ROLES.includes(user.role);
 
+  const iAmMuted = !!user && mutedIds.has(user.id);
+
   const sendMessage = async () => {
     if (!activeId || !user) return;
+    if (iAmMuted) { toast.error("You have been muted by an admin"); return; }
     if (!input.trim() && pendingFiles.length === 0) return;
     const body = input.trim();
     const filesToUpload = pendingFiles;
