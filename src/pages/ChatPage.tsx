@@ -947,12 +947,21 @@ const ChatPage = () => {
                 }}
               />
             </div>
-            <Button onClick={sendMessage} disabled={uploading || (!input.trim() && pendingFiles.length === 0)}>
+            <Button onClick={sendMessage} disabled={iAmMuted || uploading || (!input.trim() && pendingFiles.length === 0)}>
               {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </Button>
           </div>
         </footer>
       </section>
+      {threadParentId && activeId && user && (
+        <ThreadPanel
+          parentId={threadParentId}
+          channelId={activeId}
+          currentUserId={user.id}
+          profiles={allProfiles}
+          onClose={() => setThreadParentId(null)}
+        />
+      )}
     </div>
   );
 };
