@@ -406,7 +406,40 @@ const ChatPage = () => {
   );
 
   if (!allowed) {
-    return (
+  const isAdmin = user?.role === "admin";
+
+  const exportChannelCsv = () => {
+    if (!activeChannel) return;
+    const rows = [["timestamp", "sender", "role", "body", "attachments", "pinned", "edited"]];
+    messages.forEach(m => {
+      const s = allProfiles.find(p => p.id === m.sender_id);
+      rows.push([
+        new Date(m.created_at).toISOString(),
+        s?.name ?? "Unknown",
+        s?.role ?? "",
+        (m.body ?? "").replace(/\r?\n/g, " "),
+        Array.isArray(m.files) ? m.files.map(f => f.name).join("|") : "",
+        m.pinned ? "yes" : "",
+        m.edited_at ? "yes" : "",
+      ]);
+    });
+    const csv = rows
+      .map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const name = activeChannel.kind === "dm" ? dmCounterpartName(activeChannel.id) : activeChannel.name;
+    a.download = `chat-${name.replace(/[^a-z0-9]+/gi, "_")}-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success("Channel exported");
+  };
+
+  return (
       <div className="p-6">
         <h1 className="text-xl font-bold mb-2">Chat unavailable</h1>
         <p className="text-muted-foreground">Your role does not have access to internal chat.</p>
