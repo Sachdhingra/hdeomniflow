@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Plus, Trash2, FileDown, FileSpreadsheet, Upload, Loader2, FileText, CheckCircle2, Edit, Download, FileCode2, Settings2 } from "lucide-react";
+import { Plus, Trash2, FileDown, FileSpreadsheet, Upload, Loader2, FileText, CheckCircle2, Edit, Download, FileCode2, Settings2, Info } from "lucide-react";
 import {
   buildTallyCsv, downloadCsv, downloadTallyExcel, buildTallyXml, downloadXml,
   tallyFilename, loadTallySettings, type TallyPurchase,
@@ -351,6 +351,15 @@ export default function AdminCompanyPurchases() {
             <Plus className="w-4 h-4" /> Add Purchase
           </Button>
         </div>
+      </div>
+
+      <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2.5 flex items-start gap-2 text-blue-800 text-xs">
+        <Info className="w-4 h-4 shrink-0 mt-0.5" />
+        <span>
+          <strong>How to import into Tally Prime:</strong> Export the XML file → In Tally go to{" "}
+          <strong>Gateway of Tally → Import → Data</strong> → select the <code className="bg-blue-100 px-1 rounded">.xml</code> file → Accept.
+          {" "}Do <em>not</em> use <strong>Import Transactions</strong> (that is for Excel files only).
+        </span>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
