@@ -236,6 +236,7 @@ export default function AdminCompanyPurchases() {
         setItems(r.line_items.map((li: any) => ({
           item_name: li.item_name || "",
           item_code: li.item_code || "",
+          no_of_packings: li.no_of_packings ? Number(li.no_of_packings) : 0,
           quantity: Number(li.quantity) || 1,
           unit: li.unit || "PCS",
           rate: Number(li.rate) || 0,
