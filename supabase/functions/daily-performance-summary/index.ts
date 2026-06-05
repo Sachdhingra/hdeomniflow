@@ -202,8 +202,14 @@ function aggService(jobs: Job[], reportDate: Date) {
   const completion_rate_today = jobs_today ? +((completedDay / jobs_today) * 100).toFixed(1) : 0;
   const CLOSED_STATUSES = ["completed", "accounts_rejected"];
   const pending_jobs = jobs.filter(j => !CLOSED_STATUSES.includes(j.status)).length;
+  // Only flag jobs past-due within the current month so the count reflects recent
+  // missed appointments, not an ever-growing FY backlog of old open jobs.
+  const mStartStr = mStart.slice(0, 10);
   const critical_pending = jobs.filter(j =>
-    !CLOSED_STATUSES.includes(j.status) && j.date_to_attend && j.date_to_attend < todayStr
+    !CLOSED_STATUSES.includes(j.status) &&
+    j.date_to_attend &&
+    j.date_to_attend >= mStartStr &&
+    j.date_to_attend < todayStr
   ).length;
 
   const monthJobs = jobs.filter(j => j.created_at >= mStart);
