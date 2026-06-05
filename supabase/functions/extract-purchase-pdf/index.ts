@@ -21,31 +21,35 @@ Deno.serve(async (req) => {
     const content: any[] = [
       {
         type: 'text',
-        text: `You are extracting data from a supplier purchase invoice (typically Godrej or similar Indian supplier).
+        text: `You are extracting line items from an Indian supplier tax invoice (Godrej or similar).
 Return ONLY structured data via the tool call.
 
-CRITICAL — Godrej invoices have SEPARATE columns for packings and quantity. Do NOT confuse them:
-- no_of_packings = "No. of Pkg" / "No. of Pkgs" / "No. of Packages" / "Packages" / "Cartons" column.
-  This is the number of physical boxes/cartons. A safe may ship in 39 cartons (no_of_packings=39).
-- quantity       = "Qty" / "Quantity" / "Billed Qty" column — the actual billing unit count (e.g. 1 EA).
-  DO NOT put the packing count here. If Qty column says 1, quantity = 1 even if Pkgs = 39.
+====== GODREJ INVOICE COLUMN STRUCTURE ======
+Godrej invoices have these columns in this order:
+  Description of Goods | HSN/SAC | No. of Pkg | Qty | UOM | Rate | Disc% | Taxable Value | GST% | GST Amt | Total
 
-Field rules:
-- supplier_name        : full legal company name from invoice header
-- supplier_invoice_no  : tax invoice / invoice number
-- purchase_date        : invoice date as YYYY-MM-DD
-- line_items           : one object per product row (skip totals, tax summary, blank rows)
-  - item_name       : full product description/name (e.g. "FORTE FILING CABINET - 4 DRAWER")
-  - item_code       : product model / article / item code (e.g. "WFM-41-DD-ST")
-  - no_of_packings  : carton/package count (integer) from "No. of Pkg" column, null if absent
-  - quantity        : billing quantity (number) from "Qty" column — NOT from the Pkgs column
-  - unit            : unit of measure (EA, NOS, PCS, etc.)
-  - rate            : rate PER UNIT from "Rate" column — NOT "Taxable Value" / "Amount" / "Total"
-  - discount_percent: discount % as a plain number (0 if blank)
-  - hsn_code        : HSN/SAC code
-  - gst_percent     : GST rate as a plain number (5, 12, 18, 28)
+RULES — read each column independently for EACH row:
+1. item_name  = full text from "Description of Goods" column (may include model code in the text, that is OK).
+               If the description is just a model code like "WON037", use that as item_name AND item_code.
+2. item_code  = model/article number if shown separately; otherwise same as item_name.
+3. no_of_packings = the number in "No. of Pkg" column for THAT row. Each row has its OWN packing count.
+                    If the column is blank or "-" for a row, use null for THAT row only.
+4. quantity   = the number in "Qty" column for THAT row. Read the "Qty" column, NOT the "No. of Pkg" column.
+               EXAMPLE: if a row shows  No.of Pkg=39  Qty=1  UOM=EA  → no_of_packings=39, quantity=1.
+               EXAMPLE: if a row shows  No.of Pkg=1   Qty=39 UOM=KG  → no_of_packings=1,  quantity=39.
+5. unit       = value from "UOM" column (EA, NOS, KG, PCS, etc.)
+6. rate       = value from "Rate" column (rate per unit). NOT "Taxable Value", NOT "Total", NOT "GST Amt".
+7. discount_percent = value from "Disc%" column as a plain number (use 0 if blank).
+8. hsn_code   = HSN/SAC code column.
+9. gst_percent = GST rate as a plain number (5, 12, 18, 28) — without the "%" symbol.
 
-If any field is missing from the invoice, use null.`,
+HEADER FIELDS:
+- supplier_name       = full company name from invoice header (e.g. "GODREJ & BOYCE MFG. CO. LTD.")
+- supplier_invoice_no = Tax Invoice No.
+- purchase_date       = Invoice date as YYYY-MM-DD
+
+Include ALL product/service rows. Skip grand total rows, tax summary rows, and header rows.
+If a field is missing, use null.`,
       },
     ];
 
