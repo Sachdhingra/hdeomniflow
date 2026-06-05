@@ -6,6 +6,7 @@ export interface TallyLineItem {
   item_name: string;
   item_code?: string;
   hsn_code?: string;
+  no_of_packings?: number;
   quantity: number;
   unit: string;
   rate: number;          // original rate (before discount)
@@ -82,7 +83,7 @@ function fmtDateTally(d: string) {
 const TALLY_CSV_HEADERS = [
   "Voucher Type", "Reference Number", "Date", "Payee Name",
   "Ledger Name", "HSN Code", "Item Name", "Item Code",
-  "Quantity", "Unit", "Rate", "Disc%", "Taxable Amount",
+  "No. of Pkgs", "Quantity", "Unit", "Rate", "Disc%", "Taxable Amount",
   "GST%", "CGST Amount", "SGST Amount", "IGST Amount", "Total Amount",
   "Narration",
 ];
@@ -100,6 +101,7 @@ function csvRowsFor(p: TallyPurchase): (string | number)[][] {
       it.hsn_code ?? "",
       it.item_name,
       it.item_code ?? "",
+      it.no_of_packings ?? "",
       it.quantity,
       it.unit,
       it.rate,

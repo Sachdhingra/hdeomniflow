@@ -41,6 +41,7 @@ interface LineItem {
   id?: string;
   item_name: string;
   item_code: string;
+  no_of_packings: number;
   quantity: number;
   unit: string;
   rate: number;
@@ -56,7 +57,7 @@ const inr = (n: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format(n || 0);
 
 const blankItem = (): LineItem => ({
-  item_name: "", item_code: "", quantity: 1, unit: "PCS", rate: 0,
+  item_name: "", item_code: "", no_of_packings: 0, quantity: 1, unit: "PCS", rate: 0,
   discount_percent: 0, hsn_code: "", gst_percent: 5,
 });
 
@@ -143,6 +144,7 @@ export default function AdminCompanyPurchases() {
       .order("sort_order");
     setItems(((data as any) || []).map((d: any) => ({
       id: d.id, item_name: d.item_name, item_code: d.item_code || "",
+      no_of_packings: Number(d.no_of_packings) || 0,
       quantity: Number(d.quantity), unit: d.unit, rate: Number(d.rate),
       discount_percent: Number(d.discount_percent), hsn_code: d.hsn_code || "",
       gst_percent: Number(d.gst_percent),
@@ -186,6 +188,7 @@ export default function AdminCompanyPurchases() {
       const rows = items.map((it, idx) => ({
         purchase_id: pid,
         item_name: it.item_name, item_code: it.item_code || null,
+        no_of_packings: it.no_of_packings || null,
         quantity: it.quantity, unit: it.unit, rate: it.rate,
         discount_percent: it.discount_percent, hsn_code: it.hsn_code || null,
         gst_percent: it.gst_percent, sort_order: idx,
@@ -258,6 +261,7 @@ export default function AdminCompanyPurchases() {
         item_name: it.item_name,
         item_code: it.item_code ?? "",
         hsn_code: it.hsn_code ?? "",
+        no_of_packings: it.no_of_packings ? Number(it.no_of_packings) : undefined,
         quantity: Number(it.quantity),
         unit: it.unit,
         rate: Number(it.rate),
@@ -543,6 +547,7 @@ export default function AdminCompanyPurchases() {
                   <tr>
                     <th className="p-2 text-left">Item</th>
                     <th className="p-2 text-left">Code</th>
+                    <th className="p-2 text-right">Pkgs</th>
                     <th className="p-2 text-right">Qty</th>
                     <th className="p-2 text-left">Unit</th>
                     <th className="p-2 text-right">Rate</th>
@@ -560,6 +565,7 @@ export default function AdminCompanyPurchases() {
                       <tr key={idx} className="border-t">
                         <td className="p-1"><Input value={it.item_name} onChange={(e) => { const n=[...items]; n[idx]={...it,item_name:e.target.value}; setItems(n); }} /></td>
                         <td className="p-1"><Input value={it.item_code} onChange={(e) => { const n=[...items]; n[idx]={...it,item_code:e.target.value}; setItems(n); }} /></td>
+                        <td className="p-1"><Input className="text-right w-16" type="number" min="0" placeholder="0" value={it.no_of_packings || ""} onChange={(e) => { const n=[...items]; n[idx]={...it,no_of_packings:+e.target.value}; setItems(n); }} /></td>
                         <td className="p-1"><Input className="text-right w-20" type="number" value={it.quantity} onChange={(e) => { const n=[...items]; n[idx]={...it,quantity:+e.target.value}; setItems(n); }} /></td>
                         <td className="p-1"><Input className="w-20" value={it.unit} onChange={(e) => { const n=[...items]; n[idx]={...it,unit:e.target.value}; setItems(n); }} /></td>
                         <td className="p-1"><Input className="text-right w-28" type="number" value={it.rate} onChange={(e) => { const n=[...items]; n[idx]={...it,rate:+e.target.value}; setItems(n); }} /></td>
