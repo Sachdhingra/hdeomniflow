@@ -200,9 +200,13 @@ function aggService(jobs: Job[], reportDate: Date) {
   const completedDay = dayJobs.filter(j => j.status === "completed").length;
   const jobs_today = dayJobs.length;
   const completion_rate_today = jobs_today ? +((completedDay / jobs_today) * 100).toFixed(1) : 0;
-  const pending_jobs = jobs.filter(j => j.status !== "completed").length;
+  // Terminal / non-actionable statuses excluded from pending counts
+  const TERMINAL = new Set(["completed", "accounts_rejected", "rescheduled", "pending_accounts_approval"]);
+  // Only field-active statuses count as "past-due pending"
+  const ACTIVE_FIELD = new Set(["pending", "assigned", "on_route", "on_site"]);
+  const pending_jobs = jobs.filter(j => !TERMINAL.has(j.status)).length;
   const critical_pending = jobs.filter(j =>
-    j.status !== "completed" && j.date_to_attend && j.date_to_attend < todayStr
+    ACTIVE_FIELD.has(j.status) && j.date_to_attend && j.date_to_attend < todayStr
   ).length;
 
   const monthJobs = jobs.filter(j => j.created_at >= mStart);
