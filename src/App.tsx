@@ -135,8 +135,10 @@ const AppRoutes = () => {
             <Route path="/service-jobs" element={<ServiceDashboard />} />
             <Route path="/claims" element={<ServiceClaims />} />
             <Route path="/calendar" element={<ServiceCalendar />} />
+            <Route path="/products" element={<ProductsView />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/ai-assistant" element={<AIAssistantPage />} />
+
           </>
         );
       case "field_agent":
