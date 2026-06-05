@@ -26,7 +26,12 @@ Fields:
 - supplier_name (e.g. "GODREJ AND BOYCE MANUFACTURING CO LTD")
 - supplier_invoice_no
 - purchase_date (YYYY-MM-DD)
-- line_items: array of { item_name, item_code, quantity, unit, rate, discount_percent, hsn_code, gst_percent }
+- line_items: array of objects with:
+    item_name, item_code, no_of_packings, quantity, unit, rate, discount_percent, hsn_code, gst_percent
+
+For no_of_packings: look for columns labelled "No. of Pkg", "No. of Pkgs", "No. of Packages",
+"Packages", "Packs", "Pkg", "Cartons", "No of Pkg" or any similar packing/carton count column.
+If absent use null.
 If a field is missing, use null. Discount/GST percent are numbers without "%".`,
       },
     ];
@@ -64,6 +69,7 @@ If a field is missing, use null. Discount/GST percent are numbers without "%".`,
                     properties: {
                       item_name: { type: 'string' },
                       item_code: { type: 'string' },
+                      no_of_packings: { type: 'number' },
                       quantity: { type: 'number' },
                       unit: { type: 'string' },
                       rate: { type: 'number' },
