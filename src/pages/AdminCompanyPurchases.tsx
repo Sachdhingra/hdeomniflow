@@ -185,14 +185,17 @@ export default function AdminCompanyPurchases() {
         if (error) throw error;
         await supabase.from("purchase_line_items" as any).delete().eq("purchase_id", editing.id);
       }
-      const rows = items.map((it, idx) => ({
-        purchase_id: pid,
-        item_name: it.item_name, item_code: it.item_code || null,
-        no_of_packings: it.no_of_packings || null,
-        quantity: it.quantity, unit: it.unit, rate: it.rate,
-        discount_percent: it.discount_percent, hsn_code: it.hsn_code || null,
-        gst_percent: it.gst_percent, sort_order: idx,
-      }));
+      const rows = items.map((it, idx) => {
+        const row: any = {
+          purchase_id: pid,
+          item_name: it.item_name, item_code: it.item_code || null,
+          quantity: it.quantity, unit: it.unit, rate: it.rate,
+          discount_percent: it.discount_percent, hsn_code: it.hsn_code || null,
+          gst_percent: it.gst_percent, sort_order: idx,
+        };
+        if (it.no_of_packings) row.no_of_packings = it.no_of_packings;
+        return row;
+      });
       const { error: liErr } = await supabase.from("purchase_line_items" as any).insert(rows);
       if (liErr) throw liErr;
       toast.success(editing ? "Purchase updated" : "Purchase created");
