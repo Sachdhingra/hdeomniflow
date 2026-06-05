@@ -21,18 +21,31 @@ Deno.serve(async (req) => {
     const content: any[] = [
       {
         type: 'text',
-        text: `Extract this supplier purchase invoice. Return ONLY structured data via the tool call.
-Fields:
-- supplier_name (e.g. "GODREJ AND BOYCE MANUFACTURING CO LTD")
-- supplier_invoice_no
-- purchase_date (YYYY-MM-DD)
-- line_items: array of objects with:
-    item_name, item_code, no_of_packings, quantity, unit, rate, discount_percent, hsn_code, gst_percent
+        text: `You are extracting data from a supplier purchase invoice (typically Godrej or similar Indian supplier).
+Return ONLY structured data via the tool call.
 
-For no_of_packings: look for columns labelled "No. of Pkg", "No. of Pkgs", "No. of Packages",
-"Packages", "Packs", "Pkg", "Cartons", "No of Pkg" or any similar packing/carton count column.
-If absent use null.
-If a field is missing, use null. Discount/GST percent are numbers without "%".`,
+CRITICAL — Godrej invoices have SEPARATE columns for packings and quantity. Do NOT confuse them:
+- no_of_packings = "No. of Pkg" / "No. of Pkgs" / "No. of Packages" / "Packages" / "Cartons" column.
+  This is the number of physical boxes/cartons. A safe may ship in 39 cartons (no_of_packings=39).
+- quantity       = "Qty" / "Quantity" / "Billed Qty" column — the actual billing unit count (e.g. 1 EA).
+  DO NOT put the packing count here. If Qty column says 1, quantity = 1 even if Pkgs = 39.
+
+Field rules:
+- supplier_name        : full legal company name from invoice header
+- supplier_invoice_no  : tax invoice / invoice number
+- purchase_date        : invoice date as YYYY-MM-DD
+- line_items           : one object per product row (skip totals, tax summary, blank rows)
+  - item_name       : full product description/name (e.g. "FORTE FILING CABINET - 4 DRAWER")
+  - item_code       : product model / article / item code (e.g. "WFM-41-DD-ST")
+  - no_of_packings  : carton/package count (integer) from "No. of Pkg" column, null if absent
+  - quantity        : billing quantity (number) from "Qty" column — NOT from the Pkgs column
+  - unit            : unit of measure (EA, NOS, PCS, etc.)
+  - rate            : rate PER UNIT from "Rate" column — NOT "Taxable Value" / "Amount" / "Total"
+  - discount_percent: discount % as a plain number (0 if blank)
+  - hsn_code        : HSN/SAC code
+  - gst_percent     : GST rate as a plain number (5, 12, 18, 28)
+
+If any field is missing from the invoice, use null.`,
       },
     ];
 
