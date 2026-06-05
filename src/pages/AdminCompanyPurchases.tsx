@@ -233,7 +233,10 @@ export default function AdminCompanyPurchases() {
       if (r.supplier_invoice_no) setInvoiceNo(r.supplier_invoice_no);
       if (r.purchase_date) setPurchaseDate(r.purchase_date);
       if (Array.isArray(r.line_items) && r.line_items.length) {
-        setItems(r.line_items.map((li: any) => ({
+        const weightUnits = new Set(['kc', 'kcs', 'kgs', 'kg']);
+        setItems(r.line_items
+          .filter((li: any) => !weightUnits.has((li.unit || '').toLowerCase().trim()))
+          .map((li: any) => ({
           item_name: li.item_name || "",
           item_code: li.item_code || "",
           no_of_packings: li.no_of_packings ? Number(li.no_of_packings) : 0,

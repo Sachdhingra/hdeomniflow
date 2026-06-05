@@ -58,8 +58,18 @@ For EVERY product row (skip header rows, subtotal rows, tax rows, blank rows):
 │ No "%" symbol.                                                   │
 └──────────────────────────────────────────────────────────────────┘
 
+━━━ SKIP THESE ROWS ━━━
+Skip the following — do NOT include them in line_items:
+- Header / column-title rows
+- Subtotal, grand total, tax summary rows
+- Blank rows
+- Gross weight / net weight rows: Godrej invoices sometimes include a row showing the
+  total article weight in KC (kilograms). These have unit "KC" or "KGS" and represent
+  the physical weight of goods, NOT a separate product being sold. SKIP all rows where
+  the unit is KC or KGS.
+
 If any field is missing from the invoice, use null.
-Include ALL product rows. Return data via the extract_purchase tool.`;
+Return data via the extract_purchase tool.`;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
