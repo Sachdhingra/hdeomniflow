@@ -11,9 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Plus, Trash2, FileDown, FileSpreadsheet, Upload, Loader2, FileText, CheckCircle2, Edit, Download, FileCode2, Settings2 } from "lucide-react";
+import { Plus, Trash2, FileDown, FileSpreadsheet, Upload, Loader2, FileText, CheckCircle2, Edit, Download, FileCode2, Settings2, Info } from "lucide-react";
 import {
-  buildTallyCsv, downloadCsv, downloadTallyExcel, buildTallyXml, downloadXml,
+  buildTallyCsv, downloadCsv, downloadTallyExcel, buildTallyXml, buildTallyMastersXml,
+  downloadXml, tallyFilename, loadTallySettings, type TallyPurchase,
   tallyFilename, loadTallySettings, type TallyPurchase,
 } from "@/lib/tallyExport";
 import TallySettingsDialog from "@/components/TallySettingsDialog";
@@ -320,6 +321,30 @@ export default function AdminCompanyPurchases() {
     load();
   }
 
+  async function exportMasters(scope: "selected" | Purchase) {
+    let chosenPurchases: Purchase[];
+    let ids: string[];
+    if (scope === "selected") {
+      if (!selected.size) return toast.error("Select at least one purchase");
+      ids = Array.from(selected);
+      chosenPurchases = purchases.filter(p => ids.includes(p.id));
+    } else {
+      ids = [scope.id];
+      chosenPurchases = [scope];
+    }
+    const { data: lis } = await supabase
+      .from("purchase_line_items" as any).select("*").in("purchase_id", ids);
+    const byPid = new Map<string, any[]>();
+    for (const it of (lis as any) || []) {
+      if (!byPid.has(it.purchase_id)) byPid.set(it.purchase_id, []);
+      byPid.get(it.purchase_id)!.push(it);
+    }
+    const tps: TallyPurchase[] = chosenPurchases.map(p => buildTallyPurchase(p, byPid.get(p.id) || []));
+    const date = new Date().toISOString().slice(0, 10);
+    downloadXml(`Tally_Masters_Setup_${date}.xml`, buildTallyMastersXml(tps, loadTallySettings()));
+    toast.success("Masters XML downloaded — import this FIRST in Tally");
+  }
+
   const formTotals = useMemo(() => {
     let sub = 0, gst = 0;
     items.forEach((i) => { const c = calc(i); sub += c.amount; gst += c.gst_amount; });
@@ -334,8 +359,12 @@ export default function AdminCompanyPurchases() {
           <p className="text-sm text-muted-foreground">Manage supplier purchases and export to Tally Prime</p>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" disabled={!selected.size} onClick={() => exportMasters("selected")}
+            title="Step 1 (first time): creates ledgers & stock items in Tally">
+            <FileCode2 className="w-4 h-4 text-orange-600" /> Export Masters XML
+          </Button>
           <Button variant="outline" disabled={!selected.size} onClick={() => exportSelected("xml")}
-            title="Recommended — imports directly into Tally Prime via Gateway → Import → Data">
+            title="Step 2: creates Purchase voucher and updates stock in Tally">
             <FileCode2 className="w-4 h-4" /> Export XML
           </Button>
           <Button variant="outline" disabled={!selected.size} onClick={() => exportSelected("csv")}>
@@ -350,6 +379,22 @@ export default function AdminCompanyPurchases() {
           <Button onClick={() => { resetForm(); setDialogOpen(true); }}>
             <Plus className="w-4 h-4" /> Add Purchase
           </Button>
+        </div>
+      </div>
+
+      <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 flex items-start gap-2 text-blue-800 text-xs">
+        <Info className="w-4 h-4 shrink-0 mt-0.5" />
+        <div className="space-y-1">
+          <p className="font-semibold">Two-step Tally Prime import (Gateway → Import → Data)</p>
+          <p>
+            <span className="font-medium">Step 1 — First time only:</span> Select purchases → <strong>Export Masters XML</strong> → import in Tally.
+            This creates all ledgers (Purchase @18%, Input CGST, SGST) and stock items. Fixes <em>"No Accounting entries available"</em> error.
+          </p>
+          <p>
+            <span className="font-medium">Step 2 — Every time:</span> <strong>Export XML</strong> → import in Tally.
+            Creates the Purchase voucher and updates stock.
+          </p>
+          <p className="text-blue-600">Do <em>not</em> use <strong>Import Transactions</strong> — that path is for Excel files only.</p>
         </div>
       </div>
 
@@ -429,7 +474,8 @@ export default function AdminCompanyPurchases() {
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
                         <Button size="icon" variant="ghost" title="Edit" onClick={() => openEdit(p)}><Edit className="w-4 h-4" /></Button>
-                        <Button size="icon" variant="ghost" title="Export Tally XML (recommended)" onClick={() => exportPurchase(p, "xml")}><FileCode2 className="w-4 h-4" /></Button>
+                        <Button size="icon" variant="ghost" title="Step 1 — Export Masters XML (first time only)" onClick={() => exportMasters(p)}><FileCode2 className="w-4 h-4 text-orange-500" /></Button>
+                        <Button size="icon" variant="ghost" title="Step 2 — Export Tally XML (creates voucher + updates stock)" onClick={() => exportPurchase(p, "xml")}><FileCode2 className="w-4 h-4" /></Button>
                         <Button size="icon" variant="ghost" title="Download CSV" onClick={() => exportPurchase(p, "csv")}><Download className="w-4 h-4" /></Button>
                         <Button size="icon" variant="ghost" title="Download Excel" onClick={() => exportPurchase(p, "xlsx")}><FileSpreadsheet className="w-4 h-4" /></Button>
                         {p.tally_import_status !== "Exported" && (

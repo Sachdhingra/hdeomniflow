@@ -304,3 +304,135 @@ export function tallyFilename(p: TallyPurchase, ext: "csv" | "xlsx" | "xml") {
   const supplier = p.supplier_name.replace(/\s+/g, "_").substring(0, 15);
   return `${supplier}_${p.supplier_invoice_no}_${p.purchase_date}.${ext}`;
 }
+
+// ── Tally Masters XML export ──────────────────────────────────────────────────
+//
+// Resolves the "No Accounting entries are available" exception.
+// Import this FIRST in Tally (Gateway → Import → Data) to create all
+// ledgers and stock items referenced by the transactions XML.
+// Tally skips entries that already exist — safe to import multiple times.
+//
+
+function ledgerMsgXml(name: string, parent: string, extraLines = ""): string {
+  return `    <TALLYMESSAGE xmlns:UDF="TallyUDF">
+      <LEDGER NAME="${xmlEsc(name)}" ACTION="Create">
+        <NAME>${xmlEsc(name)}</NAME>
+        <PARENT>${xmlEsc(parent)}</PARENT>
+${extraLines}      </LEDGER>
+    </TALLYMESSAGE>`;
+}
+
+function stockItemMsgXml(name: string, unit: string, hsn: string, gstRate: number): string {
+  const hsnBlock = hsn
+    ? `        <HSNDETAILS.LIST>
+          <HSNCODE>${xmlEsc(hsn)}</HSNCODE>
+          <TAXABILITY>Taxable</TAXABILITY>
+          <STATEWISEDETAILS.LIST>
+            <STATENAME>All States</STATENAME>
+            <RATEDETAILS.LIST>
+              <GSTSLABNAME>Goods</GSTSLABNAME>
+              <RATE>${gstRate}%</RATE>
+            </RATEDETAILS.LIST>
+          </STATEWISEDETAILS.LIST>
+        </HSNDETAILS.LIST>`
+    : "";
+  return `    <TALLYMESSAGE xmlns:UDF="TallyUDF">
+      <STOCKITEM NAME="${xmlEsc(name)}" ACTION="Create">
+        <NAME>${xmlEsc(name)}</NAME>
+        <PARENT>Primary</PARENT>
+        <BASEUNITS>${xmlEsc(unit || "NOS")}</BASEUNITS>
+        <GSTAPPLICABLE>&#x200C;Applicable</GSTAPPLICABLE>
+${hsnBlock}
+      </STOCKITEM>
+    </TALLYMESSAGE>`;
+}
+
+export function buildTallyMastersXml(purchases: TallyPurchase[], settings: TallySettings): string {
+  // Collect unique GST rates, suppliers, and stock items
+  const gstRates = new Set<number>();
+  const suppliers = new Set<string>();
+  const stockItems = new Map<string, { unit: string; hsn: string; gstRate: number }>();
+
+  for (const p of purchases) {
+    suppliers.add(p.supplier_name);
+    for (const it of p.line_items) {
+      gstRates.add(it.gst_percent);
+      if (!stockItems.has(it.item_name)) {
+        stockItems.set(it.item_name, {
+          unit: it.unit || "NOS",
+          hsn: it.hsn_code || "",
+          gstRate: it.gst_percent,
+        });
+      }
+    }
+  }
+
+  const messages: string[] = [];
+
+  // 1. Purchase ledger(s) — one per GST slab → parent: Purchase Accounts
+  for (const rate of gstRates) {
+    const name = resolvePattern(settings.purchaseLedger, rate);
+    messages.push(ledgerMsgXml(name, "Purchase Accounts",
+      `        <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+        <GSTAPPLICABLE>&#x200C;Applicable</GSTAPPLICABLE>
+`));
+  }
+
+  // 2. GST input ledger(s) → parent: Duties & Taxes
+  for (const rate of gstRates) {
+    if (settings.supplyType === "intra") {
+      const cgst = resolvePattern(settings.cgstLedger, rate);
+      const sgst = resolvePattern(settings.sgstLedger, rate);
+      messages.push(ledgerMsgXml(cgst, "Duties &amp; Taxes",
+        `        <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+        <TAXTYPE>Central Tax</TAXTYPE>
+        <GSTAPPLICABLE>&#x200C;Applicable</GSTAPPLICABLE>
+`));
+      messages.push(ledgerMsgXml(sgst, "Duties &amp; Taxes",
+        `        <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+        <TAXTYPE>State Tax</TAXTYPE>
+        <GSTAPPLICABLE>&#x200C;Applicable</GSTAPPLICABLE>
+`));
+    } else {
+      const igst = resolvePattern(settings.igstLedger, rate);
+      messages.push(ledgerMsgXml(igst, "Duties &amp; Taxes",
+        `        <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+        <TAXTYPE>Integrated Tax</TAXTYPE>
+        <GSTAPPLICABLE>&#x200C;Applicable</GSTAPPLICABLE>
+`));
+    }
+  }
+
+  // 3. Supplier ledger(s) → parent: Sundry Creditors
+  for (const supplier of suppliers) {
+    messages.push(ledgerMsgXml(supplier, "Sundry Creditors",
+      `        <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+        <GSTREGISTRATIONTYPE>Regular</GSTREGISTRATIONTYPE>
+`));
+  }
+
+  // 4. Stock items
+  for (const [name, info] of stockItems) {
+    messages.push(stockItemMsgXml(name, info.unit, info.hsn, info.gstRate));
+  }
+
+  return `<?xml version="1.0" encoding="utf-8"?>
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>All Masters</REPORTNAME>
+        <STATICVARIABLES>
+          <SVCURRENTCOMPANY>&#x200C;</SVCURRENTCOMPANY>
+        </STATICVARIABLES>
+      </REQUESTDESC>
+      <REQUESTDATA>
+${messages.join("\n")}
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>`;
+}
