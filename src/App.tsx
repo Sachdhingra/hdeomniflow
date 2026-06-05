@@ -112,6 +112,7 @@ const AppRoutes = () => {
             <Route path="/" element={<AccountsApprovals />} />
             <Route path="/accounts/approvals" element={<AccountsApprovals />} />
             <Route path="/accounts/purchases" element={<AdminCompanyPurchases />} />
+            <Route path="/products" element={<ProductsView />} />
             <Route path="/chat" element={<ChatPage />} />
           </>
         );
