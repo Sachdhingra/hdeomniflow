@@ -1926,6 +1926,7 @@ export type Database = {
           item_code: string | null
           item_name: string
           line_total: number
+          no_of_packings: number | null
           purchase_id: string
           quantity: number
           rate: number
@@ -1943,6 +1944,7 @@ export type Database = {
           item_code?: string | null
           item_name: string
           line_total?: number
+          no_of_packings?: number | null
           purchase_id: string
           quantity?: number
           rate?: number
@@ -1960,6 +1962,7 @@ export type Database = {
           item_code?: string | null
           item_name?: string
           line_total?: number
+          no_of_packings?: number | null
           purchase_id?: string
           quantity?: number
           rate?: number
