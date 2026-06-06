@@ -8,6 +8,7 @@ const USER_PROMPT = `Extract all data from this invoice image.
 
 ━━━ PHASE 1 — HEADER ━━━
 - supplier_name      : Seller / supplier company name (top of invoice)
+- supplier_gstin     : Seller's GSTIN (15-character GST registration number of the SELLER, not the buyer)
 - supplier_invoice_no: TAX INVOICE number (not PO, not consignment, not vehicle number)
 - purchase_date      : Invoice date → format YYYY-MM-DD
 
@@ -120,6 +121,7 @@ Deno.serve(async (req) => {
               type: 'object',
               properties: {
                 supplier_name: { type: 'string', description: 'Full supplier company name' },
+                supplier_gstin: { type: 'string', description: "Seller's 15-character GSTIN from invoice header" },
                 supplier_invoice_no: { type: 'string', description: 'Tax invoice number' },
                 purchase_date: { type: 'string', description: 'Invoice date as YYYY-MM-DD' },
                 line_items: {

@@ -39,6 +39,7 @@ const FeedbackKiosk = lazy(() => import("@/pages/FeedbackKiosk"));
 const FeedbackAnalyticsDashboard = lazy(() => import("@/pages/FeedbackAnalyticsDashboard"));
 const AdminSchemeBanners = lazy(() => import("@/pages/AdminSchemeBanners"));
 const AdminCompanyPurchases = lazy(() => import("@/pages/AdminCompanyPurchases"));
+const AdminSuppliers = lazy(() => import("@/pages/AdminSuppliers"));
 const ProfileViewScreen = lazy(() => import("@/pages/ProfileViewScreen"));
 const ProfileEditScreen = lazy(() => import("@/pages/ProfileEditScreen"));
 const StaffDirectory = lazy(() => import("@/pages/StaffDirectory"));
@@ -104,6 +105,7 @@ const AppRoutes = () => {
             <Route path="/dashboard/feedback-analytics" element={<FeedbackAnalyticsDashboard />} />
             <Route path="/admin/kiosk-banners" element={<AdminSchemeBanners />} />
             <Route path="/accounts/purchases" element={<AdminCompanyPurchases />} />
+            <Route path="/accounts/suppliers" element={<AdminSuppliers />} />
           </>
         );
       case "accounts":
@@ -112,6 +114,7 @@ const AppRoutes = () => {
             <Route path="/" element={<AccountsApprovals />} />
             <Route path="/accounts/approvals" element={<AccountsApprovals />} />
             <Route path="/accounts/purchases" element={<AdminCompanyPurchases />} />
+            <Route path="/accounts/suppliers" element={<AdminSuppliers />} />
             <Route path="/products" element={<ProductsView />} />
             <Route path="/chat" element={<ChatPage />} />
           </>
