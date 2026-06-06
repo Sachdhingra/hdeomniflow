@@ -284,7 +284,7 @@ const FeedbackAnalyticsDashboard = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {items.slice(0, 20).map((f) => (
+                {monthItems.slice(0, 50).map((f) => (
                   <TableRow
                     key={f.id}
                     className={
