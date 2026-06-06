@@ -76,10 +76,31 @@ const FeedbackAnalyticsDashboard = () => {
     return () => clearInterval(t);
   }, []);
 
+  const availableMonths = useMemo(() => {
+    const set = new Set<string>();
+    items.forEach((i) => {
+      const d = new Date(i.created_at);
+      set.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    });
+    const cur = (() => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    })();
+    set.add(cur);
+    return Array.from(set).sort().reverse();
+  }, [items]);
+
+  const monthItems = useMemo(() => {
+    const [y, m] = monthFilter.split("-").map(Number);
+    return items.filter((i) => {
+      const d = new Date(i.created_at);
+      return d.getFullYear() === y && d.getMonth() + 1 === m;
+    });
+  }, [items, monthFilter]);
+
   const stats = useMemo(() => {
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const thisMonth = items.filter((i) => new Date(i.created_at) >= monthStart);
+    const thisMonth = monthItems;
     const total = thisMonth.length;
     const avg = (arr: number[]) =>
       arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
@@ -102,10 +123,10 @@ const FeedbackAnalyticsDashboard = () => {
       (i) => new Date(i.created_at) >= twoWeeksAgo && new Date(i.created_at) < weekAgo
     );
     const trend = avg(lastWeek.map((i) => i.overall_rating)) - avg(prevWeek.map((i) => i.overall_rating));
-    const attention = items.filter((i) => i.needs_attention).length;
+    const attention = thisMonth.filter((i) => i.needs_attention).length;
 
     return { total, avgOverall, avgStaff, positive, positivePct, dist, trend, attention };
-  }, [items]);
+  }, [items, monthItems]);
 
   if (loading) {
     return (
