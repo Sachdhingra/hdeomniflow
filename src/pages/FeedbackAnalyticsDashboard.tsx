@@ -15,6 +15,13 @@ import { Loader2, RefreshCw, Star, AlertTriangle, TrendingUp, TrendingDown, Tras
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
+import {
+  Select as MonthSelect,
+  SelectContent as MonthSelectContent,
+  SelectItem as MonthSelectItem,
+  SelectTrigger as MonthSelectTrigger,
+  SelectValue as MonthSelectValue,
+} from "@/components/ui/select";
 
 interface Feedback {
   id: string;
@@ -39,6 +46,10 @@ const FeedbackAnalyticsDashboard = () => {
   const [items, setItems] = useState<Feedback[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [monthFilter, setMonthFilter] = useState<string>(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  });
 
   const load = async () => {
     const { data, error } = await supabase
@@ -65,10 +76,31 @@ const FeedbackAnalyticsDashboard = () => {
     return () => clearInterval(t);
   }, []);
 
+  const availableMonths = useMemo(() => {
+    const set = new Set<string>();
+    items.forEach((i) => {
+      const d = new Date(i.created_at);
+      set.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    });
+    const cur = (() => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    })();
+    set.add(cur);
+    return Array.from(set).sort().reverse();
+  }, [items]);
+
+  const monthItems = useMemo(() => {
+    const [y, m] = monthFilter.split("-").map(Number);
+    return items.filter((i) => {
+      const d = new Date(i.created_at);
+      return d.getFullYear() === y && d.getMonth() + 1 === m;
+    });
+  }, [items, monthFilter]);
+
   const stats = useMemo(() => {
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const thisMonth = items.filter((i) => new Date(i.created_at) >= monthStart);
+    const thisMonth = monthItems;
     const total = thisMonth.length;
     const avg = (arr: number[]) =>
       arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
@@ -91,10 +123,10 @@ const FeedbackAnalyticsDashboard = () => {
       (i) => new Date(i.created_at) >= twoWeeksAgo && new Date(i.created_at) < weekAgo
     );
     const trend = avg(lastWeek.map((i) => i.overall_rating)) - avg(prevWeek.map((i) => i.overall_rating));
-    const attention = items.filter((i) => i.needs_attention).length;
+    const attention = thisMonth.filter((i) => i.needs_attention).length;
 
     return { total, avgOverall, avgStaff, positive, positivePct, dist, trend, attention };
-  }, [items]);
+  }, [items, monthItems]);
 
   if (loading) {
     return (
@@ -111,13 +143,27 @@ const FeedbackAnalyticsDashboard = () => {
           <h1 className="text-2xl font-bold">Customer Feedback</h1>
           <p className="text-sm text-muted-foreground">Kiosk feedback analytics &amp; insights</p>
         </div>
-        <button
-          onClick={load}
-          className="text-sm flex items-center gap-2 text-muted-foreground hover:text-foreground"
-        >
-          <RefreshCw className="w-4 h-4" />
-          Last updated {lastUpdated.toLocaleTimeString()}
-        </button>
+        <div className="flex items-center gap-3">
+          <MonthSelect value={monthFilter} onValueChange={setMonthFilter}>
+            <MonthSelectTrigger className="w-[180px]">
+              <MonthSelectValue placeholder="Select month" />
+            </MonthSelectTrigger>
+            <MonthSelectContent>
+              {availableMonths.map((m) => {
+                const [y, mo] = m.split("-").map(Number);
+                const label = new Date(y, mo - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+                return <MonthSelectItem key={m} value={m}>{label}</MonthSelectItem>;
+              })}
+            </MonthSelectContent>
+          </MonthSelect>
+          <button
+            onClick={load}
+            className="text-sm flex items-center gap-2 text-muted-foreground hover:text-foreground"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span className="hidden sm:inline">Last updated {lastUpdated.toLocaleTimeString()}</span>
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -238,7 +284,7 @@ const FeedbackAnalyticsDashboard = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {items.slice(0, 20).map((f) => (
+                {monthItems.slice(0, 50).map((f) => (
                   <TableRow
                     key={f.id}
                     className={
