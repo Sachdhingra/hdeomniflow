@@ -143,13 +143,27 @@ const FeedbackAnalyticsDashboard = () => {
           <h1 className="text-2xl font-bold">Customer Feedback</h1>
           <p className="text-sm text-muted-foreground">Kiosk feedback analytics &amp; insights</p>
         </div>
-        <button
-          onClick={load}
-          className="text-sm flex items-center gap-2 text-muted-foreground hover:text-foreground"
-        >
-          <RefreshCw className="w-4 h-4" />
-          Last updated {lastUpdated.toLocaleTimeString()}
-        </button>
+        <div className="flex items-center gap-3">
+          <MonthSelect value={monthFilter} onValueChange={setMonthFilter}>
+            <MonthSelectTrigger className="w-[180px]">
+              <MonthSelectValue placeholder="Select month" />
+            </MonthSelectTrigger>
+            <MonthSelectContent>
+              {availableMonths.map((m) => {
+                const [y, mo] = m.split("-").map(Number);
+                const label = new Date(y, mo - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+                return <MonthSelectItem key={m} value={m}>{label}</MonthSelectItem>;
+              })}
+            </MonthSelectContent>
+          </MonthSelect>
+          <button
+            onClick={load}
+            className="text-sm flex items-center gap-2 text-muted-foreground hover:text-foreground"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span className="hidden sm:inline">Last updated {lastUpdated.toLocaleTimeString()}</span>
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
