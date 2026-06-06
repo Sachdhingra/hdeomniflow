@@ -1,0 +1,1 @@
+ALTER TABLE public.purchase_line_items ADD COLUMN IF NOT EXISTS no_of_packings numeric;
