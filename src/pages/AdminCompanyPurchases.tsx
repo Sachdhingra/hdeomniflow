@@ -373,12 +373,8 @@ export default function AdminCompanyPurchases() {
           <p className="text-sm text-muted-foreground">Manage supplier purchases and export to Tally Prime</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" disabled={!selected.size} onClick={() => exportMasters("selected")}
-            title="Step 1 (first time): creates ledgers & stock items in Tally">
-            <FileCode2 className="w-4 h-4 text-orange-600" /> Export Masters XML
-          </Button>
           <Button variant="outline" disabled={!selected.size} onClick={() => exportSelected("xml")}
-            title="Step 2: creates Purchase voucher and updates stock in Tally">
+            title="Export Purchase voucher XML for Tally import">
             <FileCode2 className="w-4 h-4" /> Export XML
           </Button>
           <Button variant="outline" disabled={!selected.size} onClick={() => exportSelected("csv")}>
@@ -399,16 +395,14 @@ export default function AdminCompanyPurchases() {
       <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 flex items-start gap-2 text-blue-800 text-xs">
         <Info className="w-4 h-4 shrink-0 mt-0.5" />
         <div className="space-y-1">
-          <p className="font-semibold">Three-step Tally Prime import (Gateway → Import → Data)</p>
+          <p className="font-semibold">Tally Prime Import — Gateway → Import → Data</p>
           <p>
-            <span className="font-medium">Step 1a — First time only:</span> Select purchases → <strong>Export Masters XML</strong> → 2 files download automatically.
-            Import <strong>Tally_Ledgers_…xml</strong> first (creates Purchase/GST ledgers &amp; supplier), then import <strong>Tally_StockItems_…xml</strong> (creates stock items).
+            Select purchase(s) → <strong>Export XML</strong> → open Tally → Gateway → Import → Data → select the XML file.
+            Tally will book the Purchase voucher against your existing ledger heads.
           </p>
           <p>
-            <span className="font-medium">Step 2 — Every time:</span> <strong>Export XML</strong> → import in Tally.
-            Creates the Purchase voucher and updates stock.
+            Use the <strong>⚙ gear icon</strong> to set your exact Tally ledger names (Purchase, CGST, SGST) once — they must match your Chart of Accounts exactly.
           </p>
-          <p className="text-blue-600">Do <em>not</em> use <strong>Import Transactions</strong> — that path is for Excel files only.</p>
         </div>
       </div>
 
@@ -488,8 +482,7 @@ export default function AdminCompanyPurchases() {
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
                         <Button size="icon" variant="ghost" title="Edit" onClick={() => openEdit(p)}><Edit className="w-4 h-4" /></Button>
-                        <Button size="icon" variant="ghost" title="Step 1 — Export Masters XML (first time only)" onClick={() => exportMasters(p)}><FileCode2 className="w-4 h-4 text-orange-500" /></Button>
-                        <Button size="icon" variant="ghost" title="Step 2 — Export Tally XML (creates voucher + updates stock)" onClick={() => exportPurchase(p, "xml")}><FileCode2 className="w-4 h-4" /></Button>
+                        <Button size="icon" variant="ghost" title="Export Tally XML" onClick={() => exportPurchase(p, "xml")}><FileCode2 className="w-4 h-4" /></Button>
                         <Button size="icon" variant="ghost" title="Download CSV" onClick={() => exportPurchase(p, "csv")}><Download className="w-4 h-4" /></Button>
                         <Button size="icon" variant="ghost" title="Download Excel" onClick={() => exportPurchase(p, "xlsx")}><FileSpreadsheet className="w-4 h-4" /></Button>
                         {p.tally_import_status !== "Exported" && (
