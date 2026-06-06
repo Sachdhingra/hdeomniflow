@@ -352,8 +352,11 @@ export default function AdminCompanyPurchases() {
     }
     const tps: TallyPurchase[] = chosenPurchases.map(p => buildTallyPurchase(p, byPid.get(p.id) || []));
     const date = new Date().toISOString().slice(0, 10);
-    downloadXml(`Tally_Masters_Setup_${date}.xml`, buildTallyMastersXml(tps, loadTallySettings()));
-    toast.success("Masters XML downloaded — import this FIRST in Tally");
+    const combined = buildTallyMastersXml(tps, loadTallySettings());
+    const [ledgersXml, stockXml] = combined.split("__SPLIT__").map(s => s.trim());
+    downloadXml(`Tally_Ledgers_${date}.xml`, ledgersXml);
+    setTimeout(() => downloadXml(`Tally_StockItems_${date}.xml`, stockXml), 500);
+    toast.success("2 files downloaded — import Ledgers XML first, then StockItems XML in Tally");
   }
 
   const formTotals = useMemo(() => {
@@ -396,10 +399,10 @@ export default function AdminCompanyPurchases() {
       <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 flex items-start gap-2 text-blue-800 text-xs">
         <Info className="w-4 h-4 shrink-0 mt-0.5" />
         <div className="space-y-1">
-          <p className="font-semibold">Two-step Tally Prime import (Gateway → Import → Data)</p>
+          <p className="font-semibold">Three-step Tally Prime import (Gateway → Import → Data)</p>
           <p>
-            <span className="font-medium">Step 1 — First time only:</span> Select purchases → <strong>Export Masters XML</strong> → import in Tally.
-            This creates all ledgers (Purchase @18%, Input CGST, SGST) and stock items. Fixes <em>"No Accounting entries available"</em> error.
+            <span className="font-medium">Step 1a — First time only:</span> Select purchases → <strong>Export Masters XML</strong> → 2 files download automatically.
+            Import <strong>Tally_Ledgers_…xml</strong> first (creates Purchase/GST ledgers &amp; supplier), then import <strong>Tally_StockItems_…xml</strong> (creates stock items).
           </p>
           <p>
             <span className="font-medium">Step 2 — Every time:</span> <strong>Export XML</strong> → import in Tally.
