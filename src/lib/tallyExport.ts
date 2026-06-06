@@ -369,12 +369,12 @@ export function buildTallyMastersXml(purchases: TallyPurchase[], settings: Tally
     }
   }
 
-  const messages: string[] = [];
+  const ledgerMsgs: string[] = [];
 
   // 1. Purchase ledger(s) — one per GST slab → parent: Purchase Accounts
   for (const rate of gstRates) {
     const name = resolvePattern(settings.purchaseLedger, rate);
-    messages.push(ledgerMsgXml(name, "Purchase Accounts",
+    ledgerMsgs.push(ledgerMsgXml(name, "Purchase Accounts",
       `        <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
         <GSTAPPLICABLE>&#x200C;Applicable</GSTAPPLICABLE>
 `));
@@ -385,19 +385,19 @@ export function buildTallyMastersXml(purchases: TallyPurchase[], settings: Tally
     if (settings.supplyType === "intra") {
       const cgst = resolvePattern(settings.cgstLedger, rate);
       const sgst = resolvePattern(settings.sgstLedger, rate);
-      messages.push(ledgerMsgXml(cgst, "Duties &amp; Taxes",
+      ledgerMsgs.push(ledgerMsgXml(cgst, "Duties &amp; Taxes",
         `        <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
         <TAXTYPE>Central Tax</TAXTYPE>
         <GSTAPPLICABLE>&#x200C;Applicable</GSTAPPLICABLE>
 `));
-      messages.push(ledgerMsgXml(sgst, "Duties &amp; Taxes",
+      ledgerMsgs.push(ledgerMsgXml(sgst, "Duties &amp; Taxes",
         `        <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
         <TAXTYPE>State Tax</TAXTYPE>
         <GSTAPPLICABLE>&#x200C;Applicable</GSTAPPLICABLE>
 `));
     } else {
       const igst = resolvePattern(settings.igstLedger, rate);
-      messages.push(ledgerMsgXml(igst, "Duties &amp; Taxes",
+      ledgerMsgs.push(ledgerMsgXml(igst, "Duties &amp; Taxes",
         `        <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
         <TAXTYPE>Integrated Tax</TAXTYPE>
         <GSTAPPLICABLE>&#x200C;Applicable</GSTAPPLICABLE>
@@ -407,17 +407,25 @@ export function buildTallyMastersXml(purchases: TallyPurchase[], settings: Tally
 
   // 3. Supplier ledger(s) → parent: Sundry Creditors
   for (const supplier of suppliers) {
-    messages.push(ledgerMsgXml(supplier, "Sundry Creditors",
+    ledgerMsgs.push(ledgerMsgXml(supplier, "Sundry Creditors",
       `        <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
         <GSTREGISTRATIONTYPE>Regular</GSTREGISTRATIONTYPE>
 `));
   }
 
   // 4. Stock items
+  const stockMsgs: string[] = [];
   for (const [name, info] of stockItems) {
-    messages.push(stockItemMsgXml(name, info.unit, info.hsn, info.gstRate));
+    stockMsgs.push(stockItemMsgXml(name, info.unit, info.hsn, info.gstRate));
   }
 
+  // Return two XMLs separated by a delimiter so caller can download both
+  const ledgersXml = tallyImportXml("Ledgers", ledgerMsgs.join("\n"));
+  const stockXml = tallyImportXml("Stock Items", stockMsgs.join("\n"));
+  return ledgersXml + "\n\n__SPLIT__\n\n" + stockXml;
+}
+
+function tallyImportXml(reportName: string, messages: string): string {
   return `<?xml version="1.0" encoding="utf-8"?>
 <ENVELOPE>
   <HEADER>
@@ -426,13 +434,10 @@ export function buildTallyMastersXml(purchases: TallyPurchase[], settings: Tally
   <BODY>
     <IMPORTDATA>
       <REQUESTDESC>
-        <REPORTNAME>All Masters</REPORTNAME>
-        <STATICVARIABLES>
-          <SVCURRENTCOMPANY>&#x200C;</SVCURRENTCOMPANY>
-        </STATICVARIABLES>
+        <REPORTNAME>${reportName}</REPORTNAME>
       </REQUESTDESC>
       <REQUESTDATA>
-${messages.join("\n")}
+${messages}
       </REQUESTDATA>
     </IMPORTDATA>
   </BODY>
