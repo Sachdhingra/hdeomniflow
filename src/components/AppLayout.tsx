@@ -5,7 +5,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import {
   Building2, LayoutDashboard, Users, Wrench, Navigation, MapPin,
   LogOut, Menu, X, ChevronRight, CalendarDays, BarChart3,
-  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot, ShieldCheck, MessageSquare, TrendingUp, ShoppingBag, MessagesSquare, Sparkles, Clock, Star, Receipt, Trophy, UserCircle, BookUser, Boxes
+  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot, ShieldCheck, MessageSquare, TrendingUp, ShoppingBag, MessagesSquare, Sparkles, Clock, Star, Receipt, Trophy, UserCircle, BookUser, Boxes, Truck
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useStaffProfile } from "@/hooks/useStaffProfile";
@@ -62,6 +62,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/service", label: "Service", icon: <Wrench className="w-5 h-5" />, badge: pendingJobCount || undefined },
       { to: "/accounts/approvals", label: "Accounts Approvals", icon: <ShieldCheck className="w-5 h-5" /> },
       { to: "/accounts/purchases", label: "Company Purchases", icon: <Receipt className="w-5 h-5" /> },
+      { to: "/accounts/suppliers", label: "Suppliers", icon: <Truck className="w-5 h-5" /> },
       { to: "/field-agents", label: "Field Agents", icon: <Navigation className="w-5 h-5" /> },
       { to: "/site-agents", label: "Site Agents", icon: <MapPin className="w-5 h-5" /> },
       { to: "/categories", label: "Categories", icon: <FolderTree className="w-5 h-5" /> },
@@ -110,6 +111,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/accounts/approvals", label: "All Approvals", icon: <ClipboardList className="w-5 h-5" /> },
       ELITE_NAV,
       { to: "/accounts/purchases", label: "Company Purchases", icon: <Receipt className="w-5 h-5" /> },
+      { to: "/accounts/suppliers", label: "Suppliers", icon: <Truck className="w-5 h-5" /> },
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
       { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" />, badge: chatUnread || undefined },
     ],

@@ -74,7 +74,7 @@ export default function AdminCompanyPurchases() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Purchase | null>(null);
-  const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
+  const [suppliers, setSuppliers] = useState<{ id: string; name: string; gstin: string | null; tally_ledger_name: string | null }[]>([]);
   const [tallySettingsOpen, setTallySettingsOpen] = useState(false);
 
   // Form state
@@ -97,7 +97,7 @@ export default function AdminCompanyPurchases() {
   }
 
   async function loadSuppliers() {
-    const { data } = await supabase.from("suppliers" as any).select("id,name").order("name");
+    const { data } = await supabase.from("suppliers" as any).select("id,name,gstin,tally_ledger_name").order("name");
     setSuppliers((data as any) || []);
   }
 
@@ -232,7 +232,20 @@ export default function AdminCompanyPurchases() {
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
       const r = data as any;
-      if (r.supplier_name) setSupplierName(r.supplier_name);
+      // Auto-match supplier by GSTIN; fall back to extracted name
+      if (r.supplier_gstin) {
+        const gstin = r.supplier_gstin.trim().toUpperCase();
+        const matched = suppliers.find(s => s.gstin?.toUpperCase() === gstin);
+        if (matched) {
+          setSupplierName(matched.tally_ledger_name || matched.name);
+          toast.success(`Supplier matched: ${matched.tally_ledger_name || matched.name}`);
+        } else {
+          setSupplierName(r.supplier_name || "");
+          toast.warning(`GSTIN ${gstin} not found in Suppliers — please verify and add it in Accounts → Suppliers`);
+        }
+      } else if (r.supplier_name) {
+        setSupplierName(r.supplier_name);
+      }
       if (r.supplier_invoice_no) setInvoiceNo(r.supplier_invoice_no);
       if (r.purchase_date) setPurchaseDate(r.purchase_date);
       if (Array.isArray(r.line_items) && r.line_items.length) {
