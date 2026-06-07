@@ -14,9 +14,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Package, Search, Camera, Warehouse, Store, Truck, ClipboardList,
-  CheckCircle, XCircle, Clock, Plus, RefreshCw, X, CheckSquare,
+  CheckCircle, XCircle, Clock, Plus, Minus, RefreshCw, X, CheckSquare,
   AlertTriangle, User, Calendar, Circle, ChevronRight, Edit2,
-  AlertCircle, Loader2,
+  AlertCircle, Loader2, Filter,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -194,6 +194,13 @@ function ProductPhotoCell({
 
 // ─── Add Article dialog (track a new product) ─────────────────────────────────
 
+// Default locations used when hde_locations table is empty / not yet seeded
+const DEFAULT_LOCATIONS: Location[] = [
+  { id: "__warehouse__", name: "Warehouse", type: "warehouse" },
+  { id: "__showroom1__", name: "Showroom 1", type: "showroom" },
+  { id: "__showroom2__", name: "Showroom 2", type: "showroom" },
+];
+
 function AddArticleDialog({
   open, onClose, allProducts, locations, userId, onDone,
 }: {
@@ -201,30 +208,56 @@ function AddArticleDialog({
   locations: Location[]; userId: string; onDone: () => void;
 }) {
   const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const [picked, setPicked] = useState<RawProduct | null>(null);
   const [qtys, setQtys] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
 
+  // Fall back to hardcoded defaults if hde_locations not seeded yet
+  const effectiveLocs = locations.length > 0 ? locations : DEFAULT_LOCATIONS;
+
   useEffect(() => {
-    if (open) { setSearch(""); setPicked(null); setQtys({}); }
+    if (open) { setSearch(""); setCategoryFilter("all"); setPicked(null); setQtys({}); }
   }, [open]);
 
+  const categories = useMemo(() => {
+    const cats = [...new Set(allProducts.map(p => p.category_name).filter(Boolean))] as string[];
+    return cats.sort();
+  }, [allProducts]);
+
   const filtered = useMemo(() => {
-    if (!search) return allProducts.slice(0, 30);
     const q = search.toLowerCase();
-    return allProducts.filter(p => p.product_name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)).slice(0, 30);
-  }, [allProducts, search]);
+    return allProducts.filter(p => {
+      if (categoryFilter !== "all" && p.category_name !== categoryFilter) return false;
+      if (q && !p.product_name.toLowerCase().includes(q) && !p.sku.toLowerCase().includes(q)) return false;
+      return true;
+    }).slice(0, 50);
+  }, [allProducts, search, categoryFilter]);
+
+  // Ensure locations exist in DB (creates them if using defaults)
+  const ensureLocs = async (): Promise<Location[]> => {
+    if (locations.length > 0) return locations;
+    const { data } = await supabase.from("hde_locations" as any).insert([
+      { name: "Warehouse", type: "warehouse" },
+      { name: "Showroom 1", type: "showroom" },
+      { name: "Showroom 2", type: "showroom" },
+    ]).select();
+    return (data as any) || effectiveLocs;
+  };
 
   const handleSave = async () => {
     if (!picked) return toast.error("Select a product first");
-    const entries = locations.map(l => ({ location_id: l.id, qty: qtys[l.id] ?? 0, type: l.type === "warehouse" ? "warehouse" : "display" }));
-    if (entries.every(e => e.qty === 0)) return toast.error("Enter at least 1 unit for a location");
+    const hasQty = effectiveLocs.some(l => (qtys[l.id] ?? 0) > 0);
+    if (!hasQty) return toast.error("Enter at least 1 unit for a location");
     setSaving(true);
-    for (const e of entries) {
-      if (e.qty <= 0) continue;
+    const resolvedLocs = await ensureLocs();
+    for (const l of resolvedLocs) {
+      const qty = qtys[l.id] ?? 0;
+      if (qty <= 0) continue;
       await supabase.from("hde_inventory" as any).upsert({
-        product_id: picked.id, location_id: e.location_id, quantity: e.qty,
-        inventory_type: e.type, updated_by: userId,
+        product_id: picked.id, location_id: l.id, quantity: qty,
+        inventory_type: l.type === "warehouse" ? "warehouse" : "display",
+        updated_by: userId,
       }, { onConflict: "product_id,location_id" });
     }
     setSaving(false);
@@ -235,50 +268,106 @@ function AddArticleDialog({
 
   return (
     <Dialog open={open} onOpenChange={o => !o && onClose()}>
-      <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>Add Article to Inventory</DialogTitle></DialogHeader>
-        <div className="space-y-4">
+        <div className="space-y-3">
           {!picked ? (
             <>
-              <Input placeholder="Search product or SKU…" value={search} onChange={e => setSearch(e.target.value)} autoFocus />
+              {/* Search + Category filter */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search product name or SKU…"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="pl-9"
+                  autoFocus
+                />
+              </div>
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                <SelectTrigger>
+                  <Filter className="w-3 h-3 mr-1" />
+                  <SelectValue placeholder="All Categories" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">{filtered.length} product{filtered.length !== 1 ? "s" : ""} shown — tap to select</p>
               <div className="border rounded-lg max-h-64 overflow-y-auto">
-                {filtered.length === 0 && <p className="text-sm text-muted-foreground p-3">No products found.</p>}
-                {filtered.map(p => (
-                  <button key={p.id} onClick={() => setPicked(p)} className="w-full text-left px-3 py-2 hover:bg-muted/60 border-b last:border-0">
-                    <p className="text-sm font-medium">{p.product_name}</p>
-                    <p className="text-xs text-muted-foreground">{p.sku} · ₹{p.net_price.toLocaleString("en-IN")}</p>
-                  </button>
-                ))}
+                {filtered.length === 0
+                  ? <p className="text-sm text-muted-foreground p-3 text-center">No products match.</p>
+                  : filtered.map(p => (
+                    <button key={p.id} onClick={() => setPicked(p)} className="w-full text-left px-3 py-2.5 hover:bg-muted/60 border-b last:border-0 active:bg-muted">
+                      <p className="text-sm font-medium leading-tight">{p.product_name}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {p.category_name && <span className="mr-2">{p.category_name}</span>}
+                        <span className="font-mono">{p.sku}</span>
+                        <span className="ml-2">₹{p.net_price.toLocaleString("en-IN")}</span>
+                      </p>
+                    </button>
+                  ))
+                }
               </div>
             </>
           ) : (
             <>
-              <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-sm">{picked.product_name}</p>
-                  <p className="text-xs text-muted-foreground">{picked.sku}</p>
+              {/* Selected product chip */}
+              <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm leading-tight">{picked.product_name}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {picked.category_name && <span className="mr-2">{picked.category_name}</span>}
+                    <span className="font-mono">{picked.sku}</span>
+                    <span className="ml-2">₹{picked.net_price.toLocaleString("en-IN")}</span>
+                  </p>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => setPicked(null)}><X className="w-4 h-4" /></Button>
+                <Button variant="ghost" size="sm" className="shrink-0 h-7 px-2" onClick={() => setPicked(null)}>
+                  <X className="w-4 h-4" /> Change
+                </Button>
               </div>
-              <p className="text-sm font-medium">Initial quantities</p>
-              {locations.map(l => (
-                <div key={l.id} className="flex items-center gap-3">
-                  <span className="text-sm w-32 flex items-center gap-1">
-                    {l.type === "warehouse" ? <Warehouse className="w-3 h-3" /> : <Store className="w-3 h-3" />} {l.name}
-                  </span>
-                  <Input type="number" min={0} className="w-24" value={qtys[l.id] ?? 0}
-                    onChange={e => setQtys(prev => ({ ...prev, [l.id]: parseInt(e.target.value) || 0 }))} />
-                </div>
-              ))}
+
+              {/* Location qty inputs */}
+              <div className="space-y-2">
+                <p className="text-sm font-semibold">Opening stock per location</p>
+                {effectiveLocs.map(l => (
+                  <div key={l.id} className="flex items-center gap-3 p-2 bg-muted/40 rounded-lg">
+                    <span className="flex items-center gap-1.5 text-sm flex-1">
+                      {l.type === "warehouse"
+                        ? <Warehouse className="w-4 h-4 text-blue-600 shrink-0" />
+                        : <Store className="w-4 h-4 text-emerald-600 shrink-0" />}
+                      <span className="font-medium">{l.name}</span>
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <Button size="icon" variant="outline" className="h-8 w-8 shrink-0"
+                        onClick={() => setQtys(p => ({ ...p, [l.id]: Math.max(0, (p[l.id] ?? 0) - 1) }))}>
+                        <Minus className="w-3 h-3" />
+                      </Button>
+                      <Input
+                        type="number" min={0}
+                        className="h-8 w-16 text-center font-semibold"
+                        value={qtys[l.id] ?? 0}
+                        onChange={e => setQtys(prev => ({ ...prev, [l.id]: Math.max(0, parseInt(e.target.value) || 0) }))}
+                      />
+                      <Button size="icon" variant="outline" className="h-8 w-8 shrink-0"
+                        onClick={() => setQtys(p => ({ ...p, [l.id]: (p[l.id] ?? 0) + 1 }))}>
+                        <Plus className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
+                <Button className="flex-1" onClick={handleSave} disabled={saving}>
+                  {saving ? <><Loader2 className="w-4 h-4 animate-spin mr-1" />Adding…</> : "Add to Inventory"}
+                </Button>
+              </div>
             </>
           )}
         </div>
-        {picked && (
-          <DialogFooter>
-            <Button variant="outline" onClick={onClose}>Cancel</Button>
-            <Button onClick={handleSave} disabled={saving}>{saving ? "Adding…" : "Add to Inventory"}</Button>
-          </DialogFooter>
-        )}
       </DialogContent>
     </Dialog>
   );
