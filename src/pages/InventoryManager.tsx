@@ -231,39 +231,62 @@ function AddArticleDialog({
       if (categoryFilter !== "all" && p.category_name !== categoryFilter) return false;
       if (q && !p.product_name.toLowerCase().includes(q) && !p.sku.toLowerCase().includes(q)) return false;
       return true;
-    }).slice(0, 50);
+    }).slice(0, 200);
   }, [allProducts, search, categoryFilter]);
-
-  // Ensure locations exist in DB (creates them if using defaults)
-  const ensureLocs = async (): Promise<Location[]> => {
-    if (locations.length > 0) return locations;
-    const { data } = await supabase.from("hde_locations" as any).insert([
-      { name: "Warehouse", type: "warehouse" },
-      { name: "Showroom 1", type: "showroom" },
-      { name: "Showroom 2", type: "showroom" },
-    ]).select();
-    return (data as any) || effectiveLocs;
-  };
 
   const handleSave = async () => {
     if (!picked) return toast.error("Select a product first");
     const hasQty = effectiveLocs.some(l => (qtys[l.id] ?? 0) > 0);
     if (!hasQty) return toast.error("Enter at least 1 unit for a location");
     setSaving(true);
-    const resolvedLocs = await ensureLocs();
-    for (const l of resolvedLocs) {
-      const qty = qtys[l.id] ?? 0;
-      if (qty <= 0) continue;
-      await supabase.from("hde_inventory" as any).upsert({
-        product_id: picked.id, location_id: l.id, quantity: qty,
-        inventory_type: l.type === "warehouse" ? "warehouse" : "display",
-        updated_by: userId,
-      }, { onConflict: "product_id,location_id" });
+    try {
+      // Build list of {realId, type, qty} — handling both cases:
+      // A) real locations already loaded  → qtys are keyed by real UUIDs
+      // B) fallback fake IDs in use       → must create real rows first, map by index
+      let pairs: { id: string; type: string; qty: number }[];
+
+      if (locations.length > 0) {
+        // Case A: use real IDs directly
+        pairs = locations.map(l => ({ id: l.id, type: l.type, qty: qtys[l.id] ?? 0 }));
+      } else {
+        // Case B: seed locations, then map by position
+        const { data: created, error: seedErr } = await supabase
+          .from("hde_locations" as any)
+          .insert(DEFAULT_LOCATIONS.map(l => ({ name: l.name, type: l.type })))
+          .select();
+        if (seedErr || !created || !(created as any).length) {
+          throw new Error("Locations not configured. Ask admin to set up locations first.");
+        }
+        pairs = (created as any).map((loc: any, i: number) => ({
+          id: loc.id,
+          type: loc.type,
+          qty: qtys[DEFAULT_LOCATIONS[i]?.id] ?? 0,
+        }));
+      }
+
+      let saved = 0;
+      for (const p of pairs) {
+        if (p.qty <= 0) continue;
+        const { error } = await supabase.from("hde_inventory" as any).upsert({
+          product_id: picked.id,
+          location_id: p.id,
+          quantity: p.qty,
+          inventory_type: p.type === "warehouse" ? "warehouse" : "display",
+          updated_by: userId,
+        }, { onConflict: "product_id,location_id" });
+        if (error) throw new Error(error.message);
+        saved++;
+      }
+      if (saved === 0) throw new Error("No quantities entered — enter at least 1 unit.");
+
+      toast.success(`${picked.product_name} added to inventory`);
+      onDone();
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save. Check connection and try again.");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    toast.success(`${picked.product_name} added to inventory`);
-    onDone();
-    onClose();
   };
 
   return (
@@ -391,18 +414,24 @@ function ReceiveStockDialog({
     if (!article || !locationId) return toast.error("Select a location");
     if (qty <= 0) return toast.error("Quantity must be at least 1");
     setSaving(true);
-    const current = article.locs.find(l => l.location_id === locationId)?.qty ?? 0;
-    const locType = locations.find(l => l.id === locationId)?.type;
-    await supabase.from("hde_inventory" as any).upsert({
-      product_id: article.product_id, location_id: locationId,
-      quantity: current + qty,
-      inventory_type: locType === "warehouse" ? "warehouse" : "display",
-      updated_by: userId,
-    }, { onConflict: "product_id,location_id" });
-    setSaving(false);
-    toast.success(`+${qty} units added to stock`);
-    onDone();
-    onClose();
+    try {
+      const current = article.locs.find(l => l.location_id === locationId)?.qty ?? 0;
+      const locType = locations.find(l => l.id === locationId)?.type;
+      const { error } = await supabase.from("hde_inventory" as any).upsert({
+        product_id: article.product_id, location_id: locationId,
+        quantity: current + qty,
+        inventory_type: locType === "warehouse" ? "warehouse" : "display",
+        updated_by: userId,
+      }, { onConflict: "product_id,location_id" });
+      if (error) throw new Error(error.message);
+      toast.success(`+${qty} units added to stock`);
+      onDone();
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update stock");
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!article) return null;
@@ -1091,21 +1120,42 @@ export default function InventoryManager() {
 
   const loadAll = useCallback(async () => {
     setLoading(true);
-    const [prods, locs, inv, photos, ords, agents] = await Promise.all([
-      supabase.from("products" as any).select("id, sku, product_name, net_price, categories(name)").eq("status","active").is("deleted_at", null).order("product_name"),
-      supabase.from("hde_locations" as any).select("*").eq("is_active", true).order("name"),
-      supabase.from("hde_inventory" as any).select("*"),
-      supabase.from("hde_product_photos" as any).select("product_id, photo_url"),
-      supabase.from("hde_orders" as any).select("*, products(product_name), profiles!hde_orders_created_by_fkey(name), replacement:products!hde_orders_replacement_product_id_fkey(product_name), field_agent:profiles!hde_orders_field_assigned_to_fkey(name)").order("created_at", { ascending: false }),
-      supabase.from("profiles" as any).select("id, name, user_roles!inner(role)").eq("user_roles.role", "field_agent"),
-    ]);
-    setAllProducts(((prods.data as any) || []).map((p: any) => ({ ...p, category_name: p.categories?.name })));
-    setLocations((locs.data as any) || []);
-    setInvRows((inv.data as any) || []);
-    setPhotoRows((photos.data as any) || []);
-    setOrders(((ords.data as any) || []).map((o: any) => ({ ...o, product_name: o.products?.product_name, creator_name: o.profiles?.name, field_agent_name: o.field_agent?.name, replacement_product_name: o.replacement?.product_name })));
-    setFieldAgents((agents.data as any) || []);
-    setLoading(false);
+    try {
+      const [prods, cats, locs, inv, photos, ords, agents] = await Promise.all([
+        supabase.from("products" as any)
+          .select("id, sku, product_name, net_price, category_id")
+          .eq("status", "active").is("deleted_at", null)
+          .order("product_name").limit(2000),
+        supabase.from("categories" as any)
+          .select("id, name").is("deleted_at", null),
+        supabase.from("hde_locations" as any).select("*").eq("is_active", true).order("name"),
+        supabase.from("hde_inventory" as any).select("*").limit(5000),
+        supabase.from("hde_product_photos" as any).select("product_id, photo_url"),
+        supabase.from("hde_orders" as any)
+          .select("*, products(product_name), profiles!hde_orders_created_by_fkey(name), replacement:products!hde_orders_replacement_product_id_fkey(product_name), field_agent:profiles!hde_orders_field_assigned_to_fkey(name)")
+          .order("created_at", { ascending: false }).limit(500),
+        supabase.from("profiles" as any)
+          .select("id, name, user_roles!inner(role)").eq("user_roles.role", "field_agent"),
+      ]);
+
+      const catMap = new Map<string, string>(((cats.data as any) || []).map((c: any) => [c.id, c.name]));
+      setAllProducts(((prods.data as any) || []).map((p: any) => ({ ...p, category_name: catMap.get(p.category_id) })));
+      setLocations((locs.data as any) || []);
+      setInvRows((inv.data as any) || []);
+      setPhotoRows((photos.data as any) || []);
+      setOrders(((ords.data as any) || []).map((o: any) => ({
+        ...o,
+        product_name: o.products?.product_name,
+        creator_name: o.profiles?.name,
+        field_agent_name: o.field_agent?.name,
+        replacement_product_name: o.replacement?.product_name,
+      })));
+      setFieldAgents((agents.data as any) || []);
+    } catch (err: any) {
+      toast.error("Failed to load inventory: " + (err?.message || "unknown error"));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { loadAll(); }, [loadAll]);
@@ -1122,14 +1172,16 @@ export default function InventoryManager() {
     const articles: TrackedArticle[] = [];
     grouped.forEach((rows, productId) => {
       const prod = productMap.get(productId);
-      if (!prod) return;
       const locs = rows.map(r => {
         const loc = locations.find(l => l.id === r.location_id);
         return { location_id: r.location_id, name: loc?.name || "—", type: loc?.type || "warehouse", qty: r.quantity };
       });
       articles.push({
-        product_id: productId, product_name: prod.product_name, sku: prod.sku,
-        net_price: prod.net_price, category_name: prod.category_name,
+        product_id: productId,
+        product_name: prod?.product_name || `[Product ${productId.slice(0, 8)}]`,
+        sku: prod?.sku || productId.slice(0, 8),
+        net_price: prod?.net_price || 0,
+        category_name: prod?.category_name,
         photo_url: photoMap.get(productId),
         locs,
         total: locs.reduce((a, b) => a + b.qty, 0),
