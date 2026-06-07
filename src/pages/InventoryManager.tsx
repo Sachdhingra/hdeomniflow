@@ -365,6 +365,7 @@ function CreateOrderDialog({
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [locationId, setLocationId] = useState("");
+  const [soldQty, setSoldQty] = useState(1);
   const [notes, setNotes] = useState("");
   const [customSpecs, setCustomSpecs] = useState("");
   const [companyReason, setCompanyReason] = useState("");
@@ -373,7 +374,7 @@ function CreateOrderDialog({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open) { setCustomerName(""); setCustomerPhone(""); setLocationId(""); setNotes(""); setCustomSpecs(""); setCompanyReason(""); setReplacementProductId(""); setReplacementSearch(""); }
+    if (open) { setCustomerName(""); setCustomerPhone(""); setLocationId(""); setSoldQty(1); setNotes(""); setCustomSpecs(""); setCompanyReason(""); setReplacementProductId(""); setReplacementSearch(""); }
   }, [open]);
 
   const filteredReplacement = useMemo(() => {
@@ -389,6 +390,9 @@ function CreateOrderDialog({
     if (mode === "company" && !companyReason) return toast.error("Select a reason");
     if (mode === "showroom" && !replacementProductId) return toast.error("Select replacement product");
     if (!locationId) return toast.error("Select a location");
+    if ((mode === "warehouse" || mode === "showroom") && soldQty < 1) return toast.error("Quantity must be at least 1");
+    const availableQty = article.locs.find(l => l.location_id === locationId)?.qty ?? 0;
+    if ((mode === "warehouse" || mode === "showroom") && soldQty > availableQty) return toast.error(`Only ${availableQty} unit${availableQty !== 1 ? "s" : ""} available at this location`);
 
     setSaving(true);
 
@@ -405,26 +409,26 @@ function CreateOrderDialog({
       product_id: article.product_id, replacement_product_id: replacementProductId || null,
       location_id: locationId, customer_name: customerName || null, customer_phone: customerPhone || null,
       status: "pending_approval", notes: notes || null, custom_specs: customSpecs || null, created_by: userId,
+      qty_sold: (mode === "warehouse" || mode === "showroom") ? soldQty : 1,
     }).select().single();
 
     if (error || !data) { setSaving(false); return toast.error(error?.message || "Failed"); }
 
     const orderId = (data as any).id;
 
-    // ── Auto-deduct inventory ──────────────────────────────────────────────
+    // ── Auto-deduct inventory by sold qty ─────────────────────────────────
     if (mode === "warehouse" || mode === "showroom") {
       const currentQty = article.locs.find(l => l.location_id === locationId)?.qty ?? 0;
-      if (currentQty > 0) {
-        await supabase.from("hde_inventory" as any)
-          .update({ quantity: currentQty - 1, updated_by: userId })
-          .eq("product_id", article.product_id)
-          .eq("location_id", locationId);
-      }
+      await supabase.from("hde_inventory" as any)
+        .update({ quantity: Math.max(0, currentQty - soldQty), updated_by: userId })
+        .eq("product_id", article.product_id)
+        .eq("location_id", locationId);
     }
 
+    const qtyNote = (mode === "warehouse" || mode === "showroom") ? ` — Qty: ${soldQty}` : "";
     await supabase.from("hde_order_timeline" as any).insert({
       order_id: orderId, action: "Order Created",
-      description: `${ORDER_TYPE_LABELS[mode]} — ${article.product_name}${companyReason ? ` (${REASON_LABELS[companyReason]})` : ""}`,
+      description: `${ORDER_TYPE_LABELS[mode]} — ${article.product_name}${companyReason ? ` (${REASON_LABELS[companyReason]})` : ""}${qtyNote}`,
       performed_by: userId,
     });
 
@@ -488,6 +492,27 @@ function CreateOrderDialog({
               </SelectContent>
             </Select>
           </div>
+
+          {(mode === "warehouse" || mode === "showroom") && (
+            <div>
+              <Label>Quantity Sold <span className="text-destructive">*</span></Label>
+              <div className="flex items-center gap-2 mt-1">
+                <Input
+                  type="number"
+                  min={1}
+                  max={article.locs.find(l => l.location_id === locationId)?.qty ?? 9999}
+                  value={soldQty}
+                  onChange={e => setSoldQty(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-28"
+                />
+                {locationId && (
+                  <span className="text-xs text-muted-foreground">
+                    Available: <strong>{article.locs.find(l => l.location_id === locationId)?.qty ?? 0}</strong>
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           {mode === "showroom" && (
             <div>
