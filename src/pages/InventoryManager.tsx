@@ -16,8 +16,13 @@ import {
   Package, Search, Camera, Warehouse, Store, Truck, ClipboardList,
   CheckCircle, XCircle, Clock, Plus, Minus, RefreshCw, X, CheckSquare,
   AlertTriangle, User, Calendar, Circle, ChevronRight, Edit2,
-  AlertCircle, Loader2, Filter,
+  AlertCircle, Loader2, Filter, Trash2, Shield,
 } from "lucide-react";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 
 // ─── Bucket / storage constants ───────────────────────────────────────────────
@@ -1028,10 +1033,11 @@ function DashboardView({ orders, articles }: { orders: HdeOrder[]; articles: Tra
 
 // ─── Stock table (admin) ──────────────────────────────────────────────────────
 
-function StockTable({ articles, locations, userId, onRefresh }: { articles: TrackedArticle[]; locations: Location[]; userId: string; onRefresh: () => void; }) {
+function StockTable({ articles, locations, userId, isAdmin, onRefresh }: { articles: TrackedArticle[]; locations: Location[]; userId: string; isAdmin: boolean; onRefresh: () => void; }) {
   const [editKey, setEditKey] = useState<string | null>(null); // "productId::locationId"
   const [editQty, setEditQty] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const save = async () => {
     if (!editKey) return;
@@ -1048,6 +1054,20 @@ function StockTable({ articles, locations, userId, onRefresh }: { articles: Trac
     toast.success("Updated");
   };
 
+  const deleteArticle = async (productId: string, productName: string) => {
+    setDeleting(productId);
+    try {
+      const { error } = await supabase.from("hde_inventory" as any).delete().eq("product_id", productId);
+      if (error) throw error;
+      toast.success(`${productName} removed from inventory`);
+      onRefresh();
+    } catch (e: any) {
+      toast.error(e.message || "Delete failed");
+    } finally {
+      setDeleting(null);
+    }
+  };
+
   return (
     <div className="overflow-x-auto rounded-lg border">
       <Table>
@@ -1057,6 +1077,7 @@ function StockTable({ articles, locations, userId, onRefresh }: { articles: Trac
             <TableHead>SKU</TableHead>
             {locations.map(l => <TableHead key={l.id}>{l.name}</TableHead>)}
             <TableHead>Total</TableHead>
+            {isAdmin && <TableHead className="text-right">Admin</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -1086,6 +1107,31 @@ function StockTable({ articles, locations, userId, onRefresh }: { articles: Trac
                 );
               })}
               <TableCell className="font-bold">{a.total}</TableCell>
+              {isAdmin && (
+                <TableCell className="text-right">
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button size="sm" variant="outline" className="h-7 text-xs text-destructive border-destructive/30" disabled={deleting === a.product_id}>
+                        {deleting === a.product_id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Remove from inventory?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will delete all stock rows for <strong>{a.product_name}</strong> across every location. The product itself stays in the price list.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => deleteArticle(a.product_id, a.product_name)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                          Delete
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </TableCell>
+              )}
             </TableRow>
           ))}
         </TableBody>
@@ -1347,12 +1393,44 @@ export default function InventoryManager() {
                           </Button>
                         </div>
                       )}
+                      {/* Admin: delete entire article from inventory */}
+                      {isAdmin && (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button size="sm" variant="outline" className="w-full text-xs h-7 text-destructive border-destructive/30">
+                              <Trash2 className="w-3 h-3 mr-1" />Remove from Inventory
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Remove {a.product_name}?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Deletes all stock entries (across every location) for this article. The product remains in the price list and can be re-added anytime.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={async () => {
+                                  const { error } = await supabase.from("hde_inventory" as any).delete().eq("product_id", a.product_id);
+                                  if (error) toast.error(error.message);
+                                  else { toast.success("Removed from inventory"); loadAll(); }
+                                }}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              >
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
                     </CardContent>
                   </Card>
                 ))}
               </div>
             )}
           </TabsContent>
+
 
           {/* ── Orders ── */}
           <TabsContent value="orders" className="mt-4">
@@ -1371,7 +1449,7 @@ export default function InventoryManager() {
 
           {/* ── Stock table ── */}
           <TabsContent value="stock" className="mt-4">
-            <StockTable articles={trackedArticles} locations={locations} userId={user.id} onRefresh={loadAll} />
+            <StockTable articles={trackedArticles} locations={locations} userId={user.id} isAdmin={isAdmin} onRefresh={loadAll} />
           </TabsContent>
         </Tabs>
       )}
