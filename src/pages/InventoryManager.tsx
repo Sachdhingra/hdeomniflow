@@ -1393,12 +1393,44 @@ export default function InventoryManager() {
                           </Button>
                         </div>
                       )}
+                      {/* Admin: delete entire article from inventory */}
+                      {isAdmin && (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button size="sm" variant="outline" className="w-full text-xs h-7 text-destructive border-destructive/30">
+                              <Trash2 className="w-3 h-3 mr-1" />Remove from Inventory
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Remove {a.product_name}?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Deletes all stock entries (across every location) for this article. The product remains in the price list and can be re-added anytime.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={async () => {
+                                  const { error } = await supabase.from("hde_inventory" as any).delete().eq("product_id", a.product_id);
+                                  if (error) toast.error(error.message);
+                                  else { toast.success("Removed from inventory"); loadAll(); }
+                                }}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              >
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
                     </CardContent>
                   </Card>
                 ))}
               </div>
             )}
           </TabsContent>
+
 
           {/* ── Orders ── */}
           <TabsContent value="orders" className="mt-4">
