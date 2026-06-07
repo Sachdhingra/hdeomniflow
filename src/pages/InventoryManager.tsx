@@ -226,12 +226,14 @@ function AddArticleDialog({
   }, [allProducts]);
 
   const filtered = useMemo(() => {
+    // Require a category selection first — keeps the list short & focused.
+    if (categoryFilter === "all") return [];
     const q = search.toLowerCase();
     return allProducts.filter(p => {
-      if (categoryFilter !== "all" && p.category_name !== categoryFilter) return false;
+      if (p.category_name !== categoryFilter) return false;
       if (q && !p.product_name.toLowerCase().includes(q) && !p.sku.toLowerCase().includes(q)) return false;
       return true;
-    }).slice(0, 200);
+    }).slice(0, 500);
   }, [allProducts, search, categoryFilter]);
 
   const handleSave = async () => {
