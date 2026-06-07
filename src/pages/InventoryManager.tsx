@@ -16,8 +16,13 @@ import {
   Package, Search, Camera, Warehouse, Store, Truck, ClipboardList,
   CheckCircle, XCircle, Clock, Plus, Minus, RefreshCw, X, CheckSquare,
   AlertTriangle, User, Calendar, Circle, ChevronRight, Edit2,
-  AlertCircle, Loader2, Filter,
+  AlertCircle, Loader2, Filter, Trash2, Shield,
 } from "lucide-react";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 
 // ─── Bucket / storage constants ───────────────────────────────────────────────
