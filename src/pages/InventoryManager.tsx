@@ -226,12 +226,14 @@ function AddArticleDialog({
   }, [allProducts]);
 
   const filtered = useMemo(() => {
+    // Require a category selection first — keeps the list short & focused.
+    if (categoryFilter === "all") return [];
     const q = search.toLowerCase();
     return allProducts.filter(p => {
-      if (categoryFilter !== "all" && p.category_name !== categoryFilter) return false;
+      if (p.category_name !== categoryFilter) return false;
       if (q && !p.product_name.toLowerCase().includes(q) && !p.sku.toLowerCase().includes(q)) return false;
       return true;
-    }).slice(0, 200);
+    }).slice(0, 500);
   }, [allProducts, search, categoryFilter]);
 
   const handleSave = async () => {
@@ -310,16 +312,22 @@ function AddArticleDialog({
               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                 <SelectTrigger>
                   <Filter className="w-3 h-3 mr-1" />
-                  <SelectValue placeholder="All Categories" />
+                  <SelectValue placeholder="Choose a category first" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Categories</SelectItem>
+                  <SelectItem value="all">— Choose a category —</SelectItem>
                   {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">{filtered.length} product{filtered.length !== 1 ? "s" : ""} shown — tap to select</p>
+              <p className="text-xs text-muted-foreground">
+                {categoryFilter === "all"
+                  ? "Pick a category to load articles from the price list."
+                  : `${filtered.length} product${filtered.length !== 1 ? "s" : ""} shown — tap to select`}
+              </p>
               <div className="border rounded-lg max-h-64 overflow-y-auto">
-                {filtered.length === 0
+                {categoryFilter === "all"
+                  ? <p className="text-sm text-muted-foreground p-3 text-center">Select a category above to see articles.</p>
+                  : filtered.length === 0
                   ? <p className="text-sm text-muted-foreground p-3 text-center">No products match.</p>
                   : filtered.map(p => (
                     <button key={p.id} onClick={() => setPicked(p)} className="w-full text-left px-3 py-2.5 hover:bg-muted/60 border-b last:border-0 active:bg-muted">
@@ -1121,11 +1129,27 @@ export default function InventoryManager() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [prods, cats, locs, inv, photos, ords, agents] = await Promise.all([
-        supabase.from("products" as any)
-          .select("id, sku, product_name, net_price, category_id")
-          .eq("status", "active").is("deleted_at", null)
-          .order("product_name").limit(2000),
+      // Fetch ALL active products in batches (Supabase caps at 1000/req).
+      const fetchAllProducts = async () => {
+        const batch = 1000;
+        let offset = 0;
+        const all: any[] = [];
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const { data, error } = await supabase.from("products" as any)
+            .select("id, sku, product_name, net_price, category_id")
+            .eq("status", "active").is("deleted_at", null)
+            .order("product_name").range(offset, offset + batch - 1);
+          if (error || !data) break;
+          all.push(...data);
+          if (data.length < batch) break;
+          offset += batch;
+        }
+        return all;
+      };
+
+      const [prodList, cats, locs, inv, photos, ords, agents] = await Promise.all([
+        fetchAllProducts(),
         supabase.from("categories" as any)
           .select("id, name").is("deleted_at", null),
         supabase.from("hde_locations" as any).select("*").eq("is_active", true).order("name"),
@@ -1139,7 +1163,7 @@ export default function InventoryManager() {
       ]);
 
       const catMap = new Map<string, string>(((cats.data as any) || []).map((c: any) => [c.id, c.name]));
-      setAllProducts(((prods.data as any) || []).map((p: any) => ({ ...p, category_name: catMap.get(p.category_id) })));
+      setAllProducts((prodList || []).map((p: any) => ({ ...p, category_name: catMap.get(p.category_id) })));
       setLocations((locs.data as any) || []);
       setInvRows((inv.data as any) || []);
       setPhotoRows((photos.data as any) || []);
