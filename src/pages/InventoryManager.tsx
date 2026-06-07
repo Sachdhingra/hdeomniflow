@@ -312,16 +312,22 @@ function AddArticleDialog({
               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                 <SelectTrigger>
                   <Filter className="w-3 h-3 mr-1" />
-                  <SelectValue placeholder="All Categories" />
+                  <SelectValue placeholder="Choose a category first" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Categories</SelectItem>
+                  <SelectItem value="all">— Choose a category —</SelectItem>
                   {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">{filtered.length} product{filtered.length !== 1 ? "s" : ""} shown — tap to select</p>
+              <p className="text-xs text-muted-foreground">
+                {categoryFilter === "all"
+                  ? "Pick a category to load articles from the price list."
+                  : `${filtered.length} product${filtered.length !== 1 ? "s" : ""} shown — tap to select`}
+              </p>
               <div className="border rounded-lg max-h-64 overflow-y-auto">
-                {filtered.length === 0
+                {categoryFilter === "all"
+                  ? <p className="text-sm text-muted-foreground p-3 text-center">Select a category above to see articles.</p>
+                  : filtered.length === 0
                   ? <p className="text-sm text-muted-foreground p-3 text-center">No products match.</p>
                   : filtered.map(p => (
                     <button key={p.id} onClick={() => setPicked(p)} className="w-full text-left px-3 py-2.5 hover:bg-muted/60 border-b last:border-0 active:bg-muted">
