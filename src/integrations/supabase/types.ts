@@ -872,6 +872,398 @@ export type Database = {
         }
         Relationships: []
       }
+      hde_display_items: {
+        Row: {
+          created_at: string
+          display_status: string
+          id: string
+          location_id: string
+          notes: string | null
+          order_id: string | null
+          product_id: string
+          replacement_product_id: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          display_status?: string
+          id?: string
+          location_id: string
+          notes?: string | null
+          order_id?: string | null
+          product_id: string
+          replacement_product_id?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          display_status?: string
+          id?: string
+          location_id?: string
+          notes?: string | null
+          order_id?: string | null
+          product_id?: string
+          replacement_product_id?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_display_items_order"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "hde_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hde_display_items_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "hde_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hde_display_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hde_display_items_replacement_product_id_fkey"
+            columns: ["replacement_product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hde_inventory: {
+        Row: {
+          id: string
+          inventory_type: string
+          location_id: string
+          product_id: string
+          quantity: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          id?: string
+          inventory_type: string
+          location_id: string
+          product_id: string
+          quantity?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          id?: string
+          inventory_type?: string
+          location_id?: string
+          product_id?: string
+          quantity?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hde_inventory_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "hde_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hde_inventory_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hde_job_photos: {
+        Row: {
+          id: string
+          lat: number | null
+          lng: number | null
+          order_id: string
+          photo_type: string
+          photo_url: string
+          uploaded_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          order_id: string
+          photo_type: string
+          photo_url: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          order_id?: string
+          photo_type?: string
+          photo_url?: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hde_job_photos_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "hde_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hde_locations: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          name: string
+          type: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          type: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          type?: string
+        }
+        Relationships: []
+      }
+      hde_order_timeline: {
+        Row: {
+          action: string
+          description: string | null
+          id: string
+          new_value: string | null
+          old_value: string | null
+          order_id: string
+          performed_at: string
+          performed_by: string | null
+        }
+        Insert: {
+          action: string
+          description?: string | null
+          id?: string
+          new_value?: string | null
+          old_value?: string | null
+          order_id: string
+          performed_at?: string
+          performed_by?: string | null
+        }
+        Update: {
+          action?: string
+          description?: string | null
+          id?: string
+          new_value?: string | null
+          old_value?: string | null
+          order_id?: string
+          performed_at?: string
+          performed_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hde_order_timeline_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "hde_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hde_orders: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          company_order_reason: string | null
+          completed_at: string | null
+          completed_by: string | null
+          created_at: string
+          created_by: string
+          custom_specs: string | null
+          customer_name: string | null
+          customer_phone: string | null
+          display_item_id: string | null
+          due_date: string | null
+          field_assigned_at: string | null
+          field_assigned_to: string | null
+          id: string
+          lead_id: string | null
+          location_id: string | null
+          notes: string | null
+          order_number: string
+          order_tag: string | null
+          order_type: string
+          product_id: string
+          qty_sold: number | null
+          rejected_at: string | null
+          rejected_by: string | null
+          rejection_reason: string | null
+          replacement_product_id: string | null
+          service_assigned_at: string | null
+          service_assigned_by: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          company_order_reason?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          created_by: string
+          custom_specs?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          display_item_id?: string | null
+          due_date?: string | null
+          field_assigned_at?: string | null
+          field_assigned_to?: string | null
+          id?: string
+          lead_id?: string | null
+          location_id?: string | null
+          notes?: string | null
+          order_number: string
+          order_tag?: string | null
+          order_type: string
+          product_id: string
+          qty_sold?: number | null
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejection_reason?: string | null
+          replacement_product_id?: string | null
+          service_assigned_at?: string | null
+          service_assigned_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          company_order_reason?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          created_by?: string
+          custom_specs?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          display_item_id?: string | null
+          due_date?: string | null
+          field_assigned_at?: string | null
+          field_assigned_to?: string | null
+          id?: string
+          lead_id?: string | null
+          location_id?: string | null
+          notes?: string | null
+          order_number?: string
+          order_tag?: string | null
+          order_type?: string
+          product_id?: string
+          qty_sold?: number | null
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejection_reason?: string | null
+          replacement_product_id?: string | null
+          service_assigned_at?: string | null
+          service_assigned_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hde_orders_display_item_id_fkey"
+            columns: ["display_item_id"]
+            isOneToOne: false
+            referencedRelation: "hde_display_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hde_orders_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hde_orders_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "hde_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hde_orders_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hde_orders_replacement_product_id_fkey"
+            columns: ["replacement_product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hde_product_photos: {
+        Row: {
+          id: string
+          photo_url: string
+          product_id: string
+          uploaded_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          id?: string
+          photo_url: string
+          product_id: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          id?: string
+          photo_url?: string
+          product_id?: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hde_product_photos_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: true
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inventory_audit_log: {
         Row: {
           action: string
@@ -2625,6 +3017,7 @@ export type Database = {
         Args: { _user: string }
         Returns: undefined
       }
+      generate_hde_order_number: { Args: never; Returns: string }
       get_chat_directory: {
         Args: never
         Returns: {
