@@ -1417,7 +1417,7 @@ export default function InventoryManager() {
 
           {/* ── Stock table ── */}
           <TabsContent value="stock" className="mt-4">
-            <StockTable articles={trackedArticles} locations={locations} userId={user.id} onRefresh={loadAll} />
+            <StockTable articles={trackedArticles} locations={locations} userId={user.id} isAdmin={isAdmin} onRefresh={loadAll} />
           </TabsContent>
         </Tabs>
       )}
