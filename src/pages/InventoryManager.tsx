@@ -699,10 +699,17 @@ function OrderDetailDialog({
     if (!open || !order) return;
     setLoading(true);
     Promise.all([
-      supabase.from("hde_order_timeline" as any).select("*, profiles(name)").eq("order_id", order.id).order("performed_at"),
+      supabase.from("hde_order_timeline" as any).select("*").eq("order_id", order.id).order("performed_at"),
       supabase.from("hde_job_photos" as any).select("*").eq("order_id", order.id).order("uploaded_at"),
-    ]).then(([t, p]) => {
-      setTimeline(((t.data as any) || []).map((r: any) => ({ ...r, performer_name: r.profiles?.name })));
+    ]).then(async ([t, p]) => {
+      const tl = (t.data as any) || [];
+      const ids = Array.from(new Set(tl.map((r: any) => r.performed_by).filter(Boolean))) as string[];
+      let pmap = new Map<string, string>();
+      if (ids.length) {
+        const { data: profs } = await supabase.from("profiles" as any).select("id, name").in("id", ids);
+        pmap = new Map(((profs as any) || []).map((x: any) => [x.id, x.name]));
+      }
+      setTimeline(tl.map((r: any) => ({ ...r, performer_name: pmap.get(r.performed_by) || "Unknown" })));
       setPhotos((p.data as any) || []);
       setLoading(false);
     });
@@ -1194,7 +1201,7 @@ export default function InventoryManager() {
         return all;
       };
 
-      const [prodList, cats, locs, inv, photos, ords, agents] = await Promise.all([
+      const [prodList, cats, locs, inv, photos, ords, agentRoles] = await Promise.all([
         fetchAllProducts(),
         supabase.from("categories" as any)
           .select("id, name").is("deleted_at", null),
@@ -1202,10 +1209,9 @@ export default function InventoryManager() {
         supabase.from("hde_inventory" as any).select("*").limit(5000),
         supabase.from("hde_product_photos" as any).select("product_id, photo_url"),
         supabase.from("hde_orders" as any)
-          .select("*, products(product_name), profiles!hde_orders_created_by_fkey(name), replacement:products!hde_orders_replacement_product_id_fkey(product_name), field_agent:profiles!hde_orders_field_assigned_to_fkey(name)")
+          .select("*, products!hde_orders_product_id_fkey(product_name), replacement:products!hde_orders_replacement_product_id_fkey(product_name)")
           .order("created_at", { ascending: false }).limit(500),
-        supabase.from("profiles" as any)
-          .select("id, name, user_roles!inner(role)").eq("user_roles.role", "field_agent"),
+        supabase.from("user_roles" as any).select("user_id").eq("role", "field_agent"),
       ]);
 
       const catMap = new Map<string, string>(((cats.data as any) || []).map((c: any) => [c.id, c.name]));
@@ -1213,14 +1219,31 @@ export default function InventoryManager() {
       setLocations((locs.data as any) || []);
       setInvRows((inv.data as any) || []);
       setPhotoRows((photos.data as any) || []);
-      setOrders(((ords.data as any) || []).map((o: any) => ({
+
+      const ordList = (ords.data as any) || [];
+      const userIds = new Set<string>();
+      ordList.forEach((o: any) => {
+        [o.created_by, o.field_assigned_to, o.approved_by, o.rejected_by, o.service_assigned_by, o.completed_by]
+          .forEach((id: string | null) => { if (id) userIds.add(id); });
+      });
+      const agentIds: string[] = ((agentRoles.data as any) || []).map((r: any) => r.user_id);
+      agentIds.forEach(id => userIds.add(id));
+
+      let profMap = new Map<string, string>();
+      if (userIds.size > 0) {
+        const { data: profs } = await supabase.from("profiles" as any)
+          .select("id, name").in("id", Array.from(userIds));
+        profMap = new Map(((profs as any) || []).map((p: any) => [p.id, p.name]));
+      }
+
+      setOrders(ordList.map((o: any) => ({
         ...o,
         product_name: o.products?.product_name,
-        creator_name: o.profiles?.name,
-        field_agent_name: o.field_agent?.name,
+        creator_name: profMap.get(o.created_by),
+        field_agent_name: o.field_assigned_to ? profMap.get(o.field_assigned_to) : undefined,
         replacement_product_name: o.replacement?.product_name,
       })));
-      setFieldAgents((agents.data as any) || []);
+      setFieldAgents(agentIds.map(id => ({ id, name: profMap.get(id) || "Agent" })));
     } catch (err: any) {
       toast.error("Failed to load inventory: " + (err?.message || "unknown error"));
     } finally {
