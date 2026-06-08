@@ -699,10 +699,17 @@ function OrderDetailDialog({
     if (!open || !order) return;
     setLoading(true);
     Promise.all([
-      supabase.from("hde_order_timeline" as any).select("*, profiles(name)").eq("order_id", order.id).order("performed_at"),
+      supabase.from("hde_order_timeline" as any).select("*").eq("order_id", order.id).order("performed_at"),
       supabase.from("hde_job_photos" as any).select("*").eq("order_id", order.id).order("uploaded_at"),
-    ]).then(([t, p]) => {
-      setTimeline(((t.data as any) || []).map((r: any) => ({ ...r, performer_name: r.profiles?.name })));
+    ]).then(async ([t, p]) => {
+      const tl = (t.data as any) || [];
+      const ids = Array.from(new Set(tl.map((r: any) => r.performed_by).filter(Boolean))) as string[];
+      let pmap = new Map<string, string>();
+      if (ids.length) {
+        const { data: profs } = await supabase.from("profiles" as any).select("id, name").in("id", ids);
+        pmap = new Map(((profs as any) || []).map((x: any) => [x.id, x.name]));
+      }
+      setTimeline(tl.map((r: any) => ({ ...r, performer_name: pmap.get(r.performed_by) || "Unknown" })));
       setPhotos((p.data as any) || []);
       setLoading(false);
     });
