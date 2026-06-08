@@ -1,64 +1,73 @@
-## Goal
-Upgrade OmniFlow chat from basic DM/realtime to a full-featured workspace messenger, and make new-message arrival impossible to miss.
+## Logistics & Service Calculator Module
 
-I'll split delivery into 4 turns so each turn stays reviewable (each phase = 1 migration + matching UI). After you approve this plan, I'll start Turn 1 immediately. You can pause between turns.
+A new module under Operations with 6 calculators, admin-editable rate masters, history tracking, and quote integration.
 
----
+### Scope
 
-## Turn 1 — Loud Ding-Dong + Visual Flash + Unread Badges (quick wins)
-No DB changes.
-- Replace soft 880Hz sine in `ChatNotifier.tsx` with a two-tone (E5→C5) ding-dong, ~3× louder, with subtle reverb tail.
-- Add a full-screen `ChatArrivalFlash` overlay: 600ms pulsing border + floating sender pill at top-center on every incoming message (everywhere in app, not just /chat).
-- Sidebar chat nav already has unread count via `ChatUnreadContext` — surface it more prominently (red pill, pulse on increment) and add per-channel unread badges in `ChatPage` channel list.
+**New route**: `/logistics-calculator` — visible to admin, sales, service_head, accounts in sidebar (under existing nav, labeled "Logistics Calc" with Calculator icon).
 
-## Turn 2 — Phase 1 Essentials (presence, read receipts, search, pinned)
-One migration:
-- `user_presence` (user_id PK, status, last_activity)
-- `message_reads` (message_id, user_id, read_at) — unique pair
-- `pinned_messages` (channel_id, message_id, pinned_by, pinned_at) — max 5 enforced in client
-- Index on `chat_messages(channel_id, body)` for search
-- RLS + GRANTs for all
-UI:
-- Presence dot (🟢🟡🔴) on sender avatars in chat list + DM directory, driven by Realtime presence channel + 5-min idle timer
-- ✓ / ✓✓ / ✓✓(blue) ticks on outbound messages based on `message_reads`
-- Pinned bar at top of each channel with pin/unpin actions (admin + sender can pin)
-- Search bar in `ChatPage` filtering by keyword, sender, date
+**Admin-only sub-route**: `/logistics-calculator/settings` for rate management and kitchen visit locations.
 
-## Turn 3 — Phase 2 Essentials (reactions, mentions, edit/delete, typing, away)
-One migration:
-- `message_reactions` (message_id, user_id, emoji) unique triple
-- `user_status` (user_id PK, is_away, away_message)
-- Add `chat_messages.edited_at`, `parent_message_id`, `mentions text[]`
-UI:
-- Hover reaction picker (👍❤️😂🎉⏰🚨) with aggregated counts
-- @mention autocomplete from `allProfiles`; mentioned users get a notification row + louder ping
-- Edit (15-min window) / Delete buttons on own messages; "Edited" tag
-- Typing indicator via Realtime broadcast channel (no DB)
-- Away message editor in profile menu; shown as banner when DM'ing an away user
-- Markdown rendering: **bold**, *italic*, `code`, > quote, - lists
+### Database (new tables)
 
-## Turn 4 — Phase 3 (threads, channel polish, export, moderation)
-One migration:
-- Use `parent_message_id` from Turn 3 for threads
-- `chat_moderation_log` (action, target_message, moderator, reason)
-UI:
-- Thread side-panel opened from any message's "Reply in thread"
-- Channels page: create/join/leave (admin can create); default channels already exist
-- Export channel as CSV/PDF (client-side, admin only)
-- Admin moderation: delete any message, mute user (writes to `user_status`), view log
+1. `logistics_rates` (singleton key-value config)
+   - keys: `local_freight_per_km`, `outstation_freight_per_km`, `handling_per_km`, `floor_labour_rate`, `modular_labour_rate`, `minimum_charge`, `gst_rate`
+   - Editable by admin only; readable by all permitted roles
 
----
+2. `kitchen_visit_locations`
+   - `location_name`, `charge`, `active`
+   - Seeded with the 12 locations provided
+   - Admin manages; all permitted roles read
 
-## Technical notes
-- Realtime: enable `supabase_realtime` publication for new tables that need live updates (`message_reactions`, `message_reads`, `pinned_messages`, `user_presence`).
-- Presence: use Supabase Realtime Presence channel (`chat-presence`) rather than DB polling for 🟢/🟡 — DB row only stores last_activity for stale fallback.
-- Audio: keep WebAudio (no asset upload needed) — two oscillators E5(659Hz) then C5(523Hz), gain 0.45, 180ms apart, with 0.6s exponential decay. Respects existing `sharedAudioCtx`.
-- Visual flash: portal-mounted div, `pointer-events-none`, uses `--primary` token + tailwind keyframes.
-- All new tables: `authenticated` SELECT/INSERT/DELETE scoped via `is_chat_member()` security definer; `service_role` ALL.
+3. `logistics_calculations` (history)
+   - `calculator_type` (enum: local_freight, outstation_freight, handling, floor_labour, modular_labour, kitchen_visit)
+   - `customer_name`, `customer_phone`, `lead_id` (nullable FK)
+   - `inputs` (jsonb), `breakdown` (jsonb), `subtotal`, `gst_amount`, `final_amount`, `gst_included` (bool)
+   - `attached_to_lead` (bool), `created_by`
+   - RLS: sales sees own; admin/sales_manager/service_head/accounts see all
 
-## Scope guardrails
-- Won't touch `src/integrations/supabase/client.ts` or `types.ts` (auto-gen).
-- Won't change auth, leads, service jobs, inventory, or any non-chat module.
-- Will pause and ping you for confirmation between each turn unless you say "keep going".
+### Calculators (UI)
 
-Ready to start Turn 1 on approval.
+Tabbed interface, each calculator gets a card with:
+- Inputs (number fields, GST toggle, dropdowns)
+- Live computed breakdown
+- Large final amount card with Copy Amount / Copy Full Calculation / Print buttons
+- "Save to History" button (auto on Attach)
+- "Attach to Quote" — opens lead picker, saves snapshot and appends a note line on the lead
+
+Formulas exactly per spec, all rates pulled from `logistics_rates` so admin edits propagate instantly.
+
+### History page
+
+Table with date, customer, type, final amount, created_by. Search by customer, filters by type/date/creator. Export to Excel (xlsx) and PDF (jsPDF) — both libraries already available.
+
+### Permissions matrix
+
+Implemented via RLS + UI gating:
+| Role | Calculate | Attach to quote | View all | Manage rates |
+|---|---|---|---|---|
+| sales | ✓ | ✓ | own only | – |
+| service_head | ✓ | ✓ | ✓ | – |
+| accounts | ✓ | – | ✓ + export | – |
+| admin | ✓ | ✓ | ✓ | ✓ |
+
+(No separate "sales_manager" role exists in the system — admin role covers manager use cases. I'll treat admin = manager.)
+
+### Quote integration
+
+The project doesn't yet have a formal "quote" entity. I'll integrate via the existing **leads** workflow: "Attach to Quote" picks a lead and appends a structured line to `leads.notes` plus stores a row in `logistics_calculations` with `lead_id`, viewable from lead detail (small new section "Logistics charges"). This is the lightest path that fits the current schema.
+
+### Files
+
+- Migration: 3 tables + seed data + RLS + grants
+- `src/pages/LogisticsCalculator.tsx` — tabbed calculators
+- `src/pages/LogisticsCalculatorSettings.tsx` — admin rates + kitchen locations
+- `src/pages/LogisticsHistory.tsx` — history + export
+- `src/components/logistics/*` — one component per calculator + AttachToQuoteDialog + ResultCard
+- `src/lib/logisticsExport.ts` — xlsx + pdf export helpers
+- Routing in `src/App.tsx`, nav entries in `src/components/AppLayout.tsx`
+
+### Out of scope / assumptions
+- No "sales_manager" role added — admin acts as manager
+- Quote attachment uses existing leads.notes + new history row (no new quotations table)
+- Dark mode already supported by design tokens — no extra work
