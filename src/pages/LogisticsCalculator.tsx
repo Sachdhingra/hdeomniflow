@@ -24,6 +24,7 @@ import {
   calcLocalFreight,
   calcModularLabour,
   calcOutstationFreight,
+  calcSafeHandling,
   fetchRates,
   formatBreakdownText,
   inr,
@@ -186,6 +187,7 @@ export default function LogisticsCalculator() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   const canAttach = user?.role === "admin" || user?.role === "sales" || user?.role === "service_head";
+  const canSeeSafeHandling = user?.role !== "field_agent" && user?.role !== "site_agent";
   const [rates, setRates] = useState<Rates>(DEFAULT_RATES);
   const [locations, setLocations] = useState<KitchenLocation[]>([]);
   const [tab, setTab] = useState<CalculatorType>("local_freight");
@@ -210,6 +212,8 @@ export default function LogisticsCalculator() {
   const [modFloor, setModFloor] = useState(1);
   // kitchen
   const [kitchenLocId, setKitchenLocId] = useState<string>("");
+  // safe handling
+  const [safeHandlingFloor, setSafeHandlingFloor] = useState(0);
 
   useEffect(() => {
     fetchRates().then(setRates);
@@ -237,8 +241,10 @@ export default function LogisticsCalculator() {
         return calcModularLabour(cartons, modFloor, gst, rates);
       case "kitchen_visit":
         return calcKitchenVisit(kitchenLoc?.location_name || "—", kitchenLoc?.charge || 0, gst, rates);
+      case "safe_handling":
+        return calcSafeHandling(safeHandlingFloor, gst, rates);
     }
-  }, [tab, gst, rates, localKm, outKm, handlingKm, floorProduct, floorQty, floorNum, cartons, modFloor, kitchenLoc]);
+  }, [tab, gst, rates, localKm, outKm, handlingKm, floorProduct, floorQty, floorNum, cartons, modFloor, kitchenLoc, safeHandlingFloor]);
 
   const inputs = useMemo<any>(() => {
     switch (tab) {
@@ -254,8 +260,10 @@ export default function LogisticsCalculator() {
         return { cartons, floor: modFloor };
       case "kitchen_visit":
         return { location_id: kitchenLocId, location: kitchenLoc?.location_name };
+      case "safe_handling":
+        return { floor: safeHandlingFloor };
     }
-  }, [tab, localKm, outKm, handlingKm, floorProduct, floorQty, floorNum, cartons, modFloor, kitchenLocId, kitchenLoc]);
+  }, [tab, localKm, outKm, handlingKm, floorProduct, floorQty, floorNum, cartons, modFloor, kitchenLocId, kitchenLoc, safeHandlingFloor]);
 
   const textSnapshot = formatBreakdownText(tab, inputs, result, gst, rates);
 
@@ -331,11 +339,13 @@ export default function LogisticsCalculator() {
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as CalculatorType)}>
         <TabsList className="flex flex-wrap h-auto print:hidden">
-          {(Object.keys(CALCULATOR_LABELS) as CalculatorType[]).map((k) => (
-            <TabsTrigger key={k} value={k}>
-              {CALCULATOR_LABELS[k]}
-            </TabsTrigger>
-          ))}
+          {(Object.keys(CALCULATOR_LABELS) as CalculatorType[])
+            .filter((k) => k !== "safe_handling" || canSeeSafeHandling)
+            .map((k) => (
+              <TabsTrigger key={k} value={k}>
+                {CALCULATOR_LABELS[k]}
+              </TabsTrigger>
+            ))}
         </TabsList>
 
         <div className="mt-4 grid md:grid-cols-2 gap-4">
@@ -438,6 +448,23 @@ export default function LogisticsCalculator() {
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+              </TabsContent>
+              <TabsContent value="safe_handling" className="space-y-3 mt-0">
+                <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+                  Applicable only for heavy items exceeding 100 kg requiring special manpower and handling.
+                </div>
+                <div>
+                  <Label>Floor number (0 = Ground floor)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={safeHandlingFloor}
+                    onChange={(e) => setSafeHandlingFloor(Math.max(0, Number(e.target.value) || 0))}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    ₹2,500 base + ₹1,000 per floor above ground
+                  </p>
                 </div>
               </TabsContent>
 
