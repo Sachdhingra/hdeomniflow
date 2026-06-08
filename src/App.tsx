@@ -46,6 +46,9 @@ const StaffDirectory = lazy(() => import("@/pages/StaffDirectory"));
 const MonthlyLeaderboard = lazy(() => import("@/pages/MonthlyLeaderboard"));
 const EliteCustomers = lazy(() => import("@/pages/EliteCustomers"));
 const InventoryManager = lazy(() => import("@/pages/InventoryManager"));
+const LogisticsCalculator = lazy(() => import("@/pages/LogisticsCalculator"));
+const LogisticsCalculatorSettings = lazy(() => import("@/pages/LogisticsCalculatorSettings"));
+const LogisticsHistory = lazy(() => import("@/pages/LogisticsHistory"));
 import KioskModeWrapper from "@/components/kiosk/KioskModeWrapper";
 import ProfileGate from "@/components/staff/ProfileGate";
 
@@ -179,6 +182,9 @@ const AppRoutes = () => {
             <Route path="/dashboard/leaderboard" element={<MonthlyLeaderboard />} />
             <Route path="/elite-customers" element={<EliteCustomers />} />
             <Route path="/inventory" element={<InventoryManager />} />
+            <Route path="/logistics-calculator" element={<LogisticsCalculator />} />
+            <Route path="/logistics-calculator/history" element={<LogisticsHistory />} />
+            <Route path="/logistics-calculator/settings" element={<LogisticsCalculatorSettings />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
