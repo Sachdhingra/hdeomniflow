@@ -49,6 +49,11 @@ interface TrackedArticle {
   total: number;
 }
 
+interface PickedItem {
+  product: RawProduct;
+  qtys: Record<string, number>;
+}
+
 interface HdeOrder {
   id: string; order_number: string; order_type: string; order_tag?: string;
   company_order_reason?: string; product_id: string; replacement_product_id?: string;
@@ -155,6 +160,7 @@ function ProductPhotoCell({
   productId, currentUrl, canUpload, onUploaded,
 }: { productId: string; currentUrl?: string; canUpload: boolean; onUploaded: (url: string) => void; }) {
   const [state, setState] = useState<"idle" | "uploading">("idle");
+  const [enlarged, setEnlarged] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -177,23 +183,39 @@ function ProductPhotoCell({
   };
 
   return (
-    <div className="relative w-full h-44 bg-muted flex items-center justify-center overflow-hidden">
-      {currentUrl
-        ? <img src={currentUrl} alt="" className="w-full h-full object-cover" />
-        : <Package className="w-14 h-14 text-muted-foreground opacity-25" />
-      }
-      {canUpload && (
-        <button
-          onClick={() => inputRef.current?.click()}
-          disabled={state === "uploading"}
-          className="absolute bottom-2 right-2 bg-black/60 hover:bg-black/80 text-white rounded-full p-2 transition-colors"
-          title="Upload photo"
-        >
-          {state === "uploading" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
-        </button>
+    <>
+      <div className="relative w-full h-44 bg-muted flex items-center justify-center overflow-hidden">
+        {currentUrl ? (
+          <img
+            src={currentUrl} alt=""
+            className="w-full h-full object-cover cursor-zoom-in"
+            onClick={() => setEnlarged(true)}
+            title="Click to enlarge"
+          />
+        ) : (
+          <Package className="w-14 h-14 text-muted-foreground opacity-25" />
+        )}
+        {canUpload && (
+          <button
+            onClick={() => inputRef.current?.click()}
+            disabled={state === "uploading"}
+            className="absolute bottom-2 right-2 bg-black/60 hover:bg-black/80 text-white rounded-full p-2 transition-colors"
+            title="Upload photo"
+          >
+            {state === "uploading" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+          </button>
+        )}
+        <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+      </div>
+
+      {enlarged && currentUrl && (
+        <Dialog open={enlarged} onOpenChange={setEnlarged}>
+          <DialogContent className="max-w-3xl p-0 overflow-hidden bg-black border-0">
+            <img src={currentUrl} alt="Full size" className="w-full h-auto max-h-[85vh] object-contain" />
+          </DialogContent>
+        </Dialog>
       )}
-      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
-    </div>
+    </>
   );
 }
 
@@ -212,17 +234,27 @@ function AddArticleDialog({
   open: boolean; onClose: () => void; allProducts: RawProduct[];
   locations: Location[]; userId: string; onDone: () => void;
 }) {
+  const [phase, setPhase] = useState<"search" | "configure">("search");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
-  const [picked, setPicked] = useState<RawProduct | null>(null);
-  const [qtys, setQtys] = useState<Record<string, number>>({});
+  const [pickedItems, setPickedItems] = useState<PickedItem[]>([]);
+  const [sharedPhotoBlob, setSharedPhotoBlob] = useState<Blob | null>(null);
+  const [sharedPhotoPreview, setSharedPhotoPreview] = useState("");
+  const [photoUploading, setPhotoUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const photoRef = useRef<HTMLInputElement>(null);
 
-  // Fall back to hardcoded defaults if hde_locations not seeded yet
   const effectiveLocs = locations.length > 0 ? locations : DEFAULT_LOCATIONS;
 
   useEffect(() => {
-    if (open) { setSearch(""); setCategoryFilter("all"); setPicked(null); setQtys({}); }
+    if (open) {
+      setPhase("search");
+      setSearch("");
+      setCategoryFilter("all");
+      setPickedItems([]);
+      setSharedPhotoBlob(null);
+      setSharedPhotoPreview(prev => { if (prev) URL.revokeObjectURL(prev); return ""; });
+    }
   }, [open]);
 
   const categories = useMemo(() => {
@@ -230,63 +262,96 @@ function AddArticleDialog({
     return cats.sort();
   }, [allProducts]);
 
+  const pickedIds = useMemo(() => new Set(pickedItems.map(i => i.product.id)), [pickedItems]);
+
   const filtered = useMemo(() => {
-    // Require a category selection first — keeps the list short & focused.
-    if (categoryFilter === "all") return [];
     const q = search.toLowerCase();
     return allProducts.filter(p => {
-      if (p.category_name !== categoryFilter) return false;
+      if (pickedIds.has(p.id)) return false;
+      if (categoryFilter !== "all" && p.category_name !== categoryFilter) return false;
       if (q && !p.product_name.toLowerCase().includes(q) && !p.sku.toLowerCase().includes(q)) return false;
       return true;
-    }).slice(0, 500);
-  }, [allProducts, search, categoryFilter]);
+    }).slice(0, 200);
+  }, [allProducts, search, categoryFilter, pickedIds]);
+
+  const pickProduct = (product: RawProduct) => {
+    setPickedItems(prev => [...prev, { product, qtys: {} }]);
+    setPhase("configure");
+  };
+
+  const removeItem = (id: string) => {
+    setPickedItems(prev => {
+      const next = prev.filter(i => i.product.id !== id);
+      if (next.length === 0) setPhase("search");
+      return next;
+    });
+  };
+
+  const setQty = (productId: string, locationId: string, qty: number) => {
+    setPickedItems(prev => prev.map(i =>
+      i.product.id === productId ? { ...i, qtys: { ...i.qtys, [locationId]: Math.max(0, qty) } } : i
+    ));
+  };
+
+  const handlePhotoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoUploading(true);
+    try {
+      const blob = await compress(file);
+      setSharedPhotoPreview(prev => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(blob); });
+      setSharedPhotoBlob(blob);
+    } catch { toast.error("Failed to process photo"); }
+    finally { setPhotoUploading(false); if (photoRef.current) photoRef.current.value = ""; }
+  };
 
   const handleSave = async () => {
-    if (!picked) return toast.error("Select a product first");
-    const hasQty = effectiveLocs.some(l => (qtys[l.id] ?? 0) > 0);
-    if (!hasQty) return toast.error("Enter at least 1 unit for a location");
+    if (pickedItems.length === 0) return toast.error("Add at least one product");
+    const hasAnyQty = pickedItems.some(item => effectiveLocs.some(l => (item.qtys[l.id] ?? 0) > 0));
+    if (!hasAnyQty) return toast.error("Enter at least 1 unit for any product/location");
     setSaving(true);
     try {
-      // Build list of {realId, type, qty} — handling both cases:
-      // A) real locations already loaded  → qtys are keyed by real UUIDs
-      // B) fallback fake IDs in use       → must create real rows first, map by index
-      let pairs: { id: string; type: string; qty: number }[];
-
+      let pairs: { id: string; type: string; fakeId: string }[];
       if (locations.length > 0) {
-        // Case A: use real IDs directly
-        pairs = locations.map(l => ({ id: l.id, type: l.type, qty: qtys[l.id] ?? 0 }));
+        pairs = locations.map(l => ({ id: l.id, type: l.type, fakeId: l.id }));
       } else {
-        // Case B: seed locations, then map by position
         const { data: created, error: seedErr } = await supabase
           .from("hde_locations" as any)
           .insert(DEFAULT_LOCATIONS.map(l => ({ name: l.name, type: l.type })))
           .select();
-        if (seedErr || !created || !(created as any).length) {
+        if (seedErr || !created || !(created as any).length)
           throw new Error("Locations not configured. Ask admin to set up locations first.");
-        }
         pairs = (created as any).map((loc: any, i: number) => ({
-          id: loc.id,
-          type: loc.type,
-          qty: qtys[DEFAULT_LOCATIONS[i]?.id] ?? 0,
+          id: loc.id, type: loc.type, fakeId: DEFAULT_LOCATIONS[i]?.id ?? loc.id,
         }));
       }
 
-      let saved = 0;
-      for (const p of pairs) {
-        if (p.qty <= 0) continue;
-        const { error } = await supabase.from("hde_inventory" as any).upsert({
-          product_id: picked.id,
-          location_id: p.id,
-          quantity: p.qty,
-          inventory_type: p.type === "warehouse" ? "warehouse" : "display",
-          updated_by: userId,
-        }, { onConflict: "product_id,location_id" });
-        if (error) throw new Error(error.message);
-        saved++;
+      let sharedPhotoUrl: string | null = null;
+      if (sharedPhotoBlob) {
+        const path = `inventory/${pickedItems[0].product.id}/shared_${Date.now()}.jpg`;
+        sharedPhotoUrl = await uploadPhoto(sharedPhotoBlob, path);
       }
-      if (saved === 0) throw new Error("No quantities entered — enter at least 1 unit.");
 
-      toast.success(`${picked.product_name} added to inventory`);
+      for (const item of pickedItems) {
+        for (const p of pairs) {
+          const qty = item.qtys[p.fakeId] ?? 0;
+          if (qty <= 0) continue;
+          const { error } = await supabase.from("hde_inventory" as any).upsert({
+            product_id: item.product.id, location_id: p.id, quantity: qty,
+            inventory_type: p.type === "warehouse" ? "warehouse" : "display",
+            updated_by: userId,
+          }, { onConflict: "product_id,location_id" });
+          if (error) throw new Error(`${item.product.product_name}: ${error.message}`);
+        }
+        if (sharedPhotoUrl) {
+          await supabase.from("hde_product_photos" as any).upsert(
+            { product_id: item.product.id, photo_url: sharedPhotoUrl, uploaded_by: userId },
+            { onConflict: "product_id" }
+          );
+        }
+      }
+
+      toast.success(`${pickedItems.length} product${pickedItems.length > 1 ? "s" : ""} added to inventory`);
       onDone();
       onClose();
     } catch (err: any) {
@@ -298,112 +363,139 @@ function AddArticleDialog({
 
   return (
     <Dialog open={open} onOpenChange={o => !o && onClose()}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>Add Article to Inventory</DialogTitle></DialogHeader>
-        <div className="space-y-3">
-          {!picked ? (
-            <>
-              {/* Search + Category filter */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search product name or SKU…"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  className="pl-9"
-                  autoFocus
-                />
-              </div>
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger>
-                  <Filter className="w-3 h-3 mr-1" />
-                  <SelectValue placeholder="Choose a category first" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">— Choose a category —</SelectItem>
-                  {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                {categoryFilter === "all"
-                  ? "Pick a category to load articles from the price list."
-                  : `${filtered.length} product${filtered.length !== 1 ? "s" : ""} shown — tap to select`}
-              </p>
-              <div className="border rounded-lg max-h-64 overflow-y-auto">
-                {categoryFilter === "all"
-                  ? <p className="text-sm text-muted-foreground p-3 text-center">Select a category above to see articles.</p>
-                  : filtered.length === 0
-                  ? <p className="text-sm text-muted-foreground p-3 text-center">No products match.</p>
-                  : filtered.map(p => (
-                    <button key={p.id} onClick={() => setPicked(p)} className="w-full text-left px-3 py-2.5 hover:bg-muted/60 border-b last:border-0 active:bg-muted">
-                      <p className="text-sm font-medium leading-tight">{p.product_name}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {p.category_name && <span className="mr-2">{p.category_name}</span>}
-                        <span className="font-mono">{p.sku}</span>
-                        <span className="ml-2">₹{p.net_price.toLocaleString("en-IN")}</span>
-                      </p>
-                    </button>
-                  ))
-                }
-              </div>
-            </>
-          ) : (
-            <>
-              {/* Selected product chip */}
-              <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 flex items-start justify-between gap-2">
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm leading-tight">{picked.product_name}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {picked.category_name && <span className="mr-2">{picked.category_name}</span>}
-                    <span className="font-mono">{picked.sku}</span>
-                    <span className="ml-2">₹{picked.net_price.toLocaleString("en-IN")}</span>
-                  </p>
-                </div>
-                <Button variant="ghost" size="sm" className="shrink-0 h-7 px-2" onClick={() => setPicked(null)}>
-                  <X className="w-4 h-4" /> Change
-                </Button>
-              </div>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            {phase === "search" && pickedItems.length > 0 ? "Add Another Product" : "Add Articles to Inventory"}
+          </DialogTitle>
+        </DialogHeader>
 
-              {/* Location qty inputs */}
-              <div className="space-y-2">
-                <p className="text-sm font-semibold">Opening stock per location</p>
-                {effectiveLocs.map(l => (
-                  <div key={l.id} className="flex items-center gap-3 p-2 bg-muted/40 rounded-lg">
-                    <span className="flex items-center gap-1.5 text-sm flex-1">
-                      {l.type === "warehouse"
-                        ? <Warehouse className="w-4 h-4 text-blue-600 shrink-0" />
-                        : <Store className="w-4 h-4 text-emerald-600 shrink-0" />}
-                      <span className="font-medium">{l.name}</span>
-                    </span>
-                    <div className="flex items-center gap-1">
-                      <Button size="icon" variant="outline" className="h-8 w-8 shrink-0"
-                        onClick={() => setQtys(p => ({ ...p, [l.id]: Math.max(0, (p[l.id] ?? 0) - 1) }))}>
-                        <Minus className="w-3 h-3" />
-                      </Button>
-                      <Input
-                        type="number" min={0}
-                        className="h-8 w-16 text-center font-semibold"
-                        value={qtys[l.id] ?? 0}
-                        onChange={e => setQtys(prev => ({ ...prev, [l.id]: Math.max(0, parseInt(e.target.value) || 0) }))}
-                      />
-                      <Button size="icon" variant="outline" className="h-8 w-8 shrink-0"
-                        onClick={() => setQtys(p => ({ ...p, [l.id]: (p[l.id] ?? 0) + 1 }))}>
-                        <Plus className="w-3 h-3" />
-                      </Button>
-                    </div>
+        {/* ── SEARCH PHASE ── */}
+        {phase === "search" && (
+          <div className="space-y-3">
+            {pickedItems.length > 0 && (
+              <Button variant="outline" size="sm" className="w-full" onClick={() => setPhase("configure")}>
+                ← Back to form ({pickedItems.length} product{pickedItems.length !== 1 ? "s" : ""} added)
+              </Button>
+            )}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input placeholder="Search product name or SKU…" value={search} onChange={e => setSearch(e.target.value)} className="pl-9" autoFocus />
+            </div>
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger>
+                <Filter className="w-3 h-3 mr-1" />
+                <SelectValue placeholder="All Categories" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">{filtered.length} product{filtered.length !== 1 ? "s" : ""} — tap to add</p>
+            <div className="border rounded-lg max-h-64 overflow-y-auto">
+              {filtered.length === 0
+                ? <p className="text-sm text-muted-foreground p-3 text-center">No products match.</p>
+                : filtered.map(p => (
+                  <button key={p.id} onClick={() => pickProduct(p)} className="w-full text-left px-3 py-2.5 hover:bg-muted/60 border-b last:border-0 active:bg-muted">
+                    <p className="text-sm font-medium leading-tight">{p.product_name}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {p.category_name && <span className="mr-2">{p.category_name}</span>}
+                      <span className="font-mono">{p.sku}</span>
+                      <span className="ml-2">₹{p.net_price.toLocaleString("en-IN")}</span>
+                    </p>
+                  </button>
+                ))
+              }
+            </div>
+          </div>
+        )}
+
+        {/* ── CONFIGURE PHASE ── */}
+        {phase === "configure" && (
+          <div className="space-y-4">
+            {pickedItems.map(item => (
+              <div key={item.product.id} className="border rounded-lg p-3 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm leading-tight">{item.product.product_name}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {item.product.category_name && <span className="mr-2">{item.product.category_name}</span>}
+                      <span className="font-mono">{item.product.sku}</span>
+                      <span className="ml-2">₹{item.product.net_price.toLocaleString("en-IN")}</span>
+                    </p>
                   </div>
-                ))}
+                  <Button variant="ghost" size="sm" className="shrink-0 h-7 w-7 p-0" title="Remove" onClick={() => removeItem(item.product.id)}>
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+                <div className="space-y-1.5">
+                  {effectiveLocs.map(l => (
+                    <div key={l.id} className="flex items-center gap-2 bg-muted/30 rounded p-1.5">
+                      <span className="flex items-center gap-1.5 text-xs flex-1 font-medium">
+                        {l.type === "warehouse"
+                          ? <Warehouse className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                          : <Store className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
+                        {l.name}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <Button size="icon" variant="outline" className="h-7 w-7 shrink-0"
+                          onClick={() => setQty(item.product.id, l.id, (item.qtys[l.id] ?? 0) - 1)}>
+                          <Minus className="w-3 h-3" />
+                        </Button>
+                        <Input
+                          type="number" min={0}
+                          className="h-7 w-14 text-center text-sm font-semibold"
+                          value={item.qtys[l.id] ?? 0}
+                          onChange={e => setQty(item.product.id, l.id, parseInt(e.target.value) || 0)}
+                        />
+                        <Button size="icon" variant="outline" className="h-7 w-7 shrink-0"
+                          onClick={() => setQty(item.product.id, l.id, (item.qtys[l.id] ?? 0) + 1)}>
+                          <Plus className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
+            ))}
 
-              <div className="flex gap-2 pt-1">
-                <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
-                <Button className="flex-1" onClick={handleSave} disabled={saving}>
-                  {saving ? <><Loader2 className="w-4 h-4 animate-spin mr-1" />Adding…</> : "Add to Inventory"}
+            <Button variant="outline" className="w-full" onClick={() => { setSearch(""); setPhase("search"); }}>
+              <Plus className="w-4 h-4 mr-1" />Add Another Product (e.g. another part of same set)
+            </Button>
+
+            {/* Shared group photo */}
+            <div className="border rounded-lg p-3 space-y-2">
+              <p className="text-sm font-semibold flex items-center gap-1.5">
+                <Camera className="w-4 h-4" />Group Photo
+                <span className="text-xs font-normal text-muted-foreground">— optional, shared across all products above</span>
+              </p>
+              {sharedPhotoPreview ? (
+                <div className="relative">
+                  <img src={sharedPhotoPreview} alt="Preview" className="w-full h-36 object-cover rounded border" />
+                  <Button variant="destructive" size="sm" className="absolute top-1 right-1 h-6 w-6 p-0"
+                    onClick={() => { setSharedPhotoBlob(null); URL.revokeObjectURL(sharedPhotoPreview); setSharedPhotoPreview(""); }}>
+                    <X className="w-3 h-3" />
+                  </Button>
+                </div>
+              ) : (
+                <Button variant="outline" size="sm" className="w-full" onClick={() => photoRef.current?.click()} disabled={photoUploading}>
+                  {photoUploading ? <><Loader2 className="w-3 h-3 animate-spin mr-1" />Processing…</> : <><Camera className="w-3 h-3 mr-1" />Upload Group Photo</>}
                 </Button>
-              </div>
-            </>
-          )}
-        </div>
+              )}
+              <input ref={photoRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoFile} />
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
+              <Button className="flex-1" onClick={handleSave} disabled={saving}>
+                {saving
+                  ? <><Loader2 className="w-4 h-4 animate-spin mr-1" />Adding…</>
+                  : pickedItems.length > 1 ? `Add ${pickedItems.length} Products` : "Add to Inventory"}
+              </Button>
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
