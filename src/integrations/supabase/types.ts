@@ -1341,6 +1341,33 @@ export type Database = {
         }
         Relationships: []
       }
+      kitchen_visit_locations: {
+        Row: {
+          active: boolean
+          charge: number
+          created_at: string
+          id: string
+          location_name: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          charge: number
+          created_at?: string
+          id?: string
+          location_name: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          charge?: number
+          created_at?: string
+          id?: string
+          location_name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       lead_alerts: {
         Row: {
           alert_type: string
@@ -1875,6 +1902,101 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      logistics_calculations: {
+        Row: {
+          attached_to_lead: boolean
+          breakdown: Json
+          calculator_type: string
+          created_at: string
+          created_by: string
+          customer_name: string | null
+          customer_phone: string | null
+          final_amount: number
+          gst_amount: number
+          gst_included: boolean
+          id: string
+          inputs: Json
+          lead_id: string | null
+          notes: string | null
+          subtotal: number
+          updated_at: string
+        }
+        Insert: {
+          attached_to_lead?: boolean
+          breakdown?: Json
+          calculator_type: string
+          created_at?: string
+          created_by: string
+          customer_name?: string | null
+          customer_phone?: string | null
+          final_amount?: number
+          gst_amount?: number
+          gst_included?: boolean
+          id?: string
+          inputs?: Json
+          lead_id?: string | null
+          notes?: string | null
+          subtotal?: number
+          updated_at?: string
+        }
+        Update: {
+          attached_to_lead?: boolean
+          breakdown?: Json
+          calculator_type?: string
+          created_at?: string
+          created_by?: string
+          customer_name?: string | null
+          customer_phone?: string | null
+          final_amount?: number
+          gst_amount?: number
+          gst_included?: boolean
+          id?: string
+          inputs?: Json
+          lead_id?: string | null
+          notes?: string | null
+          subtotal?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "logistics_calculations_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      logistics_rates: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          rate_key: string
+          rate_value: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          rate_key: string
+          rate_value: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          rate_key?: string
+          rate_value?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
       }
       message_logs: {
         Row: {
