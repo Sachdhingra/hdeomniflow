@@ -6,7 +6,8 @@ export type CalculatorType =
   | "handling"
   | "floor_labour"
   | "modular_labour"
-  | "kitchen_visit";
+  | "kitchen_visit"
+  | "safe_handling";
 
 export const CALCULATOR_LABELS: Record<CalculatorType, string> = {
   local_freight: "Local Freight",
@@ -15,6 +16,7 @@ export const CALCULATOR_LABELS: Record<CalculatorType, string> = {
   floor_labour: "Floor Labour (Sofa/Almirah)",
   modular_labour: "Modular Furniture Labour",
   kitchen_visit: "Kitchen Measurement Visit",
+  safe_handling: "Safe Handling Charges (>100 kg)",
 };
 
 export type Rates = {
@@ -144,6 +146,22 @@ export function calcModularLabour(cartons: number, floor: number, gst: boolean, 
 export function calcKitchenVisit(location: string, charge: number, gst: boolean, r: Rates): CalcResult {
   const res = applyGst(charge, gst, r.gst_rate);
   res.breakdown = { Location: location, "Visit charge": charge };
+  return res;
+}
+
+export const SAFE_HANDLING_BASE = 2500;
+export const SAFE_HANDLING_PER_FLOOR = 1000;
+
+export function calcSafeHandling(floor: number, gst: boolean, r: Rates): CalcResult {
+  const floorSurcharge = floor * SAFE_HANDLING_PER_FLOOR;
+  const base = SAFE_HANDLING_BASE + floorSurcharge;
+  const res = applyGst(base, gst, r.gst_rate);
+  res.breakdown = {
+    "Floor": floor === 0 ? "Ground (0)" : String(floor),
+    "Base charge": SAFE_HANDLING_BASE,
+    "Floor surcharge": floorSurcharge,
+    "Handling charge": base,
+  };
   return res;
 }
 
