@@ -31,7 +31,7 @@ export default function LogisticsHistory() {
         .limit(500);
       const list = (data as any) || [];
       setRows(list);
-      const ids = Array.from(new Set(list.map((r: any) => r.created_by).filter(Boolean)));
+      const ids: string[] = Array.from(new Set(list.map((r: any) => r.created_by as string).filter(Boolean)));
       if (ids.length) {
         const { data: ps } = await supabase.from("profiles").select("id, name").in("id", ids);
         const map: Record<string, string> = {};
