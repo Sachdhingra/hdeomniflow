@@ -113,6 +113,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       ELITE_NAV,
       { to: "/accounts/purchases", label: "Company Purchases", icon: <Receipt className="w-5 h-5" /> },
       { to: "/accounts/suppliers", label: "Suppliers", icon: <Truck className="w-5 h-5" /> },
+      INVENTORY_NAV,
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
       { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" />, badge: chatUnread || undefined },
     ],
