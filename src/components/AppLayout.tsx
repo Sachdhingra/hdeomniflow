@@ -90,6 +90,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" />, badge: pendingJobCount || undefined },
       { to: "/service-jobs", label: "Service Jobs", icon: <Wrench className="w-5 h-5" /> },
       ELITE_NAV,
+      INVENTORY_NAV,
       { to: "/claims", label: "Claims", icon: <FileText className="w-5 h-5" /> },
       { to: "/calendar", label: "Calendar", icon: <CalendarDays className="w-5 h-5" /> },
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
