@@ -1743,7 +1743,7 @@ export default function InventoryManager() {
 
           {/* ── Orders ── */}
           <TabsContent value="orders" className="mt-4">
-            <OrdersView orders={orders} onSelect={o => { setSelectedOrder(o); setOrderDetailOpen(true); }} onRefresh={loadAll} />
+            <OrdersView orders={orders} onSelect={o => { setSelectedOrder(o); setOrderDetailOpen(true); }} onRefresh={loadAll} isAdmin={isAdmin} userId={user.id} />
           </TabsContent>
 
           {/* ── Field jobs ── */}
