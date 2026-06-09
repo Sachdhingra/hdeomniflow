@@ -942,6 +942,7 @@ export type Database = {
       }
       hde_inventory: {
         Row: {
+          group_id: string | null
           id: string
           inventory_type: string
           location_id: string
@@ -951,6 +952,7 @@ export type Database = {
           updated_by: string | null
         }
         Insert: {
+          group_id?: string | null
           id?: string
           inventory_type: string
           location_id: string
@@ -960,6 +962,7 @@ export type Database = {
           updated_by?: string | null
         }
         Update: {
+          group_id?: string | null
           id?: string
           inventory_type?: string
           location_id?: string
