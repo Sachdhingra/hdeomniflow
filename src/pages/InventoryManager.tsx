@@ -350,12 +350,21 @@ function AddArticleDialog({
         for (const p of pairs) {
           const qty = item.qtys[p.fakeId] ?? 0;
           if (qty <= 0) continue;
-          const { error } = await supabase.from("hde_inventory" as any).upsert({
+          const payload: any = {
             product_id: item.product.id, location_id: p.id, quantity: qty,
             inventory_type: p.type === "warehouse" ? "warehouse" : "display",
             updated_by: userId,
             ...(group_id ? { group_id } : {}),
-          }, { onConflict: "product_id,location_id" });
+          };
+          let { error } = await supabase.from("hde_inventory" as any).upsert(payload, { onConflict: "product_id,location_id" });
+          // If group_id column hasn't been migrated yet, retry without it
+          if (error?.message?.includes("group_id")) {
+            const { error: e2 } = await supabase.from("hde_inventory" as any).upsert(
+              { product_id: item.product.id, location_id: p.id, quantity: qty, inventory_type: payload.inventory_type, updated_by: userId },
+              { onConflict: "product_id,location_id" }
+            );
+            error = e2;
+          }
           if (error) throw new Error(`${item.product.product_name}: ${error.message}`);
         }
         if (sharedPhotoUrl) {
