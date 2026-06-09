@@ -96,11 +96,11 @@ const SalesDashboard = () => {
     if (ids.length === 0) { setApprovalByLead({}); return; }
     const { data } = await supabase
       .from("service_jobs")
-      .select("id,source_lead_id,customer_name,accounts_approval_status,accounts_rejection_reason,accounts_notes,assigned_agent,type")
+      .select("id,source_lead_id,customer_name,accounts_approval_status,accounts_rejection_reason,accounts_notes,assigned_agent,type,value")
       .in("source_lead_id", ids)
       .is("deleted_at", null);
     if (!data) return;
-    const map: Record<string, { jobId: string; status: string; reason: string | null; notes: string | null; customer: string; assignedAgent: string | null; jobType: string }> = {};
+    const map: Record<string, { jobId: string; status: string; reason: string | null; notes: string | null; customer: string; assignedAgent: string | null; jobType: string; value: number }> = {};
     data.forEach((r: any) => {
       if (r.source_lead_id) map[r.source_lead_id] = {
         jobId: r.id,
@@ -110,6 +110,7 @@ const SalesDashboard = () => {
         customer: r.customer_name,
         assignedAgent: r.assigned_agent,
         jobType: r.type,
+        value: Number(r.value) || 0,
       };
     });
     setApprovalByLead(map);
