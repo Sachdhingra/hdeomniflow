@@ -143,17 +143,39 @@ const SalesDashboard = () => {
 
   const handleResubmit = async () => {
     if (!resubmitJobId) return;
+    const newAmount = Number(resubmitAmount);
+    if (!Number.isFinite(newAmount) || newAmount <= 0) {
+      toast.error("Enter a valid Sale Amount");
+      return;
+    }
     setResubmitting(true);
     try {
+      // Always fetch the latest dispatch row so we never overwrite with stale data.
+      const { data: current, error: fetchErr } = await supabase
+        .from("service_jobs")
+        .select("id,value,accounts_approval_status")
+        .eq("id", resubmitJobId)
+        .single();
+      if (fetchErr) throw fetchErr;
+
+      const amountChanged = Number(current?.value) !== newAmount;
+      const noteParts = [
+        "[Resubmitted by sales]",
+        amountChanged ? `Sale amount: ₹${Number(current?.value).toLocaleString("en-IN")} → ₹${newAmount.toLocaleString("en-IN")}` : null,
+        resubmitNote || null,
+      ].filter(Boolean);
+
       const { data: updated, error } = await supabase
         .from("service_jobs")
         .update({
+          value: newAmount,
           accounts_approval_status: "pending",
           accounts_rejection_reason: null,
-          accounts_notes: resubmitNote ? `[Resubmitted by sales] ${resubmitNote}` : "[Resubmitted by sales]",
+          accounts_notes: noteParts.join(" — "),
           accounts_approved_by: null,
           accounts_approved_at: null,
           status: "pending_accounts_approval",
+          updated_by: user?.id,
         } as any)
         .eq("id", resubmitJobId)
         .select("id");
@@ -161,16 +183,21 @@ const SalesDashboard = () => {
       if (!updated || updated.length === 0) {
         throw new Error("Resubmit blocked — you may not have permission, or the dispatch was already approved/assigned.");
       }
-      // Audit log entry
+      // Audit log entry capturing old + new sale amount
       await supabase.from("accounts_approvals_log" as any).insert({
         service_job_id: resubmitJobId,
         action: "resubmitted",
         performed_by: user?.id,
-        notes: resubmitNote || null,
+        notes: noteParts.slice(1).join(" — ") || null,
+        amount_verified: newAmount,
       });
-      toast.success("Dispatch resubmitted for approval");
+      toast.success(amountChanged
+        ? `Resubmitted with updated amount ₹${newAmount.toLocaleString("en-IN")}`
+        : "Dispatch resubmitted for approval");
       setResubmitJobId(null);
       setResubmitNote("");
+      setResubmitAmount("");
+      setResubmitOldAmount(0);
       loadApprovals();
     } catch (e: any) {
       toast.error(e.message || "Failed to resubmit");
