@@ -35,10 +35,20 @@ const UPLOAD_TIMEOUT = 45_000;
 
 interface RawProduct { id: string; sku: string; product_name: string; net_price: number; category_name?: string; }
 interface Location { id: string; name: string; type: "warehouse" | "showroom"; }
-interface InvRow { id: string; product_id: string; location_id: string; quantity: number; inventory_type: string; }
+interface InvRow { id: string; product_id: string; location_id: string; quantity: number; inventory_type: string; group_id?: string | null; }
 interface PhotoRow { product_id: string; photo_url: string; }
 
+interface TrackedArticlePart {
+  product_id: string;
+  product_name: string;
+  sku: string;
+  net_price: number;
+  locs: { location_id: string; name: string; type: string; qty: number; }[];
+  total: number;
+}
+
 interface TrackedArticle {
+  group_id?: string;
   product_id: string;
   product_name: string;
   sku: string;
@@ -47,6 +57,7 @@ interface TrackedArticle {
   photo_url?: string;
   locs: { location_id: string; name: string; type: string; qty: number; }[];
   total: number;
+  parts?: TrackedArticlePart[];
 }
 
 interface PickedItem {
@@ -332,6 +343,9 @@ function AddArticleDialog({
         sharedPhotoUrl = await uploadPhoto(sharedPhotoBlob, path);
       }
 
+      // Assign a shared group_id when saving multiple products together
+      const group_id = pickedItems.length > 1 ? crypto.randomUUID() : undefined;
+
       for (const item of pickedItems) {
         for (const p of pairs) {
           const qty = item.qtys[p.fakeId] ?? 0;
@@ -340,6 +354,7 @@ function AddArticleDialog({
             product_id: item.product.id, location_id: p.id, quantity: qty,
             inventory_type: p.type === "warehouse" ? "warehouse" : "display",
             updated_by: userId,
+            ...(group_id ? { group_id } : {}),
           }, { onConflict: "product_id,location_id" });
           if (error) throw new Error(`${item.product.product_name}: ${error.message}`);
         }
@@ -509,21 +524,31 @@ function ReceiveStockDialog({
   open: boolean; onClose: () => void; article: TrackedArticle | null;
   locations: Location[]; userId: string; onDone: () => void;
 }) {
+  const [partId, setPartId] = useState("");
   const [locationId, setLocationId] = useState("");
   const [qty, setQty] = useState(1);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { if (open) { setLocationId(""); setQty(1); } }, [open]);
+  const isSet = !!(article?.parts?.length);
+  const activePart = isSet ? article!.parts!.find(p => p.product_id === partId) : null;
+  const effectiveProductId = isSet ? partId : article?.product_id;
+  const effectiveLocs = isSet ? (activePart?.locs ?? []) : (article?.locs ?? []);
+
+  useEffect(() => {
+    if (open) { setPartId(""); setLocationId(""); setQty(1); }
+  }, [open]);
 
   const handleSave = async () => {
-    if (!article || !locationId) return toast.error("Select a location");
+    if (!article) return;
+    if (isSet && !partId) return toast.error("Select which part to receive");
+    if (!locationId) return toast.error("Select a location");
     if (qty <= 0) return toast.error("Quantity must be at least 1");
     setSaving(true);
     try {
-      const current = article.locs.find(l => l.location_id === locationId)?.qty ?? 0;
+      const current = effectiveLocs.find(l => l.location_id === locationId)?.qty ?? 0;
       const locType = locations.find(l => l.id === locationId)?.type;
       const { error } = await supabase.from("hde_inventory" as any).upsert({
-        product_id: article.product_id, location_id: locationId,
+        product_id: effectiveProductId, location_id: locationId,
         quantity: current + qty,
         inventory_type: locType === "warehouse" ? "warehouse" : "display",
         updated_by: userId,
@@ -547,16 +572,34 @@ function ReceiveStockDialog({
         <div className="space-y-4">
           <div className="bg-muted/50 rounded-lg p-3">
             <p className="font-medium text-sm">{article.product_name}</p>
-            <p className="text-xs text-muted-foreground">{article.sku}</p>
+            <p className="text-xs text-muted-foreground font-mono">{article.sku}</p>
           </div>
+
+          {/* Part picker for sets */}
+          {isSet && (
+            <div>
+              <Label>Which part?</Label>
+              <Select value={partId} onValueChange={v => { setPartId(v); setLocationId(""); }}>
+                <SelectTrigger><SelectValue placeholder="Select part…" /></SelectTrigger>
+                <SelectContent>
+                  {article.parts!.map(p => (
+                    <SelectItem key={p.product_id} value={p.product_id}>
+                      {p.product_name} <span className="font-mono text-muted-foreground ml-1">{p.sku}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           <div>
             <Label>Location</Label>
-            <Select value={locationId} onValueChange={setLocationId}>
+            <Select value={locationId} onValueChange={setLocationId} disabled={isSet && !partId}>
               <SelectTrigger><SelectValue placeholder="Select location…" /></SelectTrigger>
               <SelectContent>
                 {locations.map(l => (
                   <SelectItem key={l.id} value={l.id}>
-                    {l.name} (current: {article.locs.find(x => x.location_id === l.id)?.qty ?? 0})
+                    {l.name} (current: {effectiveLocs.find(x => x.location_id === l.id)?.qty ?? 0})
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1180,7 +1223,7 @@ function StockTable({ articles, locations, userId, isAdmin, onRefresh }: { artic
           </TableRow>
         </TableHeader>
         <TableBody>
-          {articles.map(a => (
+          {articles.flatMap(a => a.parts ? a.parts.map(p => ({ ...p, group_id: a.group_id, photo_url: a.photo_url, category_name: a.category_name } as TrackedArticle)) : [a]).map(a => (
             <TableRow key={a.product_id}>
               <TableCell className="font-medium text-sm">{a.product_name}</TableCell>
               <TableCell className="text-xs text-muted-foreground font-mono">{a.sku}</TableCell>
@@ -1345,23 +1388,29 @@ export default function InventoryManager() {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
-  // Build tracked articles: products that have at least one inventory row
+  // Build tracked articles — products with inventory rows, grouped by group_id for sets
   const trackedArticles = useMemo<TrackedArticle[]>(() => {
     const productMap = new Map(allProducts.map(p => [p.id, p]));
     const photoMap = new Map(photoRows.map(p => [p.product_id, p.photo_url]));
-    const grouped = new Map<string, InvRow[]>();
+
+    // Group inv rows by product_id
+    const byProduct = new Map<string, { rows: InvRow[]; group_id: string | null }>();
     invRows.forEach(r => {
-      if (!grouped.has(r.product_id)) grouped.set(r.product_id, []);
-      grouped.get(r.product_id)!.push(r);
+      const entry = byProduct.get(r.product_id);
+      if (!entry) byProduct.set(r.product_id, { rows: [r], group_id: r.group_id || null });
+      else { entry.rows.push(r); if (!entry.group_id && r.group_id) entry.group_id = r.group_id; }
     });
-    const articles: TrackedArticle[] = [];
-    grouped.forEach((rows, productId) => {
+
+    // Build individual article objects
+    const articleMap = new Map<string, TrackedArticle>();
+    byProduct.forEach(({ rows, group_id }, productId) => {
       const prod = productMap.get(productId);
       const locs = rows.map(r => {
         const loc = locations.find(l => l.id === r.location_id);
         return { location_id: r.location_id, name: loc?.name || "—", type: loc?.type || "warehouse", qty: r.quantity };
       });
-      articles.push({
+      articleMap.set(productId, {
+        group_id: group_id || undefined,
         product_id: productId,
         product_name: prod?.product_name || `[Product ${productId.slice(0, 8)}]`,
         sku: prod?.sku || productId.slice(0, 8),
@@ -1372,7 +1421,47 @@ export default function InventoryManager() {
         total: locs.reduce((a, b) => a + b.qty, 0),
       });
     });
-    return articles.sort((a, b) => a.product_name.localeCompare(b.product_name));
+
+    // Bucket by group_id; singles go straight to output
+    const groups = new Map<string, TrackedArticle[]>();
+    const output: TrackedArticle[] = [];
+    articleMap.forEach(article => {
+      if (article.group_id) {
+        if (!groups.has(article.group_id)) groups.set(article.group_id, []);
+        groups.get(article.group_id)!.push(article);
+      } else {
+        output.push(article);
+      }
+    });
+
+    // Combine each group into a single display entry
+    groups.forEach(members => {
+      if (members.length === 1) { output.push(members[0]); return; }
+      const first = members[0];
+      const combinedLoc = new Map<string, { name: string; type: string; qty: number }>();
+      members.forEach(m => m.locs.forEach(l => {
+        const e = combinedLoc.get(l.location_id);
+        if (!e) combinedLoc.set(l.location_id, { ...l });
+        else e.qty += l.qty;
+      }));
+      output.push({
+        group_id: first.group_id,
+        product_id: first.product_id,
+        product_name: members.map(m => m.product_name).join(" + "),
+        sku: members.map(m => m.sku).join(", "),
+        net_price: members.reduce((s, m) => s + m.net_price, 0),
+        category_name: first.category_name,
+        photo_url: first.photo_url,
+        locs: [...combinedLoc.entries()].map(([location_id, v]) => ({ location_id, ...v })),
+        total: members.reduce((s, m) => s + m.total, 0),
+        parts: members.map(m => ({
+          product_id: m.product_id, product_name: m.product_name,
+          sku: m.sku, net_price: m.net_price, locs: m.locs, total: m.total,
+        })),
+      });
+    });
+
+    return output.sort((a, b) => a.product_name.localeCompare(b.product_name));
   }, [allProducts, invRows, photoRows, locations]);
 
   const filteredArticles = useMemo(() => {
@@ -1462,29 +1551,68 @@ export default function InventoryManager() {
                     />
 
                     <CardContent className="p-3 flex-1 flex flex-col gap-2">
+                      {/* Header: name + SKUs + price */}
                       <div>
+                        {a.parts && (
+                          <span className="inline-flex items-center text-[10px] font-medium bg-primary/10 text-primary rounded px-1.5 py-0.5 mb-1">
+                            Set · {a.parts.length} items
+                          </span>
+                        )}
                         <h3 className="font-semibold text-sm leading-tight line-clamp-2">{a.product_name}</h3>
-                        <p className="text-xs text-muted-foreground font-mono">{a.sku}</p>
+                        <p className="text-xs text-muted-foreground font-mono leading-snug">{a.sku}</p>
                         {a.category_name && <p className="text-xs text-muted-foreground">{a.category_name}</p>}
                       </div>
-                      <div className="text-base font-bold text-primary">₹{a.net_price.toLocaleString("en-IN")}</div>
 
-                      {/* Stock per location */}
-                      <div className="bg-muted/50 rounded-lg p-2 space-y-1">
-                        {a.locs.map(l => (
-                          <div key={l.location_id} className="flex justify-between text-xs">
-                            <span className="flex items-center gap-1 text-muted-foreground">
-                              {l.type === "warehouse" ? <Warehouse className="w-3 h-3" /> : <Store className="w-3 h-3" />}
-                              {l.name}
-                            </span>
-                            <span className={`font-semibold ${l.qty === 0 ? "text-red-500" : "text-foreground"}`}>{l.qty}</span>
-                          </div>
-                        ))}
-                        <div className="flex justify-between text-xs border-t pt-1 mt-1">
-                          <span className="text-muted-foreground font-medium">Total</span>
-                          <span className="font-bold">{a.total}</span>
-                        </div>
+                      {/* Price — combined for sets */}
+                      <div>
+                        <span className="text-base font-bold text-primary">₹{a.net_price.toLocaleString("en-IN")}</span>
+                        {a.parts && (
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            {a.parts.map(p => `₹${p.net_price.toLocaleString("en-IN")}`).join(" + ")}
+                          </p>
+                        )}
                       </div>
+
+                      {/* Stock display */}
+                      {a.parts ? (
+                        // Per-part breakdown for sets
+                        <div className="space-y-1.5">
+                          {a.parts.map(part => (
+                            <div key={part.product_id} className="bg-muted/50 rounded p-2">
+                              <p className="text-[10px] font-semibold mb-1 flex items-center justify-between">
+                                <span className="truncate">{part.product_name}</span>
+                                <span className="font-mono text-muted-foreground ml-1 shrink-0">{part.sku}</span>
+                              </p>
+                              {part.locs.map(l => (
+                                <div key={l.location_id} className="flex justify-between text-xs">
+                                  <span className="flex items-center gap-1 text-muted-foreground">
+                                    {l.type === "warehouse" ? <Warehouse className="w-3 h-3" /> : <Store className="w-3 h-3" />}
+                                    {l.name}
+                                  </span>
+                                  <span className={`font-semibold ${l.qty === 0 ? "text-red-500" : ""}`}>{l.qty}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        // Single product stock
+                        <div className="bg-muted/50 rounded-lg p-2 space-y-1">
+                          {a.locs.map(l => (
+                            <div key={l.location_id} className="flex justify-between text-xs">
+                              <span className="flex items-center gap-1 text-muted-foreground">
+                                {l.type === "warehouse" ? <Warehouse className="w-3 h-3" /> : <Store className="w-3 h-3" />}
+                                {l.name}
+                              </span>
+                              <span className={`font-semibold ${l.qty === 0 ? "text-red-500" : "text-foreground"}`}>{l.qty}</span>
+                            </div>
+                          ))}
+                          <div className="flex justify-between text-xs border-t pt-1 mt-1">
+                            <span className="text-muted-foreground font-medium">Total</span>
+                            <span className="font-bold">{a.total}</span>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Receive stock button */}
                       {(isAdmin || isSales || isAccounts) && (
@@ -1494,18 +1622,47 @@ export default function InventoryManager() {
                         </Button>
                       )}
 
-                      {/* Sale actions */}
+                      {/* Sale actions — per part for sets, single for individual */}
                       {!isFieldAgent && (
                         <div className="flex flex-col gap-1 mt-auto">
-                          <Button size="sm" className="w-full text-xs h-7 bg-blue-600 hover:bg-blue-700" onClick={() => { setSellArticle(a); setSellMode("warehouse"); }}>
-                            <Warehouse className="w-3 h-3 mr-1" />Sold via Warehouse
-                          </Button>
-                          <Button size="sm" className="w-full text-xs h-7 bg-emerald-600 hover:bg-emerald-700" onClick={() => { setSellArticle(a); setSellMode("showroom"); }}>
-                            <Store className="w-3 h-3 mr-1" />Sold via Showroom
-                          </Button>
-                          <Button size="sm" variant="outline" className="w-full text-xs h-7" onClick={() => { setSellArticle(a); setSellMode("company"); }}>
-                            <Truck className="w-3 h-3 mr-1" />Order to Company
-                          </Button>
+                          {a.parts ? (
+                            // Set: sell buttons per part
+                            a.parts.map(part => {
+                              const partArticle: TrackedArticle = {
+                                product_id: part.product_id, product_name: part.product_name,
+                                sku: part.sku, net_price: part.net_price, locs: part.locs, total: part.total,
+                                category_name: a.category_name, photo_url: a.photo_url,
+                              };
+                              return (
+                                <div key={part.product_id} className="border rounded p-1.5 space-y-1">
+                                  <p className="text-[10px] font-mono text-muted-foreground">{part.sku}</p>
+                                  <div className="flex gap-1">
+                                    <Button size="sm" className="flex-1 text-[10px] h-6 bg-blue-600 hover:bg-blue-700 px-1" onClick={() => { setSellArticle(partArticle); setSellMode("warehouse"); }}>
+                                      <Warehouse className="w-3 h-3 mr-0.5" />WH
+                                    </Button>
+                                    <Button size="sm" className="flex-1 text-[10px] h-6 bg-emerald-600 hover:bg-emerald-700 px-1" onClick={() => { setSellArticle(partArticle); setSellMode("showroom"); }}>
+                                      <Store className="w-3 h-3 mr-0.5" />SR
+                                    </Button>
+                                    <Button size="sm" variant="outline" className="flex-1 text-[10px] h-6 px-1" onClick={() => { setSellArticle(partArticle); setSellMode("company"); }}>
+                                      <Truck className="w-3 h-3 mr-0.5" />Order
+                                    </Button>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <>
+                              <Button size="sm" className="w-full text-xs h-7 bg-blue-600 hover:bg-blue-700" onClick={() => { setSellArticle(a); setSellMode("warehouse"); }}>
+                                <Warehouse className="w-3 h-3 mr-1" />Sold via Warehouse
+                              </Button>
+                              <Button size="sm" className="w-full text-xs h-7 bg-emerald-600 hover:bg-emerald-700" onClick={() => { setSellArticle(a); setSellMode("showroom"); }}>
+                                <Store className="w-3 h-3 mr-1" />Sold via Showroom
+                              </Button>
+                              <Button size="sm" variant="outline" className="w-full text-xs h-7" onClick={() => { setSellArticle(a); setSellMode("company"); }}>
+                                <Truck className="w-3 h-3 mr-1" />Order to Company
+                              </Button>
+                            </>
+                          )}
                         </div>
                       )}
                       {/* Admin: delete entire article from inventory */}
