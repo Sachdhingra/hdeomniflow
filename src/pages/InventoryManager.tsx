@@ -1042,7 +1042,30 @@ function OrderDetailDialog({
 
 // ─── Orders list view ─────────────────────────────────────────────────────────
 
-function OrdersView({ orders, onSelect, onRefresh }: { orders: HdeOrder[]; onSelect: (o: HdeOrder) => void; onRefresh: () => void; }) {
+function OrdersView({ orders, onSelect, onRefresh, isAdmin, userId }: { orders: HdeOrder[]; onSelect: (o: HdeOrder) => void; onRefresh: () => void; isAdmin: boolean; userId: string; }) {
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  async function deleteOrder(o: HdeOrder) {
+    setDeletingId(o.id);
+    try {
+      const { error } = await supabase.from("hde_orders" as any).delete().eq("id", o.id);
+      if (error) throw error;
+      await supabase.from("deletion_logs" as any).insert({
+        record_type: "hde_order",
+        record_id: o.id,
+        deleted_by: userId,
+        reason: `Admin deleted order ${o.order_number}`,
+        snapshot: o as any,
+      });
+      toast.success(`Order ${o.order_number} deleted`);
+      onRefresh();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to delete order");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
 
