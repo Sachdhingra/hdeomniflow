@@ -117,6 +117,17 @@ const AccountsApprovals = () => {
 
   useEffect(() => { load(); loadAudit(); loadDues(); }, [load, loadAudit, loadDues]);
 
+  // Realtime: refresh when a dispatch is resubmitted / its sale amount changes
+  useEffect(() => {
+    const ch = supabase
+      .channel("accounts-approvals-jobs")
+      .on("postgres_changes", { event: "*", schema: "public", table: "service_jobs" }, () => {
+        load();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [load]);
+
   const filtered = jobs.filter(j => j.accounts_approval_status === tab);
 
   const counts = {
