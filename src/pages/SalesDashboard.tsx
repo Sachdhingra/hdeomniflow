@@ -595,15 +595,30 @@ const SalesDashboard = () => {
 
       <EditLeadDialog lead={editLead} open={!!editLead} onOpenChange={open => { if (!open) setEditLead(null); }} onSaved={(id) => { setRecentlyUpdatedId(id); setTimeout(() => setRecentlyUpdatedId(curr => curr === id ? null : curr), 3000); }} />
 
-      <Dialog open={!!resubmitJobId} onOpenChange={o => !o && setResubmitJobId(null)}>
+      <Dialog open={!!resubmitJobId} onOpenChange={o => { if (!o) { setResubmitJobId(null); setResubmitAmount(""); setResubmitNote(""); } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Resubmit dispatch for approval</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Add a note for accounts explaining what was fixed (payment cleared, advance received, etc.).
+              Amend the Sale Amount if it was wrong, and add a note explaining what was fixed.
             </p>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Sale Amount (₹) *</label>
+              <Input
+                type="number"
+                inputMode="decimal"
+                value={resubmitAmount}
+                onChange={e => setResubmitAmount(e.target.value)}
+                placeholder="Enter corrected sale amount"
+              />
+              {resubmitOldAmount > 0 && Number(resubmitAmount) !== resubmitOldAmount && (
+                <p className="text-xs text-warning">
+                  Was ₹{resubmitOldAmount.toLocaleString("en-IN")} → will become ₹{(Number(resubmitAmount) || 0).toLocaleString("en-IN")}
+                </p>
+              )}
+            </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Note to accounts</label>
               <textarea
@@ -616,7 +631,7 @@ const SalesDashboard = () => {
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={() => setResubmitJobId(null)} disabled={resubmitting}>Cancel</Button>
               <Button onClick={handleResubmit} disabled={resubmitting}>
-                {resubmitting ? "Resubmitting..." : "Resubmit for approval"}
+                {resubmitting ? "Resubmitting..." : "Reassign to Accounts"}
               </Button>
             </div>
           </div>
