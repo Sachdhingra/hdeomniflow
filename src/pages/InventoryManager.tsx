@@ -1042,7 +1042,30 @@ function OrderDetailDialog({
 
 // ─── Orders list view ─────────────────────────────────────────────────────────
 
-function OrdersView({ orders, onSelect, onRefresh }: { orders: HdeOrder[]; onSelect: (o: HdeOrder) => void; onRefresh: () => void; }) {
+function OrdersView({ orders, onSelect, onRefresh, isAdmin, userId }: { orders: HdeOrder[]; onSelect: (o: HdeOrder) => void; onRefresh: () => void; isAdmin: boolean; userId: string; }) {
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  async function deleteOrder(o: HdeOrder) {
+    setDeletingId(o.id);
+    try {
+      const { error } = await supabase.from("hde_orders" as any).delete().eq("id", o.id);
+      if (error) throw error;
+      await supabase.from("deletion_logs" as any).insert({
+        record_type: "hde_order",
+        record_id: o.id,
+        deleted_by: userId,
+        reason: `Admin deleted order ${o.order_number}`,
+        snapshot: o as any,
+      });
+      toast.success(`Order ${o.order_number} deleted`);
+      onRefresh();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to delete order");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
 
@@ -1088,10 +1111,41 @@ function OrdersView({ orders, onSelect, onRefresh }: { orders: HdeOrder[]; onSel
                     <p className="text-sm mt-1 font-medium truncate">{o.product_name}</p>
                     {o.customer_name && <p className="text-xs text-muted-foreground">Customer: {o.customer_name}</p>}
                   </div>
-                  <div className="text-right shrink-0">
+                  <div className="text-right shrink-0 flex flex-col items-end gap-1">
                     <p className="text-xs text-muted-foreground">{new Date(o.created_at).toLocaleDateString("en-IN")}</p>
-                    {open && <p className={`text-xs font-medium mt-1 ${agingColor(d)}`}>{d}d open</p>}
-                    <ChevronRight className="w-4 h-4 text-muted-foreground mt-1 ml-auto" />
+                    {open && <p className={`text-xs font-medium ${agingColor(d)}`}>{d}d open</p>}
+                    <div className="flex items-center gap-1 mt-1">
+                      {isAdmin && (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7 text-destructive hover:bg-destructive/10"
+                              onClick={e => e.stopPropagation()}
+                              disabled={deletingId === o.id}
+                            >
+                              {deletingId === o.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent onClick={e => e.stopPropagation()}>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete order {o.order_number}?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This permanently removes the order record. Inventory already deducted will NOT be restored automatically. This action is logged.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => deleteOrder(o)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                Delete Order
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                    </div>
                   </div>
                 </div>
               </Card>
@@ -1580,6 +1634,11 @@ export default function InventoryManager() {
                             {a.parts.map(p => `₹${p.net_price.toLocaleString("en-IN")}`).join(" + ")}
                           </p>
                         )}
+                        {a.total > 1 && (
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            Total value: <span className="font-semibold text-foreground">₹{(a.net_price * a.total).toLocaleString("en-IN")}</span> ({a.total} × ₹{a.net_price.toLocaleString("en-IN")})
+                          </p>
+                        )}
                       </div>
 
                       {/* Stock display */}
@@ -1715,7 +1774,7 @@ export default function InventoryManager() {
 
           {/* ── Orders ── */}
           <TabsContent value="orders" className="mt-4">
-            <OrdersView orders={orders} onSelect={o => { setSelectedOrder(o); setOrderDetailOpen(true); }} onRefresh={loadAll} />
+            <OrdersView orders={orders} onSelect={o => { setSelectedOrder(o); setOrderDetailOpen(true); }} onRefresh={loadAll} isAdmin={isAdmin} userId={user.id} />
           </TabsContent>
 
           {/* ── Field jobs ── */}
