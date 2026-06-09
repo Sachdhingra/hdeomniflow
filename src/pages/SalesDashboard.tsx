@@ -56,9 +56,11 @@ const SalesDashboard = () => {
   const [editLead, setEditLead] = useState<Lead | null>(null);
   const [recentlyUpdatedId, setRecentlyUpdatedId] = useState<string | null>(null);
   const [phoneSearch, setPhoneSearch] = useState("");
-  const [approvalByLead, setApprovalByLead] = useState<Record<string, { jobId: string; status: string; reason: string | null; notes: string | null; customer: string; assignedAgent: string | null; jobType: string }>>({});
+  const [approvalByLead, setApprovalByLead] = useState<Record<string, { jobId: string; status: string; reason: string | null; notes: string | null; customer: string; assignedAgent: string | null; jobType: string; value: number }>>({});
   const [resubmitJobId, setResubmitJobId] = useState<string | null>(null);
   const [resubmitNote, setResubmitNote] = useState("");
+  const [resubmitAmount, setResubmitAmount] = useState<string>("");
+  const [resubmitOldAmount, setResubmitOldAmount] = useState<number>(0);
   const [resubmitting, setResubmitting] = useState(false);
 
   const todayStr = new Date().toISOString().split("T")[0];
@@ -94,11 +96,11 @@ const SalesDashboard = () => {
     if (ids.length === 0) { setApprovalByLead({}); return; }
     const { data } = await supabase
       .from("service_jobs")
-      .select("id,source_lead_id,customer_name,accounts_approval_status,accounts_rejection_reason,accounts_notes,assigned_agent,type")
+      .select("id,source_lead_id,customer_name,accounts_approval_status,accounts_rejection_reason,accounts_notes,assigned_agent,type,value")
       .in("source_lead_id", ids)
       .is("deleted_at", null);
     if (!data) return;
-    const map: Record<string, { jobId: string; status: string; reason: string | null; notes: string | null; customer: string; assignedAgent: string | null; jobType: string }> = {};
+    const map: Record<string, { jobId: string; status: string; reason: string | null; notes: string | null; customer: string; assignedAgent: string | null; jobType: string; value: number }> = {};
     data.forEach((r: any) => {
       if (r.source_lead_id) map[r.source_lead_id] = {
         jobId: r.id,
@@ -108,6 +110,7 @@ const SalesDashboard = () => {
         customer: r.customer_name,
         assignedAgent: r.assigned_agent,
         jobType: r.type,
+        value: Number(r.value) || 0,
       };
     });
     setApprovalByLead(map);
@@ -140,17 +143,39 @@ const SalesDashboard = () => {
 
   const handleResubmit = async () => {
     if (!resubmitJobId) return;
+    const newAmount = Number(resubmitAmount);
+    if (!Number.isFinite(newAmount) || newAmount <= 0) {
+      toast.error("Enter a valid Sale Amount");
+      return;
+    }
     setResubmitting(true);
     try {
+      // Always fetch the latest dispatch row so we never overwrite with stale data.
+      const { data: current, error: fetchErr } = await supabase
+        .from("service_jobs")
+        .select("id,value,accounts_approval_status")
+        .eq("id", resubmitJobId)
+        .single();
+      if (fetchErr) throw fetchErr;
+
+      const amountChanged = Number(current?.value) !== newAmount;
+      const noteParts = [
+        "[Resubmitted by sales]",
+        amountChanged ? `Sale amount: ₹${Number(current?.value).toLocaleString("en-IN")} → ₹${newAmount.toLocaleString("en-IN")}` : null,
+        resubmitNote || null,
+      ].filter(Boolean);
+
       const { data: updated, error } = await supabase
         .from("service_jobs")
         .update({
+          value: newAmount,
           accounts_approval_status: "pending",
           accounts_rejection_reason: null,
-          accounts_notes: resubmitNote ? `[Resubmitted by sales] ${resubmitNote}` : "[Resubmitted by sales]",
+          accounts_notes: noteParts.join(" — "),
           accounts_approved_by: null,
           accounts_approved_at: null,
           status: "pending_accounts_approval",
+          updated_by: user?.id,
         } as any)
         .eq("id", resubmitJobId)
         .select("id");
@@ -158,16 +183,21 @@ const SalesDashboard = () => {
       if (!updated || updated.length === 0) {
         throw new Error("Resubmit blocked — you may not have permission, or the dispatch was already approved/assigned.");
       }
-      // Audit log entry
+      // Audit log entry capturing old + new sale amount
       await supabase.from("accounts_approvals_log" as any).insert({
         service_job_id: resubmitJobId,
         action: "resubmitted",
         performed_by: user?.id,
-        notes: resubmitNote || null,
+        notes: noteParts.slice(1).join(" — ") || null,
+        amount_verified: newAmount,
       });
-      toast.success("Dispatch resubmitted for approval");
+      toast.success(amountChanged
+        ? `Resubmitted with updated amount ₹${newAmount.toLocaleString("en-IN")}`
+        : "Dispatch resubmitted for approval");
       setResubmitJobId(null);
       setResubmitNote("");
+      setResubmitAmount("");
+      setResubmitOldAmount(0);
       loadApprovals();
     } catch (e: any) {
       toast.error(e.message || "Failed to resubmit");
@@ -302,7 +332,7 @@ const SalesDashboard = () => {
                       <Button
                         size="sm"
                         className="h-7 text-xs"
-                        onClick={() => { setResubmitJobId(r.jobId); setResubmitNote(""); }}
+                        onClick={() => { setResubmitJobId(r.jobId); setResubmitNote(""); setResubmitAmount(String(r.value || "")); setResubmitOldAmount(r.value || 0); }}
                       >
                         Resubmit →
                       </Button>
@@ -565,15 +595,30 @@ const SalesDashboard = () => {
 
       <EditLeadDialog lead={editLead} open={!!editLead} onOpenChange={open => { if (!open) setEditLead(null); }} onSaved={(id) => { setRecentlyUpdatedId(id); setTimeout(() => setRecentlyUpdatedId(curr => curr === id ? null : curr), 3000); }} />
 
-      <Dialog open={!!resubmitJobId} onOpenChange={o => !o && setResubmitJobId(null)}>
+      <Dialog open={!!resubmitJobId} onOpenChange={o => { if (!o) { setResubmitJobId(null); setResubmitAmount(""); setResubmitNote(""); } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Resubmit dispatch for approval</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Add a note for accounts explaining what was fixed (payment cleared, advance received, etc.).
+              Amend the Sale Amount if it was wrong, and add a note explaining what was fixed.
             </p>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Sale Amount (₹) *</label>
+              <Input
+                type="number"
+                inputMode="decimal"
+                value={resubmitAmount}
+                onChange={e => setResubmitAmount(e.target.value)}
+                placeholder="Enter corrected sale amount"
+              />
+              {resubmitOldAmount > 0 && Number(resubmitAmount) !== resubmitOldAmount && (
+                <p className="text-xs text-warning">
+                  Was ₹{resubmitOldAmount.toLocaleString("en-IN")} → will become ₹{(Number(resubmitAmount) || 0).toLocaleString("en-IN")}
+                </p>
+              )}
+            </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Note to accounts</label>
               <textarea
@@ -586,7 +631,7 @@ const SalesDashboard = () => {
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={() => setResubmitJobId(null)} disabled={resubmitting}>Cancel</Button>
               <Button onClick={handleResubmit} disabled={resubmitting}>
-                {resubmitting ? "Resubmitting..." : "Resubmit for approval"}
+                {resubmitting ? "Resubmitting..." : "Reassign to Accounts"}
               </Button>
             </div>
           </div>
