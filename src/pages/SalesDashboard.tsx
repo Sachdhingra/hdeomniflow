@@ -332,7 +332,7 @@ const SalesDashboard = () => {
                       <Button
                         size="sm"
                         className="h-7 text-xs"
-                        onClick={() => { setResubmitJobId(r.jobId); setResubmitNote(""); }}
+                        onClick={() => { setResubmitJobId(r.jobId); setResubmitNote(""); setResubmitAmount(String(r.value || "")); setResubmitOldAmount(r.value || 0); }}
                       >
                         Resubmit →
                       </Button>
