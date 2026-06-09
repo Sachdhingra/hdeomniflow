@@ -1111,10 +1111,41 @@ function OrdersView({ orders, onSelect, onRefresh, isAdmin, userId }: { orders: 
                     <p className="text-sm mt-1 font-medium truncate">{o.product_name}</p>
                     {o.customer_name && <p className="text-xs text-muted-foreground">Customer: {o.customer_name}</p>}
                   </div>
-                  <div className="text-right shrink-0">
+                  <div className="text-right shrink-0 flex flex-col items-end gap-1">
                     <p className="text-xs text-muted-foreground">{new Date(o.created_at).toLocaleDateString("en-IN")}</p>
-                    {open && <p className={`text-xs font-medium mt-1 ${agingColor(d)}`}>{d}d open</p>}
-                    <ChevronRight className="w-4 h-4 text-muted-foreground mt-1 ml-auto" />
+                    {open && <p className={`text-xs font-medium ${agingColor(d)}`}>{d}d open</p>}
+                    <div className="flex items-center gap-1 mt-1">
+                      {isAdmin && (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7 text-destructive hover:bg-destructive/10"
+                              onClick={e => e.stopPropagation()}
+                              disabled={deletingId === o.id}
+                            >
+                              {deletingId === o.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent onClick={e => e.stopPropagation()}>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete order {o.order_number}?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This permanently removes the order record. Inventory already deducted will NOT be restored automatically. This action is logged.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => deleteOrder(o)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                Delete Order
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                    </div>
                   </div>
                 </div>
               </Card>
