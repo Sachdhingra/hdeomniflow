@@ -1580,6 +1580,11 @@ export default function InventoryManager() {
                             {a.parts.map(p => `₹${p.net_price.toLocaleString("en-IN")}`).join(" + ")}
                           </p>
                         )}
+                        {a.total > 1 && (
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            Total value: <span className="font-semibold text-foreground">₹{(a.net_price * a.total).toLocaleString("en-IN")}</span> ({a.total} × ₹{a.net_price.toLocaleString("en-IN")})
+                          </p>
+                        )}
                       </div>
 
                       {/* Stock display */}
