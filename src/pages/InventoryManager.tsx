@@ -1507,16 +1507,17 @@ export default function InventoryManager() {
         if (!e) combinedLoc.set(l.location_id, { ...l });
         else e.qty += l.qty;
       }));
+      const minTotal = Math.min(...members.map(m => Math.max(1, m.total)));
       output.push({
         group_id: first.group_id,
         product_id: first.product_id,
         product_name: members.map(m => m.product_name).join(" + "),
         sku: members.map(m => m.sku).join(", "),
-        net_price: members.reduce((s, m) => s + m.net_price * Math.max(1, m.total), 0),
+        net_price: members.reduce((s, m) => s + m.net_price * (m.total / minTotal), 0),
         category_name: first.category_name,
         photo_url: first.photo_url,
         locs: [...combinedLoc.entries()].map(([location_id, v]) => ({ location_id, ...v })),
-        total: members.reduce((s, m) => s + m.total, 0),
+        total: Math.min(...members.map(m => m.total)),
         parts: members.map(m => ({
           product_id: m.product_id, product_name: m.product_name,
           sku: m.sku, net_price: m.net_price, locs: m.locs, total: m.total,
