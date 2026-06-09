@@ -1512,7 +1512,7 @@ export default function InventoryManager() {
         product_id: first.product_id,
         product_name: members.map(m => m.product_name).join(" + "),
         sku: members.map(m => m.sku).join(", "),
-        net_price: members.reduce((s, m) => s + m.net_price, 0),
+        net_price: members.reduce((s, m) => s + m.net_price * Math.max(1, m.total), 0),
         category_name: first.category_name,
         photo_url: first.photo_url,
         locs: [...combinedLoc.entries()].map(([location_id, v]) => ({ location_id, ...v })),
@@ -1626,12 +1626,16 @@ export default function InventoryManager() {
                         {a.category_name && <p className="text-xs text-muted-foreground">{a.category_name}</p>}
                       </div>
 
-                      {/* Price — combined for sets */}
+                      {/* Price — combined for sets (each part: qty × unit_price) */}
                       <div>
                         <span className="text-base font-bold text-primary">₹{a.net_price.toLocaleString("en-IN")}</span>
                         {a.parts && (
-                          <p className="text-[10px] text-muted-foreground mt-0.5">
-                            {a.parts.map(p => `₹${p.net_price.toLocaleString("en-IN")}`).join(" + ")}
+                          <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">
+                            {a.parts.map(p =>
+                              p.total > 1
+                                ? `${p.total} × ₹${p.net_price.toLocaleString("en-IN")}`
+                                : `₹${p.net_price.toLocaleString("en-IN")}`
+                            ).join(" + ")}
                           </p>
                         )}
                         {a.total > 1 && (
