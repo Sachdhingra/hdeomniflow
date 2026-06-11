@@ -35,15 +35,17 @@ const UPLOAD_TIMEOUT = 45_000;
 
 interface RawProduct { id: string; sku: string; product_name: string; net_price: number; category_name?: string; }
 interface Location { id: string; name: string; type: "warehouse" | "showroom"; }
-interface InvRow { id: string; product_id: string; location_id: string; quantity: number; inventory_type: string; group_id?: string | null; }
+interface InvRow { id: string; product_id: string; location_id: string; quantity: number; inventory_type: string; group_id?: string | null; updated_at?: string; updated_by?: string | null; }
 interface PhotoRow { product_id: string; photo_url: string; }
+
+interface LocEntry { location_id: string; name: string; type: string; qty: number; updated_at?: string; updated_by?: string | null; }
 
 interface TrackedArticlePart {
   product_id: string;
   product_name: string;
   sku: string;
   net_price: number;
-  locs: { location_id: string; name: string; type: string; qty: number; }[];
+  locs: LocEntry[];
   total: number;
 }
 
@@ -55,7 +57,7 @@ interface TrackedArticle {
   net_price: number;
   category_name?: string;
   photo_url?: string;
-  locs: { location_id: string; name: string; type: string; qty: number; }[];
+  locs: LocEntry[];
   total: number;
   parts?: TrackedArticlePart[];
 }
