@@ -1429,6 +1429,8 @@ export default function InventoryManager() {
       });
       const agentIds: string[] = ((agentRoles.data as any) || []).map((r: any) => r.user_id);
       agentIds.forEach(id => userIds.add(id));
+      // include inventory editors
+      ((inv.data as any) || []).forEach((r: any) => { if (r.updated_by) userIds.add(r.updated_by); });
 
       let profMap = new Map<string, string>();
       if (userIds.size > 0) {
@@ -1436,6 +1438,7 @@ export default function InventoryManager() {
           .select("id, name").in("id", Array.from(userIds));
         profMap = new Map(((profs as any) || []).map((p: any) => [p.id, p.name]));
       }
+      setUserMap(profMap);
 
       setOrders(ordList.map((o: any) => ({
         ...o,
