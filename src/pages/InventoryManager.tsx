@@ -1503,11 +1503,18 @@ export default function InventoryManager() {
     groups.forEach(members => {
       if (members.length === 1) { output.push(members[0]); return; }
       const first = members[0];
-      const combinedLoc = new Map<string, { name: string; type: string; qty: number }>();
+      const combinedLoc = new Map<string, LocEntry>();
       members.forEach(m => m.locs.forEach(l => {
         const e = combinedLoc.get(l.location_id);
         if (!e) combinedLoc.set(l.location_id, { ...l });
-        else e.qty += l.qty;
+        else {
+          e.qty += l.qty;
+          // keep the most recent updated_at + corresponding user
+          if (l.updated_at && (!e.updated_at || l.updated_at > e.updated_at)) {
+            e.updated_at = l.updated_at;
+            e.updated_by = l.updated_by;
+          }
+        }
       }));
       const minTotal = Math.min(...members.map(m => Math.max(1, m.total)));
       output.push({
