@@ -1240,11 +1240,17 @@ function DashboardView({ orders, articles }: { orders: HdeOrder[]; articles: Tra
 
 // ─── Stock table (admin) ──────────────────────────────────────────────────────
 
-function StockTable({ articles, locations, userId, isAdmin, onRefresh }: { articles: TrackedArticle[]; locations: Location[]; userId: string; isAdmin: boolean; onRefresh: () => void; }) {
-  const [editKey, setEditKey] = useState<string | null>(null); // "productId::locationId"
+function StockTable({ articles, locations, userId, isAdmin, userMap, onRefresh }: { articles: TrackedArticle[]; locations: Location[]; userId: string; isAdmin: boolean; userMap: Map<string, string>; onRefresh: () => void; }) {
+  const [editKey, setEditKey] = useState<string | null>(null);
   const [editQty, setEditQty] = useState(0);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+
+  // Filters
+  const [search, setSearch] = useState("");
+  const [locFilter, setLocFilter] = useState<string>("all");
+  const [addedByFilter, setAddedByFilter] = useState<string>("all");
+  const [ageFilter, setAgeFilter] = useState<"all" | "fresh" | "90" | "180">("all");
 
   const save = async () => {
     if (!editKey) return;
@@ -1275,74 +1281,218 @@ function StockTable({ articles, locations, userId, isAdmin, onRefresh }: { artic
     }
   };
 
+  // Flatten group articles to individual rows for the stock view
+  const flatRows = useMemo(
+    () => articles.flatMap(a => a.parts
+      ? a.parts.map(p => ({ ...p, group_id: a.group_id, photo_url: a.photo_url, category_name: a.category_name } as TrackedArticle))
+      : [a]),
+    [articles]
+  );
+
+  const daysOld = (iso?: string | null) => {
+    if (!iso) return null;
+    const t = new Date(iso).getTime();
+    if (isNaN(t)) return null;
+    return Math.floor((Date.now() - t) / 86400000);
+  };
+
+  // Unique added-by users present across stock
+  const addedByOptions = useMemo(() => {
+    const ids = new Set<string>();
+    flatRows.forEach(a => a.locs.forEach(l => { if (l.updated_by) ids.add(l.updated_by); }));
+    return Array.from(ids).map(id => ({ id, name: userMap.get(id) || "Unknown" }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [flatRows, userMap]);
+
+  const visibleLocations = useMemo(
+    () => locFilter === "all" ? locations : locations.filter(l => l.id === locFilter),
+    [locations, locFilter]
+  );
+
+  // Determine if a row passes filters
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return flatRows.filter(a => {
+      if (q && !a.product_name.toLowerCase().includes(q) && !a.sku.toLowerCase().includes(q)) return false;
+      // Consider only cells in visible locations
+      const cells = visibleLocations.map(l => a.locs.find(x => x.location_id === l.id)).filter(Boolean) as LocEntry[];
+      if (addedByFilter !== "all" && !cells.some(c => c.qty > 0 && c.updated_by === addedByFilter)) return false;
+      if (ageFilter !== "all") {
+        const hasMatch = cells.some(c => {
+          if (c.qty <= 0) return false;
+          const d = daysOld(c.updated_at);
+          if (d === null) return ageFilter === "fresh";
+          if (ageFilter === "fresh") return d < 90;
+          if (ageFilter === "90") return d >= 90 && d < 180;
+          if (ageFilter === "180") return d >= 180;
+          return false;
+        });
+        if (!hasMatch) return false;
+      }
+      return true;
+    });
+  }, [flatRows, search, visibleLocations, addedByFilter, ageFilter]);
+
+  const ageBadge = (iso?: string | null, qty?: number) => {
+    if (!qty || qty <= 0) return null;
+    const d = daysOld(iso);
+    if (d === null) return null;
+    if (d >= 180) return <Badge variant="destructive" className="ml-1 h-4 px-1 text-[10px]">{d}d</Badge>;
+    if (d >= 90) return <Badge className="ml-1 h-4 px-1 text-[10px] bg-orange-500 hover:bg-orange-500 text-white">{d}d</Badge>;
+    return <span className="ml-1 text-[10px] text-muted-foreground">{d}d</span>;
+  };
+
+  const downloadCsv = () => {
+    const escape = (v: any) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const headers = ["Article", "SKU", "Location", "Quantity", "Added By", "Last Updated", "Days Old", "Ageing Bucket"];
+    const rows: string[][] = [];
+    filteredRows.forEach(a => {
+      visibleLocations.forEach(l => {
+        const c = a.locs.find(x => x.location_id === l.id);
+        const qty = c?.qty ?? 0;
+        if (qty <= 0 && ageFilter !== "all") return;
+        const d = daysOld(c?.updated_at);
+        const bucket = d === null ? "—" : d >= 180 ? "180+ days" : d >= 90 ? "90-179 days" : "Fresh";
+        rows.push([
+          a.product_name, a.sku, l.name, String(qty),
+          c?.updated_by ? (userMap.get(c.updated_by) || "Unknown") : "—",
+          c?.updated_at ? new Date(c.updated_at).toLocaleDateString("en-IN") : "—",
+          d === null ? "—" : String(d), bucket,
+        ]);
+      });
+    });
+    const csv = [headers.map(escape).join(","), ...rows.map(r => r.map(escape).join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `stock_${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("CSV downloaded");
+  };
+
   return (
-    <div className="overflow-x-auto rounded-lg border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Article</TableHead>
-            <TableHead>SKU</TableHead>
-            {locations.map(l => <TableHead key={l.id}>{l.name}</TableHead>)}
-            <TableHead>Total</TableHead>
-            {isAdmin && <TableHead className="text-right">Admin</TableHead>}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {articles.flatMap(a => a.parts ? a.parts.map(p => ({ ...p, group_id: a.group_id, photo_url: a.photo_url, category_name: a.category_name } as TrackedArticle)) : [a]).map(a => (
-            <TableRow key={a.product_id}>
-              <TableCell className="font-medium text-sm">{a.product_name}</TableCell>
-              <TableCell className="text-xs text-muted-foreground font-mono">{a.sku}</TableCell>
-              {locations.map(l => {
-                const qty = a.locs.find(x => x.location_id === l.id)?.qty ?? 0;
-                const k = `${a.product_id}::${l.id}`;
-                const editing = editKey === k;
-                return (
-                  <TableCell key={l.id}>
-                    {editing ? (
-                      <div className="flex items-center gap-1">
-                        <Input type="number" min={0} value={editQty} onChange={e => setEditQty(parseInt(e.target.value) || 0)} className="h-7 w-16 text-center" />
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={save} disabled={saving}><CheckCircle className="w-3 h-3 text-green-600" /></Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditKey(null)}><X className="w-3 h-3" /></Button>
-                      </div>
-                    ) : (
-                      <button onClick={() => { setEditKey(k); setEditQty(qty); }} className="flex items-center gap-1 hover:text-primary">
-                        <span className={`font-semibold ${qty === 0 ? "text-red-400" : ""}`}>{qty}</span>
-                        <Edit2 className="w-3 h-3 opacity-30" />
-                      </button>
-                    )}
-                  </TableCell>
-                );
-              })}
-              <TableCell className="font-bold">{a.total}</TableCell>
-              {isAdmin && (
-                <TableCell className="text-right">
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button size="sm" variant="outline" className="h-7 text-xs text-destructive border-destructive/30" disabled={deleting === a.product_id}>
-                        {deleting === a.product_id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Remove from inventory?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          This will delete all stock rows for <strong>{a.product_name}</strong> across every location. The product itself stays in the price list.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => deleteArticle(a.product_id, a.product_name)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                          Delete
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </TableCell>
-              )}
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <Input placeholder="Search by name or SKU…" value={search} onChange={e => setSearch(e.target.value)} className="h-9 pl-7 text-sm" />
+        </div>
+        <Select value={locFilter} onValueChange={setLocFilter}>
+          <SelectTrigger className="h-9 w-[150px] text-sm"><SelectValue placeholder="Location" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All locations</SelectItem>
+            {locations.map(l => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={addedByFilter} onValueChange={setAddedByFilter}>
+          <SelectTrigger className="h-9 w-[160px] text-sm"><SelectValue placeholder="Added by" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All staff</SelectItem>
+            {addedByOptions.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={ageFilter} onValueChange={v => setAgeFilter(v as any)}>
+          <SelectTrigger className="h-9 w-[150px] text-sm"><SelectValue placeholder="Ageing" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All ages</SelectItem>
+            <SelectItem value="fresh">Fresh (&lt;90d)</SelectItem>
+            <SelectItem value="90">90-179 days</SelectItem>
+            <SelectItem value="180">180+ days</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button size="sm" variant="outline" onClick={downloadCsv} className="h-9 gap-1">
+          <ClipboardList className="w-3.5 h-3.5" /> CSV
+        </Button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+        <span>{filteredRows.length} article{filteredRows.length !== 1 ? "s" : ""}</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-orange-500" />90-179d</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-destructive" />180+d (aged)</span>
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Article</TableHead>
+              <TableHead>SKU</TableHead>
+              {visibleLocations.map(l => <TableHead key={l.id}>{l.name}</TableHead>)}
+              <TableHead>Total</TableHead>
+              {isAdmin && <TableHead className="text-right">Admin</TableHead>}
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {filteredRows.map(a => (
+              <TableRow key={a.product_id}>
+                <TableCell className="font-medium text-sm">{a.product_name}</TableCell>
+                <TableCell className="text-xs text-muted-foreground font-mono">{a.sku}</TableCell>
+                {visibleLocations.map(l => {
+                  const cell = a.locs.find(x => x.location_id === l.id);
+                  const qty = cell?.qty ?? 0;
+                  const k = `${a.product_id}::${l.id}`;
+                  const editing = editKey === k;
+                  const tip = cell?.updated_at
+                    ? `Updated ${new Date(cell.updated_at).toLocaleDateString("en-IN")}${cell.updated_by ? " by " + (userMap.get(cell.updated_by) || "Unknown") : ""}`
+                    : "No history";
+                  return (
+                    <TableCell key={l.id}>
+                      {editing ? (
+                        <div className="flex items-center gap-1">
+                          <Input type="number" min={0} value={editQty} onChange={e => setEditQty(parseInt(e.target.value) || 0)} className="h-7 w-16 text-center" />
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={save} disabled={saving}><CheckCircle className="w-3 h-3 text-green-600" /></Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditKey(null)}><X className="w-3 h-3" /></Button>
+                        </div>
+                      ) : (
+                        <button onClick={() => { setEditKey(k); setEditQty(qty); }} title={tip} className="flex items-center gap-1 hover:text-primary">
+                          <span className={`font-semibold ${qty === 0 ? "text-red-400" : ""}`}>{qty}</span>
+                          {ageBadge(cell?.updated_at, qty)}
+                          <Edit2 className="w-3 h-3 opacity-30" />
+                        </button>
+                      )}
+                    </TableCell>
+                  );
+                })}
+                <TableCell className="font-bold">{a.total}</TableCell>
+                {isAdmin && (
+                  <TableCell className="text-right">
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button size="sm" variant="outline" className="h-7 text-xs text-destructive border-destructive/30" disabled={deleting === a.product_id}>
+                          {deleting === a.product_id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Remove from inventory?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will delete all stock rows for <strong>{a.product_name}</strong> across every location. The product itself stays in the price list.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => deleteArticle(a.product_id, a.product_name)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </TableCell>
+                )}
+              </TableRow>
+            ))}
+            {filteredRows.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={visibleLocations.length + (isAdmin ? 4 : 3)} className="text-center text-sm text-muted-foreground py-8">
+                  No stock matches the current filters
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }
