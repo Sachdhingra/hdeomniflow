@@ -175,7 +175,6 @@ const SalesDashboard = () => {
           accounts_approved_by: null,
           accounts_approved_at: null,
           status: "pending_accounts_approval",
-          updated_by: user?.id,
         } as any)
         .eq("id", resubmitJobId)
         .select("id");
