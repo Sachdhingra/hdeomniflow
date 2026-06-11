@@ -1369,6 +1369,7 @@ export default function InventoryManager() {
   const [photoRows, setPhotoRows] = useState<PhotoRow[]>([]);
   const [orders, setOrders] = useState<HdeOrder[]>([]);
   const [fieldAgents, setFieldAgents] = useState<Profile[]>([]);
+  const [userMap, setUserMap] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
 
   const [addArticleOpen, setAddArticleOpen] = useState(false);
