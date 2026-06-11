@@ -1470,9 +1470,9 @@ export default function InventoryManager() {
     const articleMap = new Map<string, TrackedArticle>();
     byProduct.forEach(({ rows, group_id }, productId) => {
       const prod = productMap.get(productId);
-      const locs = rows.map(r => {
+      const locs: LocEntry[] = rows.map(r => {
         const loc = locations.find(l => l.id === r.location_id);
-        return { location_id: r.location_id, name: loc?.name || "—", type: loc?.type || "warehouse", qty: r.quantity };
+        return { location_id: r.location_id, name: loc?.name || "—", type: loc?.type || "warehouse", qty: r.quantity, updated_at: r.updated_at, updated_by: r.updated_by };
       });
       articleMap.set(productId, {
         group_id: group_id || undefined,
