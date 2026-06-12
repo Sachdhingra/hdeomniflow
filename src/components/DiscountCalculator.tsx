@@ -23,6 +23,23 @@ interface HistoryItem {
 
 const ALLOWED_ROLES = ["admin", "sales", "service_head"];
 const STORAGE_KEY = "omniflow_calc_history_v1";
+const POS_KEY = "omniflow_calc_pos_v1";
+const PANEL_W = 320; // 20rem
+const PANEL_H_EST = 480;
+const MIN_VISIBLE = 80;
+
+const clampPos = (x: number, y: number) => {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const maxX = vw - MIN_VISIBLE;
+  const minX = -(PANEL_W - MIN_VISIBLE);
+  const maxY = vh - 48; // keep header visible
+  const minY = 0;
+  return {
+    x: Math.min(Math.max(x, minX), maxX),
+    y: Math.min(Math.max(y, minY), maxY),
+  };
+};
 
 const formatINR = (n: number) =>
   `₹${(isFinite(n) ? n : 0).toLocaleString("en-IN", {
