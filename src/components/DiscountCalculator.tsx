@@ -294,8 +294,26 @@ const DiscountCalculator = () => {
   );
 
   return (
-    <div className="fixed bottom-20 right-4 z-50 w-[20rem] max-w-[calc(100vw-2rem)] rounded-xl bg-card border border-border shadow-2xl">
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
+    <div
+      ref={panelRef}
+      style={
+        pos
+          ? { position: "fixed", left: pos.x, top: pos.y, right: "auto", bottom: "auto" }
+          : undefined
+      }
+      className={`fixed bottom-20 right-4 z-50 w-[20rem] max-w-[calc(100vw-2rem)] rounded-xl bg-card border border-border transition-shadow ${
+        dragging ? "shadow-[0_25px_60px_-10px_rgba(0,0,0,0.45)] opacity-95" : "shadow-2xl"
+      }`}
+    >
+      <div
+        onPointerDown={onHeaderPointerDown}
+        onPointerMove={onHeaderPointerMove}
+        onPointerUp={onHeaderPointerUp}
+        onPointerCancel={onHeaderPointerUp}
+        style={{ touchAction: "none", cursor: dragging ? "grabbing" : "grab" }}
+        className="flex items-center gap-2 px-3 py-2 border-b border-border select-none"
+      >
+        <GripVertical className="w-4 h-4 text-muted-foreground" />
         <Calculator className="w-4 h-4 text-primary" />
         <span className="text-sm font-semibold flex-1">Calculator</span>
         {topMode === "discount" && (
