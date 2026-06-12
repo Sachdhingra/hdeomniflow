@@ -76,7 +76,65 @@ const DiscountCalculator = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(history.slice(0, 20)));
   }, [history]);
 
+  // draggable position
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(() => {
+    try {
+      const raw = localStorage.getItem(POS_KEY);
+      if (!raw) return null;
+      const p = JSON.parse(raw);
+      if (typeof p?.x === "number" && typeof p?.y === "number") return p;
+    } catch {}
+    return null;
+  });
+  const [dragging, setDragging] = useState(false);
+  const dragRef = useRef<{ dx: number; dy: number; pointerId: number } | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (pos) localStorage.setItem(POS_KEY, JSON.stringify(pos));
+  }, [pos]);
+
+  useEffect(() => {
+    const onResize = () => {
+      setPos((p) => (p ? clampPos(p.x, p.y) : p));
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const onHeaderPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.closest("button")) return; // don't drag when tapping buttons
+    const rect = panelRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    dragRef.current = {
+      dx: e.clientX - rect.left,
+      dy: e.clientY - rect.top,
+      pointerId: e.pointerId,
+    };
+    (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+    setDragging(true);
+  }, []);
+
+  const onHeaderPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current || dragRef.current.pointerId !== e.pointerId) return;
+    e.preventDefault();
+    const nx = e.clientX - dragRef.current.dx;
+    const ny = e.clientY - dragRef.current.dy;
+    setPos(clampPos(nx, ny));
+  }, []);
+
+  const onHeaderPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    try {
+      (e.currentTarget as HTMLDivElement).releasePointerCapture(dragRef.current.pointerId);
+    } catch {}
+    dragRef.current = null;
+    setDragging(false);
+  }, []);
+
   if (!user || !ALLOWED_ROLES.includes(user.role)) return null;
+
 
   const result = useMemo(() => {
     const m = parseFloat(mrp) || 0;
