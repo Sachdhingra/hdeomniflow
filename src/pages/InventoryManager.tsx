@@ -70,12 +70,13 @@ interface PickedItem {
 interface HdeOrder {
   id: string; order_number: string; order_type: string; order_tag?: string;
   company_order_reason?: string; product_id: string; replacement_product_id?: string;
+  replacement_product_ids?: string[];
   location_id?: string; customer_name?: string; customer_phone?: string;
   status: string; notes?: string; custom_specs?: string; created_at: string;
   created_by: string; field_assigned_to?: string; due_date?: string;
   completed_at?: string; updated_at: string;
   product_name?: string; creator_name?: string; field_agent_name?: string;
-  replacement_product_name?: string;
+  replacement_product_name?: string; replacement_product_names?: string[];
 }
 
 interface TimelineEntry {
@@ -646,26 +647,27 @@ function CreateOrderDialog({
   const [notes, setNotes] = useState("");
   const [customSpecs, setCustomSpecs] = useState("");
   const [companyReason, setCompanyReason] = useState("");
-  const [replacementProductId, setReplacementProductId] = useState("");
+  const [replacementProductIds, setReplacementProductIds] = useState<string[]>([]);
   const [replacementSearch, setReplacementSearch] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open) { setCustomerName(""); setCustomerPhone(""); setLocationId(""); setSoldQty(1); setNotes(""); setCustomSpecs(""); setCompanyReason(""); setReplacementProductId(""); setReplacementSearch(""); }
+    if (open) { setCustomerName(""); setCustomerPhone(""); setLocationId(""); setSoldQty(1); setNotes(""); setCustomSpecs(""); setCompanyReason(""); setReplacementProductIds([]); setReplacementSearch(""); }
   }, [open]);
 
   const filteredReplacement = useMemo(() => {
-    if (!replacementSearch) return allProducts.slice(0, 20);
+    const excluded = new Set(replacementProductIds);
+    if (!replacementSearch) return allProducts.filter(p => !excluded.has(p.id)).slice(0, 20);
     const q = replacementSearch.toLowerCase();
-    return allProducts.filter(p => p.product_name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)).slice(0, 20);
-  }, [allProducts, replacementSearch]);
+    return allProducts.filter(p => !excluded.has(p.id) && (p.product_name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q))).slice(0, 20);
+  }, [allProducts, replacementSearch, replacementProductIds]);
 
   const locationOptions = mode === "warehouse" ? locations.filter(l => l.type === "warehouse") : locations.filter(l => l.type === "showroom");
 
   const handleCreate = async () => {
     if (!article || !mode) return;
     if (mode === "company" && !companyReason) return toast.error("Select a reason");
-    if (mode === "showroom" && !replacementProductId) return toast.error("Select replacement product");
+    if (mode === "showroom" && replacementProductIds.length === 0) return toast.error("Select at least one replacement product");
     if (!locationId) return toast.error("Select a location");
     if ((mode === "warehouse" || mode === "showroom") && soldQty < 1) return toast.error("Quantity must be at least 1");
     const availableQty = article.locs.find(l => l.location_id === locationId)?.qty ?? 0;
@@ -680,15 +682,23 @@ function CreateOrderDialog({
     const numRes = await supabase.rpc("generate_hde_order_number" as any);
     const orderNum = numRes.data || `HDE-${Date.now()}`;
 
-    const { data, error } = await supabase.from("hde_orders" as any).insert({
+    const orderPayload: any = {
       order_number: orderNum, order_type: mode,
       company_order_reason: companyReason || null, order_tag: orderTag || null,
-      product_id: article.product_id, replacement_product_id: replacementProductId || null,
+      product_id: article.product_id,
+      replacement_product_id: replacementProductIds[0] || null,
+      replacement_product_ids: replacementProductIds.length > 0 ? replacementProductIds : null,
       location_id: locationId, customer_name: customerName || null, customer_phone: customerPhone || null,
       status: "pending_approval", notes: notes || null, custom_specs: customSpecs || null, created_by: userId,
       qty_sold: (mode === "warehouse" || mode === "showroom") ? soldQty : 1,
-    }).select().single();
+    };
 
+    let { data, error } = await supabase.from("hde_orders" as any).insert(orderPayload).select().single();
+    if (error?.message?.includes("replacement_product_ids")) {
+      const { replacement_product_ids: _, ...fallbackPayload } = orderPayload;
+      const res2 = await supabase.from("hde_orders" as any).insert(fallbackPayload).select().single();
+      data = res2.data; error = res2.error;
+    }
     if (error || !data) { setSaving(false); return toast.error(error?.message || "Failed"); }
 
     const orderId = (data as any).id;
@@ -712,7 +722,7 @@ function CreateOrderDialog({
     if (mode === "showroom") {
       await supabase.from("hde_display_items" as any).insert({
         product_id: article.product_id, location_id: locationId,
-        display_status: "sold", replacement_product_id: replacementProductId,
+        display_status: "sold", replacement_product_id: replacementProductIds[0] || null,
         order_id: orderId, updated_by: userId,
       });
     }
@@ -794,16 +804,34 @@ function CreateOrderDialog({
           {mode === "showroom" && (
             <div>
               <Label>Replacement Product <span className="text-destructive">*</span></Label>
-              <Input placeholder="Search replacement…" value={replacementSearch} onChange={e => setReplacementSearch(e.target.value)} className="mb-2" />
-              <div className="border rounded-lg max-h-40 overflow-y-auto">
-                {filteredReplacement.map(p => (
-                  <button key={p.id} onClick={() => { setReplacementProductId(p.id); setReplacementSearch(p.product_name); }}
-                    className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/50 border-b last:border-0 ${replacementProductId === p.id ? "bg-blue-50" : ""}`}>
-                    <span className="font-medium">{p.product_name}</span>
-                    <span className="text-muted-foreground ml-2 text-xs">{p.sku}</span>
-                  </button>
-                ))}
-              </div>
+              {replacementProductIds.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2 mt-1">
+                  {replacementProductIds.map(id => {
+                    const p = allProducts.find(x => x.id === id);
+                    return (
+                      <div key={id} className="flex items-center gap-1 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5 text-xs max-w-full">
+                        <span className="font-medium truncate">{p?.product_name || id}</span>
+                        <span className="text-muted-foreground shrink-0">{p?.sku}</span>
+                        <button onClick={() => setReplacementProductIds(ids => ids.filter(x => x !== id))} className="shrink-0 ml-0.5 text-muted-foreground hover:text-destructive leading-none">×</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <Input placeholder="Search to add replacement…" value={replacementSearch} onChange={e => setReplacementSearch(e.target.value)} className="mb-2" />
+              {(replacementSearch || replacementProductIds.length === 0) && (
+                <div className="border rounded-lg max-h-40 overflow-y-auto">
+                  {filteredReplacement.length === 0
+                    ? <p className="px-3 py-2 text-sm text-muted-foreground">No products found</p>
+                    : filteredReplacement.map(p => (
+                      <button key={p.id} onClick={() => { setReplacementProductIds(ids => [...ids, p.id]); setReplacementSearch(""); }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 border-b last:border-0">
+                        <span className="font-medium">{p.product_name}</span>
+                        <span className="text-muted-foreground ml-2 text-xs">{p.sku}</span>
+                      </button>
+                    ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -950,7 +978,12 @@ function OrderDetailDialog({
           </div>
           {order.notes && <div className="text-sm bg-muted/30 rounded p-2"><b>Notes:</b> {order.notes}</div>}
           {order.custom_specs && <div className="text-sm bg-muted/30 rounded p-2"><b>Custom Specs:</b> {order.custom_specs}</div>}
-          {order.replacement_product_name && <div className="text-sm bg-blue-50 rounded p-2"><b>Replacement:</b> {order.replacement_product_name}</div>}
+          {(order.replacement_product_names?.length ?? 0) > 0 && (
+            <div className="text-sm bg-blue-50 rounded p-2">
+              <b>Replacement{(order.replacement_product_names!.length > 1) ? "s" : ""}:</b>{" "}
+              {order.replacement_product_names!.join(" + ")}
+            </div>
+          )}
 
           {/* Timeline */}
           <div>
@@ -1590,13 +1623,20 @@ export default function InventoryManager() {
       }
       setUserMap(profMap);
 
-      setOrders(ordList.map((o: any) => ({
-        ...o,
-        product_name: o.products?.product_name,
-        creator_name: profMap.get(o.created_by),
-        field_agent_name: o.field_assigned_to ? profMap.get(o.field_assigned_to) : undefined,
-        replacement_product_name: o.replacement?.product_name,
-      })));
+      const prodNameMap = new Map((prodList || []).map((p: any) => [p.id, p.product_name as string]));
+      setOrders(ordList.map((o: any) => {
+        const replacementNames: string[] = o.replacement_product_ids?.length
+          ? o.replacement_product_ids.map((id: string) => prodNameMap.get(id)).filter(Boolean)
+          : o.replacement?.product_name ? [o.replacement.product_name] : [];
+        return {
+          ...o,
+          product_name: o.products?.product_name,
+          creator_name: profMap.get(o.created_by),
+          field_agent_name: o.field_assigned_to ? profMap.get(o.field_assigned_to) : undefined,
+          replacement_product_name: replacementNames[0],
+          replacement_product_names: replacementNames,
+        };
+      }));
       setFieldAgents(agentIds.map(id => ({ id, name: profMap.get(id) || "Agent" })));
     } catch (err: any) {
       toast.error("Failed to load inventory: " + (err?.message || "unknown error"));
