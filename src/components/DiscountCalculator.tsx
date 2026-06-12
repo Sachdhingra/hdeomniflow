@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Calculator, X, Minus, Copy, Trash2, History } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { Calculator, X, Minus, Copy, Trash2, History, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
