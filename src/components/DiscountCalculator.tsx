@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Calculator, X, Minus, Copy, Trash2, History } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { Calculator, X, Minus, Copy, Trash2, History, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +23,23 @@ interface HistoryItem {
 
 const ALLOWED_ROLES = ["admin", "sales", "service_head"];
 const STORAGE_KEY = "omniflow_calc_history_v1";
+const POS_KEY = "omniflow_calc_pos_v1";
+const PANEL_W = 320; // 20rem
+const PANEL_H_EST = 480;
+const MIN_VISIBLE = 80;
+
+const clampPos = (x: number, y: number) => {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const maxX = vw - MIN_VISIBLE;
+  const minX = -(PANEL_W - MIN_VISIBLE);
+  const maxY = vh - 48; // keep header visible
+  const minY = 0;
+  return {
+    x: Math.min(Math.max(x, minX), maxX),
+    y: Math.min(Math.max(y, minY), maxY),
+  };
+};
 
 const formatINR = (n: number) =>
   `₹${(isFinite(n) ? n : 0).toLocaleString("en-IN", {
@@ -59,7 +76,65 @@ const DiscountCalculator = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(history.slice(0, 20)));
   }, [history]);
 
+  // draggable position
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(() => {
+    try {
+      const raw = localStorage.getItem(POS_KEY);
+      if (!raw) return null;
+      const p = JSON.parse(raw);
+      if (typeof p?.x === "number" && typeof p?.y === "number") return p;
+    } catch {}
+    return null;
+  });
+  const [dragging, setDragging] = useState(false);
+  const dragRef = useRef<{ dx: number; dy: number; pointerId: number } | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (pos) localStorage.setItem(POS_KEY, JSON.stringify(pos));
+  }, [pos]);
+
+  useEffect(() => {
+    const onResize = () => {
+      setPos((p) => (p ? clampPos(p.x, p.y) : p));
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const onHeaderPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.closest("button")) return; // don't drag when tapping buttons
+    const rect = panelRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    dragRef.current = {
+      dx: e.clientX - rect.left,
+      dy: e.clientY - rect.top,
+      pointerId: e.pointerId,
+    };
+    (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+    setDragging(true);
+  }, []);
+
+  const onHeaderPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current || dragRef.current.pointerId !== e.pointerId) return;
+    e.preventDefault();
+    const nx = e.clientX - dragRef.current.dx;
+    const ny = e.clientY - dragRef.current.dy;
+    setPos(clampPos(nx, ny));
+  }, []);
+
+  const onHeaderPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    try {
+      (e.currentTarget as HTMLDivElement).releasePointerCapture(dragRef.current.pointerId);
+    } catch {}
+    dragRef.current = null;
+    setDragging(false);
+  }, []);
+
   if (!user || !ALLOWED_ROLES.includes(user.role)) return null;
+
 
   const result = useMemo(() => {
     const m = parseFloat(mrp) || 0;
@@ -219,8 +294,26 @@ const DiscountCalculator = () => {
   );
 
   return (
-    <div className="fixed bottom-20 right-4 z-50 w-[20rem] max-w-[calc(100vw-2rem)] rounded-xl bg-card border border-border shadow-2xl">
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
+    <div
+      ref={panelRef}
+      style={
+        pos
+          ? { position: "fixed", left: pos.x, top: pos.y, right: "auto", bottom: "auto" }
+          : undefined
+      }
+      className={`fixed bottom-20 right-4 z-50 w-[20rem] max-w-[calc(100vw-2rem)] rounded-xl bg-card border border-border transition-shadow ${
+        dragging ? "shadow-[0_25px_60px_-10px_rgba(0,0,0,0.45)] opacity-95" : "shadow-2xl"
+      }`}
+    >
+      <div
+        onPointerDown={onHeaderPointerDown}
+        onPointerMove={onHeaderPointerMove}
+        onPointerUp={onHeaderPointerUp}
+        onPointerCancel={onHeaderPointerUp}
+        style={{ touchAction: "none", cursor: dragging ? "grabbing" : "grab" }}
+        className="flex items-center gap-2 px-3 py-2 border-b border-border select-none"
+      >
+        <GripVertical className="w-4 h-4 text-muted-foreground" />
         <Calculator className="w-4 h-4 text-primary" />
         <span className="text-sm font-semibold flex-1">Calculator</span>
         {topMode === "discount" && (
