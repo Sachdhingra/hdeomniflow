@@ -1,73 +1,41 @@
-## Logistics & Service Calculator Module
+## Goal
+Replace the lead-count-only leaderboard with a composite score that reflects real salesperson performance across the OmniFlow workflow.
 
-A new module under Operations with 6 calculators, admin-editable rate masters, history tracking, and quote integration.
+## Scoring model (total = 100 pts/month)
 
-### Scope
+| Factor | Source | Weight | How it's measured |
+|---|---|---|---|
+| Sales figure (won value) | `leads.status='won'` + `value_in_rupees` in month | 25 | normalized vs top performer |
+| Closed deals (count) | `leads.status in ('won','converted')` | 10 | normalized vs top |
+| Reviews / feedback collected | `customer_feedback` linked via `salesperson_name`/lead | 10 | count × avg rating bonus |
+| Data entry (new leads created) | `leads.created_by` in month | 8 | normalized |
+| Follow-ups done | `lead_messages` outbound by user in month | 10 | normalized |
+| Lead updations | `lead_stage_history` + `lead_assignment_history` by user | 7 | normalized |
+| Low overdue leads | `leads.status='overdue'` assigned to user | 10 | inverse — fewer = higher |
+| Inventory maintenance | `inventory_audit_log` actions by user in month | 8 | normalized |
+| On-time attendance | `attendance` rows in month with `status='on_time'` ÷ working days | 12 | percentage |
 
-**New route**: `/logistics-calculator` — visible to admin, sales, service_head, accounts in sidebar (under existing nav, labeled "Logistics Calc" with Calculator icon).
+Each sub-score is 0-1 normalized (vs top performer for "more is better", inverse for overdue). Final score = sum of (weight × sub-score), rounded.
 
-**Admin-only sub-route**: `/logistics-calculator/settings` for rate management and kitchen visit locations.
+## Implementation
 
-### Database (new tables)
+1. **DB**: replace the `monthly_sales_leaderboard` view with a new version that:
+   - aggregates per `(month, user_id)` across the tables above
+   - returns raw counts + each sub-score + `total_score` + `rank_position` (by total_score desc)
+   - keeps existing columns (`leads_count`, `qualified_leads`, `closed_deals`, `avg_feedback_score`, `salesperson_name`, `profile_picture_url`, `designation`) so the page keeps working
+   - adds: `won_value`, `reviews_collected`, `followups_sent`, `leads_created`, `updates_made`, `overdue_count`, `inventory_actions`, `ontime_days`, `working_days`, `total_score`
+   - scopes to users with role `sales` or `admin`
 
-1. `logistics_rates` (singleton key-value config)
-   - keys: `local_freight_per_km`, `outstation_freight_per_km`, `handling_per_km`, `floor_labour_rate`, `modular_labour_rate`, `minimum_charge`, `gst_rate`
-   - Editable by admin only; readable by all permitted roles
+2. **UI** (`src/pages/MonthlyLeaderboard.tsx`):
+   - Rank by `total_score`
+   - Winner card shows total score + top 3 contributing factors
+   - Table adds columns: Score, Won ₹, Reviews, Follow-ups, Overdue, Attendance %
+   - Tooltip/expand row showing full breakdown
 
-2. `kitchen_visit_locations`
-   - `location_name`, `charge`, `active`
-   - Seeded with the 12 locations provided
-   - Admin manages; all permitted roles read
+## Notes
+- View is computed live (no cron needed).
+- Reviews matched by `customer_feedback.salesperson_name` → `profiles.name` (case-insensitive), same logic the feedback trigger already uses.
+- "Working days" excludes Sundays, same convention as `attendance_monthly_user_summary`.
+- No schema changes to base tables — only a view replacement, so safe to roll back.
 
-3. `logistics_calculations` (history)
-   - `calculator_type` (enum: local_freight, outstation_freight, handling, floor_labour, modular_labour, kitchen_visit)
-   - `customer_name`, `customer_phone`, `lead_id` (nullable FK)
-   - `inputs` (jsonb), `breakdown` (jsonb), `subtotal`, `gst_amount`, `final_amount`, `gst_included` (bool)
-   - `attached_to_lead` (bool), `created_by`
-   - RLS: sales sees own; admin/sales_manager/service_head/accounts see all
-
-### Calculators (UI)
-
-Tabbed interface, each calculator gets a card with:
-- Inputs (number fields, GST toggle, dropdowns)
-- Live computed breakdown
-- Large final amount card with Copy Amount / Copy Full Calculation / Print buttons
-- "Save to History" button (auto on Attach)
-- "Attach to Quote" — opens lead picker, saves snapshot and appends a note line on the lead
-
-Formulas exactly per spec, all rates pulled from `logistics_rates` so admin edits propagate instantly.
-
-### History page
-
-Table with date, customer, type, final amount, created_by. Search by customer, filters by type/date/creator. Export to Excel (xlsx) and PDF (jsPDF) — both libraries already available.
-
-### Permissions matrix
-
-Implemented via RLS + UI gating:
-| Role | Calculate | Attach to quote | View all | Manage rates |
-|---|---|---|---|---|
-| sales | ✓ | ✓ | own only | – |
-| service_head | ✓ | ✓ | ✓ | – |
-| accounts | ✓ | – | ✓ + export | – |
-| admin | ✓ | ✓ | ✓ | ✓ |
-
-(No separate "sales_manager" role exists in the system — admin role covers manager use cases. I'll treat admin = manager.)
-
-### Quote integration
-
-The project doesn't yet have a formal "quote" entity. I'll integrate via the existing **leads** workflow: "Attach to Quote" picks a lead and appends a structured line to `leads.notes` plus stores a row in `logistics_calculations` with `lead_id`, viewable from lead detail (small new section "Logistics charges"). This is the lightest path that fits the current schema.
-
-### Files
-
-- Migration: 3 tables + seed data + RLS + grants
-- `src/pages/LogisticsCalculator.tsx` — tabbed calculators
-- `src/pages/LogisticsCalculatorSettings.tsx` — admin rates + kitchen locations
-- `src/pages/LogisticsHistory.tsx` — history + export
-- `src/components/logistics/*` — one component per calculator + AttachToQuoteDialog + ResultCard
-- `src/lib/logisticsExport.ts` — xlsx + pdf export helpers
-- Routing in `src/App.tsx`, nav entries in `src/components/AppLayout.tsx`
-
-### Out of scope / assumptions
-- No "sales_manager" role added — admin acts as manager
-- Quote attachment uses existing leads.notes + new history row (no new quotations table)
-- Dark mode already supported by design tokens — no extra work
+Confirm and I'll ship the migration + UI update. If you want different weights, tell me which to raise/lower.
