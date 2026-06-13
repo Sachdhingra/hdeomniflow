@@ -2013,6 +2013,7 @@ export default function InventoryManager() {
       <ReceiveStockDialog open={!!receiveArticle} onClose={() => setReceiveArticle(null)} article={receiveArticle} locations={locations} userId={user.id} onDone={loadAll} />
       <CreateOrderDialog open={!!sellMode} onClose={() => { setSellMode(null); setSellArticle(null); }} mode={sellMode} article={sellArticle} allProducts={allProducts} locations={locations} userId={user.id} onCreated={loadAll} />
       <OrderDetailDialog order={selectedOrder} open={orderDetailOpen} onClose={() => { setOrderDetailOpen(false); setSelectedOrder(null); }} userId={user.id} userRole={role} fieldAgents={fieldAgents} onUpdated={loadAll} />
+      <RequestProductDialog open={requestProductOpen} onClose={() => setRequestProductOpen(false)} allProducts={allProducts} userId={user.id} onCreated={loadAll} />
     </div>
   );
 }
