@@ -1561,6 +1561,7 @@ export default function InventoryManager() {
   const [sellArticle, setSellArticle] = useState<TrackedArticle | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<HdeOrder | null>(null);
   const [orderDetailOpen, setOrderDetailOpen] = useState(false);
+  const [requestProductOpen, setRequestProductOpen] = useState(false);
   const [search, setSearch] = useState("");
 
   const loadAll = useCallback(async () => {
