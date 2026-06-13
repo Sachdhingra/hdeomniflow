@@ -952,7 +952,7 @@ function OrderDetailDialog({
   if (!order) return null;
   const canApprove = userRole === "accounts" || userRole === "admin";
   const canAssign = userRole === "service_head" || userRole === "admin";
-  const canComplete = userRole === "field_agent" || userRole === "admin";
+  const canComplete = userRole === "field_agent" || userRole === "admin" || userRole === "service_head";
 
   return (
     <Dialog open={open} onOpenChange={o => !o && onClose()}>
