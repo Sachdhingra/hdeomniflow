@@ -1767,9 +1767,14 @@ export default function InventoryManager() {
           <p className="text-sm text-muted-foreground">Display articles, stock levels and fulfillment</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          {(isAdmin || isSales || isAccounts) && (
+          {(isAdmin || isSales || isAccounts || isServiceHead) && (
             <Button variant="outline" size="sm" onClick={() => setAddArticleOpen(true)}>
               <Plus className="w-4 h-4 mr-1" />Add Article
+            </Button>
+          )}
+          {(isAdmin || isSales) && (
+            <Button variant="default" size="sm" onClick={() => setRequestProductOpen(true)}>
+              <Truck className="w-4 h-4 mr-1" />Request from Warehouse
             </Button>
           )}
           <Button variant="ghost" size="sm" onClick={loadAll} disabled={loading}>
