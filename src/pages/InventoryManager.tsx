@@ -850,6 +850,138 @@ function CreateOrderDialog({
   );
 }
 
+// ─── Request Product dialog (sales pull from warehouse, no inventory needed) ──
+
+function RequestProductDialog({
+  open, onClose, allProducts, userId, onCreated,
+}: {
+  open: boolean; onClose: () => void; allProducts: RawProduct[]; userId: string; onCreated: () => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [picked, setPicked] = useState<RawProduct | null>(null);
+  const [reason, setReason] = useState<string>("no_stock");
+  const [customSpecs, setCustomSpecs] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) { setSearch(""); setPicked(null); setReason("no_stock"); setCustomSpecs(""); setCustomerName(""); setCustomerPhone(""); setNotes(""); }
+  }, [open]);
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    if (!q) return allProducts.slice(0, 30);
+    return allProducts.filter(p => p.product_name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)).slice(0, 30);
+  }, [allProducts, search]);
+
+  const handleCreate = async () => {
+    if (!picked) return toast.error("Pick a product first");
+    if (!reason) return toast.error("Select a reason");
+    setSaving(true);
+    try {
+      const numRes = await supabase.rpc("generate_hde_order_number" as any);
+      const orderNum = numRes.data || `HDE-${Date.now()}`;
+      const orderTag = ({ no_stock: "stock_out_order", fresh_piece: "fresh_piece_order", custom: "custom_order" } as any)[reason];
+
+      const payload: any = {
+        order_number: orderNum, order_type: "company",
+        company_order_reason: reason, order_tag: orderTag,
+        product_id: picked.id, status: "pending_approval",
+        customer_name: customerName || null, customer_phone: customerPhone || null,
+        notes: notes || null, custom_specs: customSpecs || null,
+        created_by: userId, qty_sold: 1,
+      };
+      const { data, error } = await supabase.from("hde_orders" as any).insert(payload).select().single();
+      if (error || !data) throw new Error(error?.message || "Failed");
+
+      await supabase.from("hde_order_timeline" as any).insert({
+        order_id: (data as any).id, action: "Order Created",
+        description: `Warehouse request — ${picked.product_name} (${REASON_LABELS[reason]})`,
+        performed_by: userId,
+      });
+      toast.success(`Request ${orderNum} created`);
+      onCreated();
+      onClose();
+    } catch (e: any) {
+      toast.error(e.message || "Failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={o => !o && onClose()}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Truck className="w-4 h-4" />Request Product from Warehouse</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Pull any product from the catalogue — no need to first add it to inventory. Creates a pending warehouse/company order for accounts approval.
+          </p>
+
+          {!picked ? (
+            <>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input className="pl-9" placeholder="Search product name or SKU…" value={search} onChange={e => setSearch(e.target.value)} autoFocus />
+              </div>
+              <div className="border rounded-lg max-h-64 overflow-y-auto">
+                {filtered.length === 0 ? (
+                  <p className="px-3 py-4 text-sm text-muted-foreground text-center">No products found</p>
+                ) : filtered.map(p => (
+                  <button key={p.id} onClick={() => setPicked(p)}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 border-b last:border-0">
+                    <div className="font-medium">{p.product_name}</div>
+                    <div className="text-xs text-muted-foreground font-mono">{p.sku} · ₹{p.net_price.toLocaleString("en-IN")}</div>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="bg-muted/50 rounded-lg p-3 flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold">{picked.product_name}</p>
+                  <p className="text-xs text-muted-foreground font-mono">{picked.sku} · ₹{picked.net_price.toLocaleString("en-IN")}</p>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => setPicked(null)}><X className="w-4 h-4" /></Button>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Reason <span className="text-destructive">*</span></Label>
+                <Select value={reason} onValueChange={setReason}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="no_stock">No Stock Available</SelectItem>
+                    <SelectItem value="fresh_piece">Fresh Piece Requested by Customer</SelectItem>
+                    <SelectItem value="custom">Custom Requirement</SelectItem>
+                  </SelectContent>
+                </Select>
+                {reason === "custom" && (
+                  <Textarea value={customSpecs} onChange={e => setCustomSpecs(e.target.value)} placeholder="Custom fabric, colour, size, specs…" rows={2} />
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label>Customer Name</Label><Input value={customerName} onChange={e => setCustomerName(e.target.value)} /></div>
+                <div><Label>Customer Phone</Label><Input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} /></div>
+              </div>
+              <div><Label>Notes</Label><Textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} /></div>
+            </>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleCreate} disabled={saving || !picked}>{saving ? "Creating…" : "Create Request"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Order Detail dialog ──────────────────────────────────────────────────────
 
 function OrderDetailDialog({
