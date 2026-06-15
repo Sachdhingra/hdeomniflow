@@ -1,0 +1,5 @@
+SELECT vault.update_secret(
+  (SELECT id FROM vault.secrets WHERE name = 'DAILY_REPORT_SECRET'),
+  '5bb612dccd2715610710699b6d18b8a6c045057077a122a18d12a60de8afa6af',
+  'DAILY_REPORT_SECRET'
+);

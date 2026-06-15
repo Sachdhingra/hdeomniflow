@@ -1,6 +1,5 @@
-// Send WhatsApp messages via Twilio (through the Lovable connector gateway).
-// Replaces the previous Meta Cloud API integration. Same input contract so all
-// existing callers (nurture-engine, SendTemplateDialog, etc.) keep working.
+// Send WhatsApp messages via Twilio REST API (direct).
+// Same input contract so all existing callers (nurture-engine, SendTemplateDialog, etc.) keep working.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 
 const corsHeaders = {
@@ -11,12 +10,10 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-const TWILIO_API_KEY = Deno.env.get("TWILIO_API_KEY");
+const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID");
+const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN");
 // e.g. "whatsapp:+14155238886" (sandbox) or your approved WA-enabled number
 const TWILIO_WHATSAPP_FROM = Deno.env.get("TWILIO_WHATSAPP_FROM");
-
-const GATEWAY_URL = "https://connector-gateway.lovable.dev/twilio";
 
 interface SendResult {
   success: boolean;
@@ -50,11 +47,11 @@ async function sendViaTwilio(params: {
 }): Promise<SendResult> {
   const { e164 } = normalizePhone(params.phone);
   if (!e164) return { success: false, error: "Invalid phone number", phone: e164 };
-  if (!LOVABLE_API_KEY) {
-    return { success: false, error: "LOVABLE_API_KEY not configured", phone: e164 };
+  if (!TWILIO_ACCOUNT_SID) {
+    return { success: false, error: "TWILIO_ACCOUNT_SID not configured", phone: e164 };
   }
-  if (!TWILIO_API_KEY) {
-    return { success: false, error: "TWILIO_API_KEY not configured (Twilio connector not linked)", phone: e164 };
+  if (!TWILIO_AUTH_TOKEN) {
+    return { success: false, error: "TWILIO_AUTH_TOKEN not configured", phone: e164 };
   }
   const from = waFrom();
   if (!from) {
@@ -64,6 +61,11 @@ async function sendViaTwilio(params: {
   const body = new URLSearchParams();
   body.set("To", `whatsapp:${e164}`);
   body.set("From", from);
+  // Twilio will POST delivery status updates here.
+  const statusCallback = `${supabaseUrl}/functions/v1/twilio-status`;
+  if (statusCallback && /^https?:\/\//.test(statusCallback)) {
+    body.set("StatusCallback", statusCallback);
+  }
   if (params.content_sid) {
     body.set("ContentSid", params.content_sid);
     if (params.content_variables && Object.keys(params.content_variables).length > 0) {
@@ -73,15 +75,15 @@ async function sendViaTwilio(params: {
     body.set("Body", params.message || "");
   }
 
-  const url = `${GATEWAY_URL}/Messages.json`;
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
+  const basicAuth = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
   console.log("[send-whatsapp] →", { url, to: e164, kind: params.content_sid ? "template" : "text" });
 
   try {
     const res = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "X-Connection-Api-Key": TWILIO_API_KEY,
+        Authorization: `Basic ${basicAuth}`,
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body,
@@ -165,6 +167,7 @@ Deno.serve(async (req) => {
       recipient_user_id: user_id || null,
       message: storedBody,
       provider: "twilio",
+      provider_message_id: result.message_id || null,
       status: result.success ? "sent" : "failed",
       retry_count: retryCount,
       error_message: result.error || null,
@@ -179,6 +182,7 @@ Deno.serve(async (req) => {
         template_used: template_name || (content_sid ? `twilio:${content_sid}` : null),
         template_id: template_id || null,
         status: "sent",
+        provider_message_id: result.message_id || null,
         sent_at: new Date().toISOString(),
         created_by: user_id || null,
       });

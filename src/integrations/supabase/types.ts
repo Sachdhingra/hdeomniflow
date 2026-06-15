@@ -942,6 +942,7 @@ export type Database = {
       }
       hde_inventory: {
         Row: {
+          group_id: string | null
           id: string
           inventory_type: string
           location_id: string
@@ -951,6 +952,7 @@ export type Database = {
           updated_by: string | null
         }
         Insert: {
+          group_id?: string | null
           id?: string
           inventory_type: string
           location_id: string
@@ -960,6 +962,7 @@ export type Database = {
           updated_by?: string | null
         }
         Update: {
+          group_id?: string | null
           id?: string
           inventory_type?: string
           location_id?: string
@@ -2996,13 +2999,32 @@ export type Database = {
           avg_feedback_score: number | null
           closed_deals: number | null
           designation: string | null
+          followups_sent: number | null
+          inventory_actions: number | null
           leads_count: number | null
+          leads_created: number | null
           month: string | null
+          ontime_days: number | null
+          overdue_count: number | null
           profile_picture_url: string | null
           qualified_leads: number | null
           rank_position: number | null
+          reviews_collected: number | null
           salesperson_name: string | null
+          score_attendance: number | null
+          score_closed: number | null
+          score_entry: number | null
+          score_followups: number | null
+          score_inventory: number | null
+          score_overdue: number | null
+          score_reviews: number | null
+          score_sales: number | null
+          score_updates: number | null
+          total_score: number | null
+          updates_made: number | null
           user_id: string | null
+          won_value: number | null
+          working_days: number | null
         }
         Relationships: []
       }
