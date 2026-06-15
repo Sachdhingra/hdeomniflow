@@ -160,7 +160,13 @@ const AdminAutomation = () => {
           user_name: user?.name,
         },
       });
-      if (error) throw error;
+      if (error) {
+        // FunctionsHttpError — try to extract body context for a useful message
+        const ctx = (error as any).context;
+        const body = ctx ? (typeof ctx.json === "function" ? await ctx.json().catch(() => null) : null) : null;
+        toast.error(body?.error || error.message || "Edge function error");
+        return;
+      }
       if (data?.success) {
         toast.success(`Test sent! Message SID: ${data.message_id}`);
         setTestOpen(false);
