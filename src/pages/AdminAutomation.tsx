@@ -12,7 +12,7 @@ import { toast } from "sonner";
 
 type StageRow = { stage: string; count: number; avg_days: number };
 type LogRow = { id: string; event_type: string; success: boolean; details: any; error_message: string | null; executed_at: string; lead_id: string | null };
-type MsgRow = { id: string; lead_id: string; message_type: string; trigger_stage: string; status: string; created_at: string; sent_at: string | null; error_message: string | null };
+type MsgRow = { id: string; lead_id: string; message_type: string; journey_stage: string | null; status: string; created_at: string; sent_at: string | null; message_kind: string | null };
 type FailRow = { id: string; lead_id: string | null; error_message: string | null; executed_at: string; details: any };
 
 const STAGES = ["new", "contacted", "follow_up", "negotiation", "overdue"] as const;
@@ -68,8 +68,9 @@ const AdminAutomation = () => {
       setLogs((logsData ?? []) as LogRow[]);
 
       const { data: msgsData } = await supabase
-        .from("auto_nurture_messages")
-        .select("id, lead_id, message_type, trigger_stage, status, created_at, sent_at, error_message")
+        .from("lead_messages")
+        .select("id, lead_id, message_type, journey_stage, status, created_at, sent_at, message_kind")
+        .not("message_kind", "is", null)
         .order("created_at", { ascending: false })
         .limit(50);
       setMsgs((msgsData ?? []) as MsgRow[]);
@@ -83,22 +84,26 @@ const AdminAutomation = () => {
       setFailures((failData ?? []) as FailRow[]);
 
       const { count: pendingCount } = await supabase
-        .from("auto_nurture_messages")
+        .from("lead_messages")
         .select("*", { count: "exact", head: true })
+        .not("message_kind", "is", null)
         .eq("status", "pending");
       const { count: sentToday } = await supabase
-        .from("auto_nurture_messages")
+        .from("lead_messages")
         .select("*", { count: "exact", head: true })
+        .not("message_kind", "is", null)
         .eq("status", "sent")
         .gte("sent_at", todayIso);
       const { count: failedToday } = await supabase
-        .from("auto_nurture_messages")
+        .from("lead_messages")
         .select("*", { count: "exact", head: true })
+        .not("message_kind", "is", null)
         .eq("status", "failed")
         .gte("created_at", todayIso);
       const { count: queuedToday } = await supabase
-        .from("auto_nurture_messages")
+        .from("lead_messages")
         .select("*", { count: "exact", head: true })
+        .not("message_kind", "is", null)
         .gte("created_at", todayIso);
 
       setCounts({
@@ -121,7 +126,7 @@ const AdminAutomation = () => {
     try {
       const { data, error } = await supabase.functions.invoke("nurture-engine");
       if (error) throw error;
-      toast.success(`Engine ran: ${data?.queued ?? 0} queued, ${data?.scored ?? 0} scored, ${data?.moved_to_overdue ?? 0} → overdue`);
+      toast.success(`Engine ran: ${data?.auto_sent ?? 0} sent, ${data?.scored ?? 0} scored, ${data?.moved_to_overdue ?? 0} → overdue`);
       await load();
     } catch (e: any) {
       toast.error(e.message || "Engine failed");
@@ -295,7 +300,7 @@ const AdminAutomation = () => {
                 {msgs.map(m => (
                   <TableRow key={m.id}>
                     <TableCell className="text-xs font-mono">{m.message_type}</TableCell>
-                    <TableCell className="text-xs capitalize">{m.trigger_stage.replace("_", " ")}</TableCell>
+                    <TableCell className="text-xs capitalize">{(m.journey_stage ?? m.message_kind ?? "—").replace("_", " ")}</TableCell>
                     <TableCell>
                       <Badge variant={m.status === "sent" ? "secondary" : m.status === "failed" ? "destructive" : "outline"} className="text-[10px]">
                         {m.status}

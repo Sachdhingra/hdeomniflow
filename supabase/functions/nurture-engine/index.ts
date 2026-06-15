@@ -1,6 +1,6 @@
 // Autonomous lead nurture engine — runs daily/twice-daily.
 // Now driven by conversation context (sentiment / concern / intent / no-response timing).
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 import { pickTemplateTitle } from "../_shared/conversation-analysis.ts";
 
 const corsHeaders = {

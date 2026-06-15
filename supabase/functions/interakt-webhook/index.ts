@@ -39,16 +39,18 @@ async function verifyMetaSignature(rawBody: string, sigHeader: string | null): P
 
 async function findLeadByPhone(supabase: any, phone: string): Promise<{ id: string; sequence: number } | null> {
   if (!phone) return null;
-  const last10 = phone.slice(-10);
+  const last10 = normalizePhone(phone).slice(-10);
+  if (!last10) return null;
+  // Push suffix match to DB via ILIKE — avoids the 50-lead client-side cap
   const { data } = await supabase
     .from("leads")
-    .select("id, customer_phone, conversation_message_count, created_at")
+    .select("id, conversation_message_count")
     .is("deleted_at", null)
+    .ilike("customer_phone", `%${last10}`)
     .order("created_at", { ascending: false })
-    .limit(50);
-  if (!data) return null;
-  const match = data.find((l: any) => normalizePhone(l.customer_phone).endsWith(last10));
-  return match ? { id: match.id, sequence: match.conversation_message_count ?? 0 } : null;
+    .limit(1);
+  if (!data?.length) return null;
+  return { id: data[0].id, sequence: data[0].conversation_message_count ?? 0 };
 }
 
 Deno.serve(async (req) => {
@@ -139,19 +141,24 @@ Deno.serve(async (req) => {
                 sequence_number: seq,
               });
 
-              await supabase.from("leads").update({
+              const leadUpdate: Record<string, unknown> = {
                 last_inbound_sentiment: analysis.sentiment,
                 last_inbound_concern: analysis.concern,
                 last_inbound_intent: analysis.intent,
                 conversation_message_count: seq,
                 unanswered_outbound_count: 0,
-                needs_personal_call: false,
-                dead_lead: false,
-                concern_type: analysis.concern ?? undefined,
-                ...(analysis.intent === "objection"
-                  ? { barrier_addressed: false, objection_type: analysis.concern ?? "general" }
-                  : {}),
-              }).eq("id", lead.id);
+              };
+              // Only clear dead_lead / needs_personal_call on positive engagement
+              if (analysis.intent === "interested" || analysis.intent === "ready_to_buy" || analysis.intent === "question") {
+                leadUpdate.dead_lead = false;
+                leadUpdate.needs_personal_call = false;
+              }
+              if (analysis.concern) leadUpdate.concern_type = analysis.concern;
+              if (analysis.intent === "objection") {
+                leadUpdate.barrier_addressed = false;
+                leadUpdate.objection_type = analysis.concern ?? "general";
+              }
+              await supabase.from("leads").update(leadUpdate).eq("id", lead.id);
 
               // Increment reply_count on the most recent outbound variant (A/B tracking)
               const { data: lastOut } = await supabase

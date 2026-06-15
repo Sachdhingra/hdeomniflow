@@ -107,6 +107,7 @@ const SendTemplateDialog = ({ lead, open, onOpenChange }: Props) => {
         },
       });
       if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || "Twilio send failed");
       await supabase.from("lead_messages").insert({
         lead_id: lead.id,
         message_type: "outbound",
@@ -114,7 +115,7 @@ const SendTemplateDialog = ({ lead, open, onOpenChange }: Props) => {
         template_used: picked.title,
         template_id: picked.id,
         journey_stage: picked.stage,
-        status: data?.success ? "sent" : "failed",
+        status: "sent",
         sent_at: new Date().toISOString(),
         created_by: user.id,
       } as any);

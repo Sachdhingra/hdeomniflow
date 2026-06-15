@@ -21,6 +21,7 @@ interface SendResult {
   error?: string;
   phone: string;
   providerResponse?: unknown;
+  httpStatus?: number;
 }
 
 // Normalize a phone string into E.164 form. Default country code is 91 (India).
@@ -94,7 +95,7 @@ async function sendViaTwilio(params: {
     if (!res.ok) {
       const err = parsed?.message || parsed?.error_message || `HTTP ${res.status}`;
       console.error("[send-whatsapp] Twilio error:", err, parsed);
-      return { success: false, error: err, phone: e164, providerResponse: parsed };
+      return { success: false, error: err, phone: e164, providerResponse: parsed, httpStatus: res.status };
     }
     const message_id = parsed?.sid;
     console.log("[send-whatsapp] ✓ sent", { message_id, status: parsed?.status });
@@ -144,10 +145,11 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // First attempt + one retry
+    // First attempt + one retry only for transient errors (network / 5xx).
+    // 4xx errors (bad phone, opted-out, auth failure) are permanent — never retry.
     let result = await sendViaTwilio({ phone, message, content_sid, content_variables });
     let retryCount = 0;
-    if (!result.success) {
+    if (!result.success && (!result.httpStatus || result.httpStatus >= 500)) {
       retryCount = 1;
       console.warn("[send-whatsapp] retrying after:", result.error);
       result = await sendViaTwilio({ phone, message, content_sid, content_variables });
