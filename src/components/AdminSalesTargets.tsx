@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { useData } from "@/contexts/DataContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -11,16 +10,20 @@ import { Progress } from "@/components/ui/progress";
 import { Target, Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+// Achievement is fetched directly from the DB (not from the paginated leads array)
+// and filtered by stage_changed_at (set by the trg_track_lead_stage trigger on
+// every status change) rather than updated_at (which changes on any field edit).
 const AdminSalesTargets = () => {
   const { allProfiles } = useAuth();
-  const { leads } = useData();
   const [targets, setTargets] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<string | null>(null);
   const [existingTargets, setExistingTargets] = useState<Record<string, number>>({});
+  const [achievedValues, setAchievedValues] = useState<Record<string, number>>({});
 
-  const currentMonth = new Date().toISOString().slice(0, 7);
+  const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
   const salesProfiles = allProfiles.filter(p => p.role === "sales");
 
+  // Fetch targets for the current month
   useEffect(() => {
     const fetchTargets = async () => {
       const { data } = await supabase
@@ -39,6 +42,27 @@ const AdminSalesTargets = () => {
       }
     };
     fetchTargets();
+  }, [currentMonth]);
+
+  // Fetch each rep's monthly won value directly from the DB.
+  // Filters by assigned_to (not created_by) and stage_changed_at (not updated_at).
+  useEffect(() => {
+    const fetchAchievements = async () => {
+      const { data } = await supabase
+        .from("leads")
+        .select("assigned_to, value_in_rupees")
+        .eq("status", "won")
+        .is("deleted_at", null)
+        .like("stage_changed_at", `${currentMonth}%`);
+
+      const map: Record<string, number> = {};
+      (data ?? []).forEach(l => {
+        if (!l.assigned_to) return;
+        map[l.assigned_to] = (map[l.assigned_to] ?? 0) + Number(l.value_in_rupees);
+      });
+      setAchievedValues(map);
+    };
+    fetchAchievements();
   }, [currentMonth]);
 
   const handleSave = async (userId: string) => {
@@ -82,9 +106,7 @@ const AdminSalesTargets = () => {
           </TableHeader>
           <TableBody>
             {salesProfiles.map(sp => {
-              const wonValue = leads
-                .filter(l => l.status === "won" && l.assigned_to === sp.id && l.updated_at?.startsWith(currentMonth))
-                .reduce((s, l) => s + Number(l.value_in_rupees), 0);
+              const wonValue = achievedValues[sp.id] ?? 0;
               const targetVal = existingTargets[sp.id] || 0;
               const pct = targetVal > 0 ? Math.min(Math.round((wonValue / targetVal) * 100), 100) : 0;
 

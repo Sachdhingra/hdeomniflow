@@ -4,7 +4,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { Phone, Mail, Calendar, Package, History, Sparkles, MapPin, MessageCircle, Zap, Home, Users, Clock } from "lucide-react";
+import { Phone, Mail, Calendar, Package, History, Sparkles, MapPin, MessageCircle, Zap, Home, Users, Clock, Star, MapPinned } from "lucide-react";
 import type { Lead, LeadStatus } from "@/contexts/DataContext";
 import { LEAD_CATEGORIES } from "@/contexts/DataContext";
 import { neighborhoodColor, responseTimeColor, formatRelativeTime, PREFERRED_STYLES, BUDGET_RANGES, FAMILY_SITUATIONS, DECISION_TIMELINES, STATED_NEEDS } from "@/lib/leadConstants";
@@ -19,6 +19,10 @@ interface LeadMessage {
   message_body: string;
   status: string;
   sent_at: string;
+  delivered_at?: string | null;
+  read_at?: string | null;
+  failed_at?: string | null;
+  error_message?: string | null;
   template_used: string | null;
   message_kind?: string | null;
   sentiment?: string | null;
@@ -34,6 +38,15 @@ interface StageHistoryRow {
   new_stage: string;
   changed_at: string;
   reason: string | null;
+}
+
+interface DedupLogRow {
+  id: string;
+  action: string;
+  visit_count: number | null;
+  last_visit_date: string | null;
+  notes: string | null;
+  created_at: string;
 }
 
 const STAGE_LABEL: Record<string, string> = {
@@ -57,6 +70,7 @@ const probabilityColor = (p: number) => {
 const LeadDetailsDrawer = ({ lead, open, onOpenChange }: Props) => {
   const [history, setHistory] = useState<StageHistoryRow[]>([]);
   const [messages, setMessages] = useState<LeadMessage[]>([]);
+  const [dedupHistory, setDedupHistory] = useState<DedupLogRow[]>([]);
   const [probability, setProbability] = useState<number>(0);
   const [loading, setLoading] = useState(false);
 
@@ -64,20 +78,25 @@ const LeadDetailsDrawer = ({ lead, open, onOpenChange }: Props) => {
     if (!lead || !open) return;
     setLoading(true);
     (async () => {
-      const [{ data: hist }, { data: prob }, { data: msgs }] = await Promise.all([
+      const [{ data: hist }, { data: prob }, { data: msgs }, { data: dedup }] = await Promise.all([
         supabase.from("lead_stage_history")
           .select("id, old_stage, new_stage, changed_at, reason")
           .eq("lead_id", lead.id)
           .order("changed_at", { ascending: false }),
         supabase.rpc("calculate_conversion_probability", { _lead_id: lead.id }),
         supabase.from("lead_messages")
-          .select("id, message_type, message_body, status, sent_at, template_used, message_kind, sentiment, intent, concern, variant, sequence_number")
+          .select("id, message_type, message_body, status, sent_at, delivered_at, read_at, failed_at, error_message, template_used, message_kind, sentiment, intent, concern, variant, sequence_number")
           .eq("lead_id", lead.id)
           .order("sent_at", { ascending: false })
           .limit(20),
+        supabase.from("lead_deduplication_log")
+          .select("id, action, visit_count, last_visit_date, notes, created_at")
+          .eq("lead_id", lead.id)
+          .order("created_at", { ascending: true }),
       ]);
       setHistory((hist as StageHistoryRow[]) || []);
       setMessages((msgs as LeadMessage[]) || []);
+      setDedupHistory((dedup as DedupLogRow[]) || []);
       setProbability(typeof prob === "number" ? prob : (lead.conversion_probability ?? 30));
       setLoading(false);
     })();
@@ -104,6 +123,16 @@ const LeadDetailsDrawer = ({ lead, open, onOpenChange }: Props) => {
             <span>{lead.customer_name}</span>
             {(l.repeat_count ?? 0) > 0 && (
               <RepeatBadge repeatCount={l.repeat_count} totalSales={l.total_sales} />
+            )}
+            {(l.visit_count ?? 1) > 1 && (
+              <Badge variant="secondary" className="text-[10px] gap-0.5">
+                🏪 {l.visit_count} visits
+              </Badge>
+            )}
+            {l.feedback_score != null && (
+              <Badge variant="outline" className="text-[10px] gap-0.5">
+                <Star className="w-2.5 h-2.5 fill-warning text-warning" />{l.feedback_score}/5
+              </Badge>
             )}
           </SheetTitle>
           <SheetDescription className="flex items-center gap-2 flex-wrap">
@@ -283,11 +312,29 @@ const LeadDetailsDrawer = ({ lead, open, onOpenChange }: Props) => {
               <ol className="space-y-1.5 max-h-48 overflow-y-auto">
                 {messages.map(m => (
                   <li key={m.id} className={`text-xs rounded p-2 border-l-2 ${m.message_type === "outbound" ? "border-primary bg-primary/5" : "border-success bg-success/5"}`}>
-                    <div className="flex items-center justify-between mb-0.5">
+                    <div className="flex items-center justify-between mb-0.5 gap-2">
                       <Badge variant="outline" className="text-[9px]">{m.message_type}</Badge>
-                      <span className="text-muted-foreground text-[10px]">{formatRelativeTime(m.sent_at)}</span>
+                      <div className="flex items-center gap-1">
+                        {m.message_type === "outbound" && (
+                          <Badge
+                            variant={m.status === "failed" ? "destructive" : "outline"}
+                            className="text-[9px] capitalize"
+                            title={m.error_message || (m.read_at ? `Read ${new Date(m.read_at).toLocaleString()}` : m.delivered_at ? `Delivered ${new Date(m.delivered_at).toLocaleString()}` : "")}
+                          >
+                            {m.status === "read" ? "✓✓ read" :
+                             m.status === "delivered" ? "✓✓ delivered" :
+                             m.status === "sent" ? "✓ sent" :
+                             m.status === "failed" ? "⚠ failed" :
+                             m.status === "queued" ? "⏳ queued" : m.status}
+                          </Badge>
+                        )}
+                        <span className="text-muted-foreground text-[10px]">{formatRelativeTime(m.sent_at)}</span>
+                      </div>
                     </div>
                     <p className="whitespace-pre-wrap">{m.message_body}</p>
+                    {m.status === "failed" && m.error_message && (
+                      <p className="text-[10px] text-destructive mt-1">{m.error_message}</p>
+                    )}
                   </li>
                 ))}
               </ol>
@@ -330,6 +377,36 @@ const LeadDetailsDrawer = ({ lead, open, onOpenChange }: Props) => {
               <section className="space-y-1 text-sm">
                 <h4 className="font-semibold">Notes</h4>
                 <p className="text-muted-foreground whitespace-pre-wrap">{lead.notes}</p>
+              </section>
+            </>
+          )}
+
+          {dedupHistory.length > 0 && (
+            <>
+              <Separator />
+              <section className="space-y-2">
+                <h4 className="font-semibold text-sm flex items-center gap-1.5">
+                  <MapPinned className="w-4 h-4" />Visit History
+                  <Badge variant="secondary" className="text-[10px]">{dedupHistory.length}</Badge>
+                </h4>
+                <ol className="space-y-2">
+                  {dedupHistory.map((d, i) => (
+                    <li key={d.id} className="text-xs border-l-2 border-warning/40 pl-3 py-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <Badge
+                          variant={d.action === "created_new_lead" ? "default" : "secondary"}
+                          className="text-[9px]"
+                        >
+                          {d.action === "created_new_lead" ? "🆕 Lead created" : `🏪 Visit #${d.visit_count ?? i + 1}`}
+                        </Badge>
+                        <span className="text-muted-foreground text-[10px]">
+                          {new Date(d.last_visit_date ?? d.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                      {d.notes && <p className="text-muted-foreground mt-0.5">{d.notes}</p>}
+                    </li>
+                  ))}
+                </ol>
               </section>
             </>
           )}

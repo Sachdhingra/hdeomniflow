@@ -6,6 +6,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { DataProvider } from "@/contexts/DataContext";
+import { ChatUnreadProvider } from "@/contexts/ChatUnreadContext";
+import { PresenceProvider } from "@/contexts/PresenceContext";
 import AppLayout from "@/components/AppLayout";
 import Login from "@/pages/Login";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
@@ -31,7 +33,24 @@ const AccountsApprovals = lazy(() => import("@/pages/AccountsApprovals"));
 const AdminOrdersDashboard = lazy(() => import("@/pages/AdminOrdersDashboard"));
 const ChatPage = lazy(() => import("@/pages/ChatPage"));
 const AIAssistantPage = lazy(() => import("@/pages/AIAssistantPage"));
+const AttendancePage = lazy(() => import("@/pages/AttendancePage"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
+const FeedbackKiosk = lazy(() => import("@/pages/FeedbackKiosk"));
+const FeedbackAnalyticsDashboard = lazy(() => import("@/pages/FeedbackAnalyticsDashboard"));
+const AdminSchemeBanners = lazy(() => import("@/pages/AdminSchemeBanners"));
+const AdminCompanyPurchases = lazy(() => import("@/pages/AdminCompanyPurchases"));
+const AdminSuppliers = lazy(() => import("@/pages/AdminSuppliers"));
+const ProfileViewScreen = lazy(() => import("@/pages/ProfileViewScreen"));
+const ProfileEditScreen = lazy(() => import("@/pages/ProfileEditScreen"));
+const StaffDirectory = lazy(() => import("@/pages/StaffDirectory"));
+const MonthlyLeaderboard = lazy(() => import("@/pages/MonthlyLeaderboard"));
+const EliteCustomers = lazy(() => import("@/pages/EliteCustomers"));
+const InventoryManager = lazy(() => import("@/pages/InventoryManager"));
+const LogisticsCalculator = lazy(() => import("@/pages/LogisticsCalculator"));
+const LogisticsCalculatorSettings = lazy(() => import("@/pages/LogisticsCalculatorSettings"));
+const LogisticsHistory = lazy(() => import("@/pages/LogisticsHistory"));
+import KioskModeWrapper from "@/components/kiosk/KioskModeWrapper";
+import ProfileGate from "@/components/staff/ProfileGate";
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -85,6 +104,11 @@ const AppRoutes = () => {
             <Route path="/admin/orders" element={<AdminOrdersDashboard />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/ai-assistant" element={<AIAssistantPage />} />
+            <Route path="/admin/feedback" element={<FeedbackAnalyticsDashboard />} />
+            <Route path="/dashboard/feedback-analytics" element={<FeedbackAnalyticsDashboard />} />
+            <Route path="/admin/kiosk-banners" element={<AdminSchemeBanners />} />
+            <Route path="/accounts/purchases" element={<AdminCompanyPurchases />} />
+            <Route path="/accounts/suppliers" element={<AdminSuppliers />} />
           </>
         );
       case "accounts":
@@ -92,6 +116,9 @@ const AppRoutes = () => {
           <>
             <Route path="/" element={<AccountsApprovals />} />
             <Route path="/accounts/approvals" element={<AccountsApprovals />} />
+            <Route path="/accounts/purchases" element={<AdminCompanyPurchases />} />
+            <Route path="/accounts/suppliers" element={<AdminSuppliers />} />
+            <Route path="/products" element={<ProductsView />} />
             <Route path="/chat" element={<ChatPage />} />
           </>
         );
@@ -114,8 +141,10 @@ const AppRoutes = () => {
             <Route path="/service-jobs" element={<ServiceDashboard />} />
             <Route path="/claims" element={<ServiceClaims />} />
             <Route path="/calendar" element={<ServiceCalendar />} />
+            <Route path="/products" element={<ProductsView />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/ai-assistant" element={<AIAssistantPage />} />
+
           </>
         );
       case "field_agent":
@@ -141,12 +170,25 @@ const AppRoutes = () => {
 
   return (
     <AppLayout>
-      <Suspense fallback={<PageLoader />}>
-        <Routes>
-          {renderRoutes()}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </Suspense>
+      <ProfileGate>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            {renderRoutes()}
+            <Route path="/attendance" element={<AttendancePage />} />
+            <Route path="/profile" element={<ProfileViewScreen />} />
+            <Route path="/profile/edit" element={<ProfileEditScreen />} />
+            <Route path="/profile/setup" element={<ProfileEditScreen />} />
+            <Route path="/directory" element={<StaffDirectory />} />
+            <Route path="/dashboard/leaderboard" element={<MonthlyLeaderboard />} />
+            <Route path="/elite-customers" element={<EliteCustomers />} />
+            <Route path="/inventory" element={<InventoryManager />} />
+            <Route path="/logistics-calculator" element={<LogisticsCalculator />} />
+            <Route path="/logistics-calculator/history" element={<LogisticsHistory />} />
+            <Route path="/logistics-calculator/settings" element={<LogisticsCalculatorSettings />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
+      </ProfileGate>
     </AppLayout>
   );
 };
@@ -155,15 +197,38 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
-      <Sonner />
-      <AuthProvider>
-        <DataProvider>
-          <BrowserRouter>
-            <AppRoutes />
-            <PWAInstallPrompt />
-          </BrowserRouter>
-        </DataProvider>
-      </AuthProvider>
+      <Sonner position="top-right" richColors closeButton />
+      <BrowserRouter>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            <Route path="/feedback" element={<FeedbackKiosk />} />
+            <Route path="/feedback/exit" element={<FeedbackKiosk />} />
+            <Route
+              path="/kiosk/feedback"
+              element={
+                <KioskModeWrapper enableAutoReset resetTimeoutMinutes={5} resetPath="/kiosk/feedback">
+                  <FeedbackKiosk />
+                </KioskModeWrapper>
+              }
+            />
+            <Route
+              path="/*"
+              element={
+                <AuthProvider>
+                  <DataProvider>
+                    <ChatUnreadProvider>
+                      <PresenceProvider>
+                        <AppRoutes />
+                        <PWAInstallPrompt />
+                      </PresenceProvider>
+                    </ChatUnreadProvider>
+                  </DataProvider>
+                </AuthProvider>
+              }
+            />
+          </Routes>
+        </Suspense>
+      </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
 );

@@ -50,6 +50,7 @@ const AccountsApprovals = () => {
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [duesByPhone, setDuesByPhone] = useState<Record<string, { total: number; count: number }>>({});
+  const [ownersByJob, setOwnersByJob] = useState<Record<string, { owner_name: string | null; assignee_name: string | null }>>({});
   const [auditLog, setAuditLog] = useState<any[]>([]);
   const [dues, setDues] = useState<any[]>([]);
   const [newDue, setNewDue] = useState({ customer_name: "", customer_phone: "", amount: "", description: "" });
@@ -80,6 +81,19 @@ const AccountsApprovals = () => {
       }
     }));
     setDuesByPhone(duesMap);
+
+    // Resolve lead owners (sales person who created the lead) for each job
+    const jobIds = (data || []).map((j: any) => j.id);
+    if (jobIds.length) {
+      const { data: owners } = await supabase.rpc("get_lead_owners_for_jobs" as any, { p_job_ids: jobIds });
+      const map: Record<string, { owner_name: string | null; assignee_name: string | null }> = {};
+      (owners || []).forEach((o: any) => {
+        map[o.job_id] = { owner_name: o.owner_name, assignee_name: o.assignee_name };
+      });
+      setOwnersByJob(map);
+    } else {
+      setOwnersByJob({});
+    }
     setLoading(false);
   }, []);
 
@@ -215,6 +229,8 @@ const AccountsApprovals = () => {
         <div className="space-y-3">
           {filtered.map(job => {
             const dues = duesByPhone[job.customer_phone];
+            const owner = ownersByJob[job.id];
+            const ownerLabel = owner?.owner_name || owner?.assignee_name;
             return (
               <Card key={job.id} className="shadow-card">
                 <CardContent className="p-4 space-y-2">
@@ -227,11 +243,20 @@ const AccountsApprovals = () => {
                         </Badge>
                         <Badge variant="outline" className="text-xs uppercase">{job.type}</Badge>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1 flex items-center gap-3">
+                      <p className="text-xs text-muted-foreground mt-1 flex items-center gap-3 flex-wrap">
                         <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{job.customer_phone}</span>
                         <span>{job.category}</span>
                         {job.date_to_attend && <span>📅 {job.date_to_attend}</span>}
                       </p>
+                      {ownerLabel && (
+                        <p className="text-xs mt-1">
+                          <span className="text-muted-foreground">Requested by: </span>
+                          <span className="font-medium text-foreground">{ownerLabel}</span>
+                          {owner?.assignee_name && owner?.owner_name && owner.assignee_name !== owner.owner_name && (
+                            <span className="text-muted-foreground"> · assigned to {owner.assignee_name}</span>
+                          )}
+                        </p>
+                      )}
                       {job.description && <p className="text-sm mt-1">{job.description}</p>}
                     </div>
                     <div className="text-right">

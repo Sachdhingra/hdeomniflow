@@ -25,10 +25,11 @@ const SUGGESTIONS_BY_ROLE: Record<string, string[]> = {
     "What's my pace to target?",
   ],
   service_head: [
+    "Plan tomorrow's dispatch schedule for all field agents",
     "How's my team today?",
+    "Which jobs should I prioritise and reassign?",
     "What's bottlenecking us?",
     "How's this month vs last month?",
-    "Why do we have rescheduled deliveries?",
   ],
 };
 

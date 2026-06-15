@@ -6,9 +6,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Target, TrendingUp } from "lucide-react";
 
+// Achievement comes from the RPC (summary.myMonthWonValue) instead of filtering
+// the paginated leads array. This fixes two bugs:
+//   1. updated_at was used for month-gating; stage_changed_at (set by DB trigger
+//      on every status change) is the correct timestamp — the RPC uses that.
+//   2. The local leads array is paginated (20/page), so reps with many leads
+//      would see an understated achievement. The RPC queries the full table.
 const SalesTargetCard = () => {
   const { user } = useAuth();
-  const { leads } = useData();
+  const { summary, summaryLoading } = useData();
   const [target, setTarget] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
@@ -30,9 +36,9 @@ const SalesTargetCard = () => {
     fetchTarget();
   }, [user, currentMonth]);
 
-  const wonValue = leads
-    .filter(l => l.status === "won" && l.assigned_to === user?.id && l.updated_at?.startsWith(currentMonth))
-    .reduce((s, l) => s + Number(l.value_in_rupees), 0);
+  // Accurate monthly won value: comes from the server-side RPC, uses
+  // COALESCE(stage_changed_at, updated_at) and assigned_to = user.
+  const wonValue = summary.myMonthWonValue;
 
   const percentage = target > 0 ? Math.min(Math.round((wonValue / target) * 100), 100) : 0;
   const remaining = Math.max(target - wonValue, 0);
@@ -49,14 +55,16 @@ const SalesTargetCard = () => {
       <CardContent className="space-y-2">
         <div className="flex justify-between text-sm">
           <span>Target: ₹{target.toLocaleString("en-IN")}</span>
-          <span className="font-bold text-success">Achieved: ₹{wonValue.toLocaleString("en-IN")}</span>
+          <span className="font-bold text-success">
+            {summaryLoading ? "..." : `Achieved: ₹${wonValue.toLocaleString("en-IN")}`}
+          </span>
         </div>
-        <Progress value={percentage} className="h-3" />
+        <Progress value={summaryLoading ? 0 : percentage} className="h-3" />
         <div className="flex justify-between text-xs text-muted-foreground">
-          <span>{percentage}% achieved</span>
+          <span>{summaryLoading ? "..." : `${percentage}% achieved`}</span>
           <span className="flex items-center gap-1">
             <TrendingUp className="w-3 h-3" />
-            ₹{remaining.toLocaleString("en-IN")} remaining
+            {summaryLoading ? "..." : `₹${remaining.toLocaleString("en-IN")} remaining`}
           </span>
         </div>
       </CardContent>

@@ -94,16 +94,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const refreshProfiles = async () => {
     const { data: profiles } = await supabase.from("profiles").select("id, name, email, active");
     const { data: roles } = await supabase.from("user_roles").select("user_id, role");
+    const map = new Map<string, User>();
     if (profiles && roles) {
-      const users: User[] = profiles
-        .map(p => {
-          const r = roles.find(r => r.user_id === p.id);
-          if (!r) return null;
-          return { id: p.id, name: p.name, email: p.email, role: r.role as UserRole, active: (p as any).active };
-        })
-        .filter(Boolean) as User[];
-      setAllProfiles(users);
+      profiles.forEach(p => {
+        const r = roles.find(r => r.user_id === p.id);
+        if (!r) return;
+        map.set(p.id, { id: p.id, name: p.name, email: p.email, role: r.role as UserRole });
+      });
     }
+    // Always merge in the chat directory so sales/accounts/service users (who
+    // can't read other profiles directly via RLS) still see teammate names.
+    const { data: dir } = await supabase.rpc("get_chat_directory");
+    if (Array.isArray(dir)) {
+      dir.forEach((d: any) => {
+        if (!map.has(d.id)) {
+          map.set(d.id, { id: d.id, name: d.name, email: d.email, role: d.role as UserRole });
+        }
+      });
+    }
+    setAllProfiles(Array.from(map.values()));
   };
 
   useEffect(() => {

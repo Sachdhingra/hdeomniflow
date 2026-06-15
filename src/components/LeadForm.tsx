@@ -11,6 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Plus, AlertTriangle, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 import GodrejProductPicker from "@/components/GodrejProductPicker";
+import LeadAssignmentModal from "@/components/LeadAssignmentModal";
+import PhoneInput from "@/components/PhoneInput";
 import {
   DEHRADUN_NEIGHBORHOODS, PREFERRED_STYLES, FAMILY_SITUATIONS,
   DECISION_TIMELINES, BUDGET_RANGES, STATED_NEEDS,
@@ -20,6 +22,7 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
   const { user } = useAuth();
   const { addLead } = useData();
   const [open, setOpen] = useState(false);
+  const [assignFor, setAssignFor] = useState<{ id: string; name: string } | null>(null);
   const [form, setForm] = useState({
     customerName: "", customerPhone: "", category: "" as LeadCategory | "",
     valueInRupees: "", notes: "", nextFollowUpDate: "", nextFollowUpTime: "",
@@ -105,13 +108,13 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
       const finalNeighborhood = form.neighborhood === "__other__"
         ? form.neighborhoodOther.trim() || null
         : form.neighborhood || null;
-      await addLead({
+      const created = await addLead({
         customer_name: form.customerName,
         customer_phone: form.customerPhone,
         category: form.category as LeadCategory,
         value_in_rupees: Number(form.valueInRupees),
         status: "new",
-        assigned_to: user?.id || "",
+        assigned_to: user?.role === "admin" ? null : (user?.id || ""),
         notes: form.notes,
         source,
         source_type: source as any,
@@ -139,6 +142,9 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
       });
       setDuplicateCheck({ checking: false, exists: false });
       setOpen(false);
+      if (user?.role === "admin" && created) {
+        setAssignFor({ id: created.id, name: created.customer_name });
+      }
     } catch (err: any) {
       const msg = err?.message || "Failed to add lead";
       if (msg.includes("Daily lead limit")) {
@@ -150,6 +156,7 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setDuplicateCheck({ checking: false, exists: false }); }}>
       <DialogTrigger asChild>
         <Button className="gradient-primary gap-2"><Plus className="w-4 h-4" /> Add Lead</Button>
@@ -177,12 +184,11 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
           )}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Phone * (10 digits)</Label>
-              <Input
+              <Label>Phone *</Label>
+              <PhoneInput
                 value={form.customerPhone}
-                onChange={e => handlePhoneChange(e.target.value)}
-                maxLength={10}
-                placeholder="9876543210"
+                onChange={(v) => handlePhoneChange(v)}
+                error={form.customerPhone.length > 0 && form.customerPhone.length < 10 ? "Enter a valid 10-digit mobile number" : undefined}
               />
               {duplicateCheck.checking && (
                 <p className="text-xs text-muted-foreground">Checking...</p>
@@ -294,6 +300,16 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
         </form>
       </DialogContent>
     </Dialog>
+    {assignFor && (
+      <LeadAssignmentModal
+        open={!!assignFor}
+        onOpenChange={(v) => !v && setAssignFor(null)}
+        leadId={assignFor.id}
+        customerName={assignFor.name}
+        currentAssignee={null}
+      />
+    )}
+    </>
   );
 };
 

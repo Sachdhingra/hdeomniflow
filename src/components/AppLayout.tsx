@@ -5,12 +5,20 @@ import { NavLink, useLocation } from "react-router-dom";
 import {
   Building2, LayoutDashboard, Users, Wrench, Navigation, MapPin,
   LogOut, Menu, X, ChevronRight, CalendarDays, BarChart3,
-  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot, ShieldCheck, MessageSquare, TrendingUp, ShoppingBag, MessagesSquare, Sparkles
+  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot, ShieldCheck, MessageSquare, TrendingUp, ShoppingBag, MessagesSquare, Sparkles, Clock, Star, Receipt, Trophy, UserCircle, BookUser, Boxes, Truck, Calculator
 } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useStaffProfile } from "@/hooks/useStaffProfile";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import NotificationPanel from "@/components/NotificationPanel";
 import NetworkStatusBadge from "@/components/NetworkStatusBadge";
+import ChatNotifier from "@/components/ChatNotifier";
+import ChatArrivalFlash from "@/components/ChatArrivalFlash";
+import LeadNotifier from "@/components/LeadNotifier";
+import AttendanceClockButton from "@/components/AttendanceClockButton";
+import DiscountCalculator from "@/components/DiscountCalculator";
+import { useChatUnread } from "@/contexts/ChatUnreadContext";
 
 interface NavItem {
   to: string;
@@ -30,7 +38,9 @@ const ROLE_LABELS: Record<UserRole, string> = {
 
 const AppLayout = ({ children }: { children: ReactNode }) => {
   const { user, logout, forceLogout } = useAuth();
+  const { profile } = useStaffProfile();
   const { notifications, error, summary } = useData();
+  const { totalUnread: chatUnread } = useChatUnread();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   if (!user) return null;
@@ -39,13 +49,22 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
   const pendingJobCount = summary.pendingJobs;
   const myUnread = notifications.filter(n => (n.user_id === user.id || user.role === "admin") && !n.read).length;
 
+  const ELITE_NAV: NavItem = { to: "/elite-customers", label: "Elite Customers", icon: <Star className="w-5 h-5 text-amber-500" /> };
+  const INVENTORY_NAV: NavItem = { to: "/inventory", label: "Inventory", icon: <Boxes className="w-5 h-5" /> };
+  const LOGISTICS_NAV: NavItem = { to: "/logistics-calculator", label: "Logistics Calculator", icon: <Calculator className="w-5 h-5" /> };
+
   const NAV_ITEMS: Record<UserRole, NavItem[]> = {
     admin: [
       { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" /> },
       { to: "/sales", label: "Sales", icon: <Users className="w-5 h-5" />, badge: overdueCount || undefined },
       { to: "/leads/board", label: "Leads Board", icon: <KanbanSquare className="w-5 h-5" /> },
+      ELITE_NAV,
+      INVENTORY_NAV,
+      LOGISTICS_NAV,
       { to: "/service", label: "Service", icon: <Wrench className="w-5 h-5" />, badge: pendingJobCount || undefined },
       { to: "/accounts/approvals", label: "Accounts Approvals", icon: <ShieldCheck className="w-5 h-5" /> },
+      { to: "/accounts/purchases", label: "Company Purchases", icon: <Receipt className="w-5 h-5" /> },
+      { to: "/accounts/suppliers", label: "Suppliers", icon: <Truck className="w-5 h-5" /> },
       { to: "/field-agents", label: "Field Agents", icon: <Navigation className="w-5 h-5" /> },
       { to: "/site-agents", label: "Site Agents", icon: <MapPin className="w-5 h-5" /> },
       { to: "/categories", label: "Categories", icon: <FolderTree className="w-5 h-5" /> },
@@ -54,24 +73,32 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/admin/templates", label: "WhatsApp Templates", icon: <MessageSquare className="w-5 h-5" /> },
       { to: "/admin/funnel-analytics", label: "Funnel Analytics", icon: <TrendingUp className="w-5 h-5" /> },
       { to: "/admin/orders", label: "Orders", icon: <ShoppingBag className="w-5 h-5" /> },
-      { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" /> },
+      { to: "/admin/feedback", label: "Customer Feedback", icon: <Star className="w-5 h-5" /> },
+      { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" />, badge: chatUnread || undefined },
       { to: "/ai-assistant", label: "AI Assistant", icon: <Sparkles className="w-5 h-5" /> },
     ],
     sales: [
       { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" />, badge: overdueCount || undefined },
       { to: "/leads", label: "My Leads", icon: <ClipboardList className="w-5 h-5" /> },
       { to: "/leads/board", label: "Leads Board", icon: <KanbanSquare className="w-5 h-5" /> },
+      ELITE_NAV,
+      INVENTORY_NAV,
+      LOGISTICS_NAV,
       { to: "/pipeline", label: "Pipeline", icon: <BarChart3 className="w-5 h-5" /> },
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
-      { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" /> },
+      { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" />, badge: chatUnread || undefined },
       { to: "/ai-assistant", label: "AI Assistant", icon: <Sparkles className="w-5 h-5" /> },
     ],
     service_head: [
       { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" />, badge: pendingJobCount || undefined },
       { to: "/service-jobs", label: "Service Jobs", icon: <Wrench className="w-5 h-5" /> },
+      ELITE_NAV,
+      INVENTORY_NAV,
+      LOGISTICS_NAV,
       { to: "/claims", label: "Claims", icon: <FileText className="w-5 h-5" /> },
       { to: "/calendar", label: "Calendar", icon: <CalendarDays className="w-5 h-5" /> },
-      { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" /> },
+      { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
+      { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" />, badge: chatUnread || undefined },
       { to: "/ai-assistant", label: "AI Assistant", icon: <Sparkles className="w-5 h-5" /> },
     ],
     field_agent: [
@@ -87,14 +114,34 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
     accounts: [
       { to: "/", label: "Approvals", icon: <ShieldCheck className="w-5 h-5" /> },
       { to: "/accounts/approvals", label: "All Approvals", icon: <ClipboardList className="w-5 h-5" /> },
-      { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" /> },
+      ELITE_NAV,
+      { to: "/accounts/purchases", label: "Company Purchases", icon: <Receipt className="w-5 h-5" /> },
+      { to: "/accounts/suppliers", label: "Suppliers", icon: <Truck className="w-5 h-5" /> },
+      INVENTORY_NAV,
+      LOGISTICS_NAV,
+      { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
+      { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" />, badge: chatUnread || undefined },
     ],
   };
 
-  const navItems = NAV_ITEMS[user.role];
+  const ATTENDANCE_ITEM: NavItem = { to: "/attendance", label: "Attendance", icon: <Clock className="w-5 h-5" /> };
+  const DIRECTORY_ITEM: NavItem = { to: "/directory", label: "Directory", icon: <BookUser className="w-5 h-5" /> };
+  const LEADERBOARD_ITEM: NavItem = { to: "/dashboard/leaderboard", label: "Leaderboard", icon: <Trophy className="w-5 h-5" /> };
+  const PROFILE_ITEM: NavItem = { to: "/profile", label: "My Profile", icon: <UserCircle className="w-5 h-5" /> };
+  const showLeaderboard = ["admin", "sales", "service_head", "accounts"].includes(user.role);
+  const navItems = [
+    ...NAV_ITEMS[user.role],
+    ATTENDANCE_ITEM,
+    DIRECTORY_ITEM,
+    ...(showLeaderboard ? [LEADERBOARD_ITEM] : []),
+    PROFILE_ITEM,
+  ];
 
   return (
     <div className="min-h-screen flex bg-background">
+      <ChatNotifier />
+      <LeadNotifier />
+      <ChatArrivalFlash />
       {sidebarOpen && (
         <div className="fixed inset-0 bg-foreground/20 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
@@ -128,7 +175,13 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
               {item.icon}
               {item.label}
               {item.badge && item.badge > 0 && (
-                <Badge className="ml-auto bg-destructive text-destructive-foreground text-xs px-1.5 py-0">{item.badge}</Badge>
+                <Badge
+                  className={`ml-auto bg-destructive text-destructive-foreground text-xs px-2 py-0.5 ${
+                    item.label === "Chat" ? "animate-pulse shadow-lg shadow-destructive/50" : ""
+                  }`}
+                >
+                  {item.badge}
+                </Badge>
               )}
             </NavLink>
           ))}
@@ -136,9 +189,12 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
 
         <div className="p-3 border-t border-sidebar-border">
           <div className="flex items-center gap-3 px-3 py-2">
-            <div className="w-8 h-8 rounded-full gradient-primary flex items-center justify-center text-primary-foreground text-sm font-bold">
-              {user.name.charAt(0)}
-            </div>
+            <Avatar className="w-8 h-8">
+              <AvatarImage src={profile?.profile_picture_url || undefined} />
+              <AvatarFallback className="gradient-primary text-primary-foreground text-sm font-bold">
+                {user.name.charAt(0)}
+              </AvatarFallback>
+            </Avatar>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-sidebar-foreground truncate">{user.name}</p>
               <p className="text-xs text-sidebar-foreground/50">{ROLE_LABELS[user.role]}</p>
@@ -161,6 +217,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
             <Menu className="w-5 h-5" />
           </button>
           <div className="flex-1" />
+          <AttendanceClockButton />
           <NetworkStatusBadge />
           <NotificationPanel />
         </header>
@@ -168,6 +225,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
           {children}
         </main>
       </div>
+      <DiscountCalculator />
     </div>
   );
 };
