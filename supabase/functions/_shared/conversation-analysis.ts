@@ -112,24 +112,24 @@ export function pickTemplateTitle(opts: {
   if (unansweredCount >= 1 && daysSinceLastInbound >= 2)
     return { title: "No response 48h", messageKind: "no_response_d2" };
 
-  // Concern-specific responses (highest signal)
-  if (concern === "price")          return { title: "Concern: price/value", messageKind: "objection_price" };
-  if (concern === "delivery")       return { title: "Concern: delivery", messageKind: "concern_delivery" };
-  if (concern === "quality")        return { title: "Concern: quality/durability", messageKind: "concern_quality" };
-  if (concern === "customization")  return { title: "Concern: customization", messageKind: "concern_customization" };
-  if (concern === "comparison")     return { title: "Objection: show other options", messageKind: "objection_comparison" };
+  // Concern-specific responses — titles match seeded message_templates rows exactly
+  if (concern === "price")          return { title: "Objection Address - Budget", messageKind: "objection_price" };
+  if (concern === "delivery")       return { title: "Delivery Reassurance", messageKind: "concern_delivery" };
+  if (concern === "quality")        return { title: "Quality Proof", messageKind: "concern_quality" };
+  if (concern === "customization")  return { title: "Objection Address - Fit", messageKind: "concern_customization" };
+  if (concern === "comparison")     return { title: "Product Comparison", messageKind: "objection_comparison" };
 
   // Intent-driven
-  if (intent === "objection")       return { title: "Objection: not ready yet", messageKind: "objection_general" };
-  if (intent === "ready_to_buy")    return { title: "Objection: still thinking", messageKind: "ready_nudge" };
+  if (intent === "objection")       return { title: "Confidence Boost", messageKind: "objection_general" };
+  if (intent === "ready_to_buy")    return { title: "Move to Close", messageKind: "ready_nudge" };
 
-  // Stage-driven defaults (fall back to existing stage templates if these aren't found)
-  if (journeyStage === "problem")      return { title: "Curiosity: why now", messageKind: "curiosity" };
-  if (journeyStage === "exploration")  return { title: "Curiosity: space size", messageKind: "curiosity" };
-  if (journeyStage === "evaluation")   return { title: "Curiosity: top concern", messageKind: "curiosity" };
-  if (journeyStage === "reassurance")  return { title: "Relationship: found something", messageKind: "relationship" };
-  if (journeyStage === "decision")     return { title: "Objection: still thinking", messageKind: "decision_nudge" };
-  if (journeyStage === "cold")         return { title: "No response 72h", messageKind: "cold_reengage" };
+  // Stage-driven defaults — map to real template titles per stage
+  if (journeyStage === "problem")      return { title: "Problem Acknowledgment", messageKind: "curiosity" };
+  if (journeyStage === "exploration")  return { title: "Guided Selling - Style", messageKind: "curiosity" };
+  if (journeyStage === "evaluation")   return { title: "Family Alignment", messageKind: "curiosity" };
+  if (journeyStage === "reassurance")  return { title: "Confidence Boost", messageKind: "relationship" };
+  if (journeyStage === "decision")     return { title: "Final Urgency", messageKind: "decision_nudge" };
+  if (journeyStage === "cold")         return { title: "Problem Acknowledgment", messageKind: "cold_reengage" };
 
   return { title: null, messageKind: "stage_default" };
 }

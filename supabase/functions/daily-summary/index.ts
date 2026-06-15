@@ -29,8 +29,8 @@ Deno.serve(async (req) => {
       const userClient = createClient(supabaseUrl, anonKey, {
         global: { headers: { Authorization: authHeader } },
       });
-      const { data: claimsData } = await userClient.auth.getClaims(token);
-      const userId = claimsData?.claims?.sub;
+      const { data: userData } = await userClient.auth.getUser();
+      const userId = userData?.user?.id;
       if (userId) {
         const adminClient = createClient(supabaseUrl, serviceRoleKey);
         const { data: isAdmin } = await adminClient.rpc("has_role", {
@@ -62,10 +62,14 @@ Deno.serve(async (req) => {
     const roles = rolesRes.data || [];
     const profiles = profilesRes.data || [];
 
-    // Fetch today's data
+    // Fetch only required columns — avoids full table scan on large datasets
     const [leadsRes, jobsRes] = await Promise.all([
-      supabase.from("leads").select("*").is("deleted_at", null),
-      supabase.from("service_jobs").select("*").is("deleted_at", null),
+      supabase.from("leads")
+        .select("id,status,created_at,assigned_to,created_by,value_in_rupees,last_follow_up")
+        .is("deleted_at", null),
+      supabase.from("service_jobs")
+        .select("id,status,type,value,is_foc,completed_at,created_at")
+        .is("deleted_at", null),
     ]);
 
     const allLeads = leadsRes.data || [];

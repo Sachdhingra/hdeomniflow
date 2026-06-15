@@ -5,3 +5,15 @@ verify_jwt = false
 
 [functions.interakt-webhook]
 verify_jwt = false
+
+[functions.twilio-status]
+verify_jwt = false
+
+[functions.send-whatsapp]
+verify_jwt = false
+
+[functions.daily-summary]
+verify_jwt = false
+
+[functions.twilio-webhook]
+verify_jwt = false
