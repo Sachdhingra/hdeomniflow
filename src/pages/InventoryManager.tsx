@@ -918,7 +918,7 @@ function RequestProductDialog({
   open: boolean; onClose: () => void; allProducts: RawProduct[]; userId: string; onCreated: () => void;
 }) {
   const [search, setSearch] = useState("");
-  const [picked, setPicked] = useState<RawProduct | null>(null);
+  const [pickedItems, setPickedItems] = useState<Array<{product: RawProduct; qty: number}>>([]);
   const [reason, setReason] = useState<string>("no_stock");
   const [customSpecs, setCustomSpecs] = useState("");
   const [customerName, setCustomerName] = useState("");
@@ -927,41 +927,50 @@ function RequestProductDialog({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open) { setSearch(""); setPicked(null); setReason("no_stock"); setCustomSpecs(""); setCustomerName(""); setCustomerPhone(""); setNotes(""); }
+    if (open) { setSearch(""); setPickedItems([]); setReason("no_stock"); setCustomSpecs(""); setCustomerName(""); setCustomerPhone(""); setNotes(""); }
   }, [open]);
 
+  const pickedIds = useMemo(() => new Set(pickedItems.map(i => i.product.id)), [pickedItems]);
+
   const filtered = useMemo(() => {
+    const available = allProducts.filter(p => !pickedIds.has(p.id));
+    if (!search) return available.slice(0, 30);
     const q = search.toLowerCase();
-    if (!q) return allProducts.slice(0, 30);
-    return allProducts.filter(p => p.product_name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)).slice(0, 30);
-  }, [allProducts, search]);
+    return available.filter(p => p.product_name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)).slice(0, 30);
+  }, [allProducts, search, pickedIds]);
 
   const handleCreate = async () => {
-    if (!picked) return toast.error("Pick a product first");
+    if (pickedItems.length === 0) return toast.error("Pick at least one product");
     if (!reason) return toast.error("Select a reason");
     setSaving(true);
     try {
-      const numRes = await supabase.rpc("generate_hde_order_number" as any);
-      const orderNum = numRes.data || `HDE-${Date.now()}`;
       const orderTag = ({ no_stock: "stock_out_order", fresh_piece: "fresh_piece_order", custom: "custom_order" } as any)[reason];
+      const orderNums: string[] = [];
 
-      const payload: any = {
-        order_number: orderNum, order_type: "company",
-        company_order_reason: reason, order_tag: orderTag,
-        product_id: picked.id, status: "pending_approval",
-        customer_name: customerName || null, customer_phone: customerPhone || null,
-        notes: notes || null, custom_specs: customSpecs || null,
-        created_by: userId, qty_sold: 1,
-      };
-      const { data, error } = await supabase.from("hde_orders" as any).insert(payload).select().single();
-      if (error || !data) throw new Error(error?.message || "Failed");
+      for (const item of pickedItems) {
+        const numRes = await supabase.rpc("generate_hde_order_number" as any);
+        const orderNum = numRes.data || `HDE-${Date.now()}`;
+        orderNums.push(orderNum);
 
-      await supabase.from("hde_order_timeline" as any).insert({
-        order_id: (data as any).id, action: "Order Created",
-        description: `Warehouse request — ${picked.product_name} (${REASON_LABELS[reason]})`,
-        performed_by: userId,
-      });
-      toast.success(`Request ${orderNum} created`);
+        const payload: any = {
+          order_number: orderNum, order_type: "company",
+          company_order_reason: reason, order_tag: orderTag,
+          product_id: item.product.id, status: "pending_approval",
+          customer_name: customerName || null, customer_phone: customerPhone || null,
+          notes: notes || null, custom_specs: customSpecs || null,
+          created_by: userId, qty_sold: item.qty,
+        };
+        const { data, error } = await supabase.from("hde_orders" as any).insert(payload).select().single();
+        if (error || !data) throw new Error(`${item.product.product_name}: ${error?.message || "Failed"}`);
+
+        await supabase.from("hde_order_timeline" as any).insert({
+          order_id: (data as any).id, action: "Order Created",
+          description: `Warehouse request — ${item.product.product_name} × ${item.qty} (${REASON_LABELS[reason]})`,
+          performed_by: userId,
+        });
+      }
+
+      toast.success(pickedItems.length > 1 ? `${pickedItems.length} requests created (${orderNums[0]}…)` : `Request ${orderNums[0]} created`);
       onCreated();
       onClose();
     } catch (e: any) {
@@ -982,34 +991,52 @@ function RequestProductDialog({
             Pull any product from the catalogue — no need to first add it to inventory. Creates a pending warehouse/company order for accounts approval.
           </p>
 
-          {!picked ? (
-            <>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input className="pl-9" placeholder="Search product name or SKU…" value={search} onChange={e => setSearch(e.target.value)} autoFocus />
-              </div>
-              <div className="border rounded-lg max-h-64 overflow-y-auto">
-                {filtered.length === 0 ? (
-                  <p className="px-3 py-4 text-sm text-muted-foreground text-center">No products found</p>
-                ) : filtered.map(p => (
-                  <button key={p.id} onClick={() => setPicked(p)}
+          {/* Search to add products */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input className="pl-9" placeholder="Search product name or SKU…" value={search} onChange={e => setSearch(e.target.value)} autoFocus />
+          </div>
+          {(search || pickedItems.length === 0) && (
+            <div className="border rounded-lg max-h-52 overflow-y-auto">
+              {filtered.length === 0
+                ? <p className="px-3 py-4 text-sm text-muted-foreground text-center">No products found</p>
+                : filtered.map(p => (
+                  <button key={p.id}
+                    onClick={() => { setPickedItems(items => [...items, { product: p, qty: 1 }]); setSearch(""); }}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 border-b last:border-0">
                     <div className="font-medium">{p.product_name}</div>
                     <div className="text-xs text-muted-foreground font-mono">{p.sku} · ₹{p.net_price.toLocaleString("en-IN")}</div>
                   </button>
                 ))}
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="bg-muted/50 rounded-lg p-3 flex items-start justify-between gap-2">
-                <div>
-                  <p className="text-sm font-semibold">{picked.product_name}</p>
-                  <p className="text-xs text-muted-foreground font-mono">{picked.sku} · ₹{picked.net_price.toLocaleString("en-IN")}</p>
-                </div>
-                <Button variant="ghost" size="sm" onClick={() => setPicked(null)}><X className="w-4 h-4" /></Button>
-              </div>
+            </div>
+          )}
 
+          {/* Picked items */}
+          {pickedItems.length > 0 && (
+            <div className="space-y-1.5">
+              {pickedItems.map((item, i) => (
+                <div key={item.product.id} className="flex items-center gap-2 bg-muted/50 border rounded-lg p-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold truncate">{item.product.product_name}</p>
+                    <p className="text-[10px] text-muted-foreground font-mono">{item.product.sku} · ₹{item.product.net_price.toLocaleString("en-IN")}</p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button onClick={() => setPickedItems(items => items.map((x, j) => j === i ? { ...x, qty: Math.max(1, x.qty - 1) } : x))}
+                      className="w-6 h-6 rounded border flex items-center justify-center text-sm hover:bg-muted">−</button>
+                    <span className="w-6 text-center text-xs font-medium">{item.qty}</span>
+                    <button onClick={() => setPickedItems(items => items.map((x, j) => j === i ? { ...x, qty: x.qty + 1 } : x))}
+                      className="w-6 h-6 rounded border flex items-center justify-center text-sm hover:bg-muted">+</button>
+                    <button onClick={() => setPickedItems(items => items.filter((_, j) => j !== i))}
+                      className="ml-1 text-muted-foreground hover:text-destructive text-base leading-none">×</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Config — shown only after at least one product picked */}
+          {pickedItems.length > 0 && (
+            <>
               <div className="space-y-2">
                 <Label>Reason <span className="text-destructive">*</span></Label>
                 <Select value={reason} onValueChange={setReason}>
@@ -1024,7 +1051,6 @@ function RequestProductDialog({
                   <Textarea value={customSpecs} onChange={e => setCustomSpecs(e.target.value)} placeholder="Custom fabric, colour, size, specs…" rows={2} />
                 )}
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div><Label>Customer Name</Label><Input value={customerName} onChange={e => setCustomerName(e.target.value)} /></div>
                 <div><Label>Customer Phone</Label><Input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} /></div>
@@ -1035,7 +1061,9 @@ function RequestProductDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleCreate} disabled={saving || !picked}>{saving ? "Creating…" : "Create Request"}</Button>
+          <Button onClick={handleCreate} disabled={saving || pickedItems.length === 0}>
+            {saving ? "Creating…" : pickedItems.length > 1 ? `Create ${pickedItems.length} Requests` : "Create Request"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
