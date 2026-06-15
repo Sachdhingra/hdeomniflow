@@ -634,11 +634,11 @@ function ReceiveStockDialog({
 // ─── Create Order dialog ──────────────────────────────────────────────────────
 
 function CreateOrderDialog({
-  open, onClose, mode, article, allProducts, locations, userId, onCreated,
+  open, onClose, mode, article, allProducts, locations, trackedArticles, userId, onCreated,
 }: {
   open: boolean; onClose: () => void; mode: "warehouse" | "showroom" | "company" | null;
   article: TrackedArticle | null; allProducts: RawProduct[]; locations: Location[];
-  userId: string; onCreated: () => void;
+  trackedArticles: TrackedArticle[]; userId: string; onCreated: () => void;
 }) {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -649,10 +649,12 @@ function CreateOrderDialog({
   const [companyReason, setCompanyReason] = useState("");
   const [replacementProductIds, setReplacementProductIds] = useState<string[]>([]);
   const [replacementSearch, setReplacementSearch] = useState("");
+  const [extraItems, setExtraItems] = useState<Array<{article: TrackedArticle; qty: number}>>([]);
+  const [extraItemSearch, setExtraItemSearch] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open) { setCustomerName(""); setCustomerPhone(""); setLocationId(""); setSoldQty(1); setNotes(""); setCustomSpecs(""); setCompanyReason(""); setReplacementProductIds([]); setReplacementSearch(""); }
+    if (open) { setCustomerName(""); setCustomerPhone(""); setLocationId(""); setSoldQty(1); setNotes(""); setCustomSpecs(""); setCompanyReason(""); setReplacementProductIds([]); setReplacementSearch(""); setExtraItems([]); setExtraItemSearch(""); }
   }, [open]);
 
   const filteredReplacement = useMemo(() => {
@@ -661,6 +663,15 @@ function CreateOrderDialog({
     const q = replacementSearch.toLowerCase();
     return allProducts.filter(p => !excluded.has(p.id) && (p.product_name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q))).slice(0, 20);
   }, [allProducts, replacementSearch, replacementProductIds]);
+
+  const pickedIds = useMemo(() => new Set([article?.product_id, ...extraItems.map(e => e.article.product_id)].filter(Boolean) as string[]), [article, extraItems]);
+
+  const filteredExtraArticles = useMemo(() => {
+    const available = trackedArticles.filter(a => !pickedIds.has(a.product_id));
+    if (!extraItemSearch) return available.slice(0, 15);
+    const q = extraItemSearch.toLowerCase();
+    return available.filter(a => a.product_name.toLowerCase().includes(q) || a.sku.toLowerCase().includes(q)).slice(0, 15);
+  }, [trackedArticles, pickedIds, extraItemSearch]);
 
   const locationOptions = mode === "warehouse" ? locations.filter(l => l.type === "warehouse") : locations.filter(l => l.type === "showroom");
 
@@ -671,7 +682,11 @@ function CreateOrderDialog({
     if (!locationId) return toast.error("Select a location");
     if ((mode === "warehouse" || mode === "showroom") && soldQty < 1) return toast.error("Quantity must be at least 1");
     const availableQty = article.locs.find(l => l.location_id === locationId)?.qty ?? 0;
-    if ((mode === "warehouse" || mode === "showroom") && soldQty > availableQty) return toast.error(`Only ${availableQty} unit${availableQty !== 1 ? "s" : ""} available at this location`);
+    if ((mode === "warehouse" || mode === "showroom") && soldQty > availableQty) return toast.error(`Only ${availableQty} available for ${article.product_name}`);
+    for (const e of extraItems) {
+      const eAvail = e.article.locs.find(l => l.location_id === locationId)?.qty ?? 0;
+      if ((mode === "warehouse" || mode === "showroom") && e.qty > eAvail) return toast.error(`Only ${eAvail} available for ${e.article.product_name}`);
+    }
 
     setSaving(true);
 
@@ -679,56 +694,63 @@ function CreateOrderDialog({
       ? ({ no_stock: "stock_out_order", fresh_piece: "fresh_piece_order", custom: "custom_order" } as any)[companyReason]
       : undefined;
 
-    const numRes = await supabase.rpc("generate_hde_order_number" as any);
-    const orderNum = numRes.data || `HDE-${Date.now()}`;
+    // Build one order per picked item (initial article + extra items)
+    const allItems = [{ article: article!, qty: soldQty }, ...extraItems];
+    const orderNums: string[] = [];
 
-    const orderPayload: any = {
-      order_number: orderNum, order_type: mode,
-      company_order_reason: companyReason || null, order_tag: orderTag || null,
-      product_id: article.product_id,
-      replacement_product_id: replacementProductIds[0] || null,
-      replacement_product_ids: replacementProductIds.length > 0 ? replacementProductIds : null,
-      location_id: locationId, customer_name: customerName || null, customer_phone: customerPhone || null,
-      status: "pending_approval", notes: notes || null, custom_specs: customSpecs || null, created_by: userId,
-      qty_sold: (mode === "warehouse" || mode === "showroom") ? soldQty : 1,
-    };
+    for (const item of allItems) {
+      const numRes = await supabase.rpc("generate_hde_order_number" as any);
+      const orderNum = numRes.data || `HDE-${Date.now()}`;
+      orderNums.push(orderNum);
 
-    let { data, error } = await supabase.from("hde_orders" as any).insert(orderPayload).select().single();
-    if (error?.message?.includes("replacement_product_ids")) {
-      const { replacement_product_ids: _, ...fallbackPayload } = orderPayload;
-      const res2 = await supabase.from("hde_orders" as any).insert(fallbackPayload).select().single();
-      data = res2.data; error = res2.error;
-    }
-    if (error || !data) { setSaving(false); return toast.error(error?.message || "Failed"); }
+      const orderPayload: any = {
+        order_number: orderNum, order_type: mode,
+        company_order_reason: companyReason || null, order_tag: orderTag || null,
+        product_id: item.article.product_id,
+        replacement_product_id: replacementProductIds[0] || null,
+        replacement_product_ids: replacementProductIds.length > 0 ? replacementProductIds : null,
+        location_id: locationId, customer_name: customerName || null, customer_phone: customerPhone || null,
+        status: "pending_approval", notes: notes || null, custom_specs: customSpecs || null, created_by: userId,
+        qty_sold: (mode === "warehouse" || mode === "showroom") ? item.qty : 1,
+      };
 
-    const orderId = (data as any).id;
+      let { data, error } = await supabase.from("hde_orders" as any).insert(orderPayload).select().single();
+      if (error?.message?.includes("replacement_product_ids")) {
+        const { replacement_product_ids: _, ...fallbackPayload } = orderPayload;
+        const res2 = await supabase.from("hde_orders" as any).insert(fallbackPayload).select().single();
+        data = res2.data; error = res2.error;
+      }
+      if (error || !data) { setSaving(false); return toast.error(`${item.article.product_name}: ${error?.message || "Failed"}`); }
 
-    // ── Auto-deduct inventory by sold qty ─────────────────────────────────
-    if (mode === "warehouse" || mode === "showroom") {
-      const currentQty = article.locs.find(l => l.location_id === locationId)?.qty ?? 0;
-      await supabase.from("hde_inventory" as any)
-        .update({ quantity: Math.max(0, currentQty - soldQty), updated_by: userId })
-        .eq("product_id", article.product_id)
-        .eq("location_id", locationId);
-    }
+      const orderId = (data as any).id;
 
-    const qtyNote = (mode === "warehouse" || mode === "showroom") ? ` — Qty: ${soldQty}` : "";
-    await supabase.from("hde_order_timeline" as any).insert({
-      order_id: orderId, action: "Order Created",
-      description: `${ORDER_TYPE_LABELS[mode]} — ${article.product_name}${companyReason ? ` (${REASON_LABELS[companyReason]})` : ""}${qtyNote}`,
-      performed_by: userId,
-    });
+      // Auto-deduct inventory
+      if (mode === "warehouse" || mode === "showroom") {
+        const currentQty = item.article.locs.find(l => l.location_id === locationId)?.qty ?? 0;
+        await supabase.from("hde_inventory" as any)
+          .update({ quantity: Math.max(0, currentQty - item.qty), updated_by: userId })
+          .eq("product_id", item.article.product_id)
+          .eq("location_id", locationId);
+      }
 
-    if (mode === "showroom") {
-      await supabase.from("hde_display_items" as any).insert({
-        product_id: article.product_id, location_id: locationId,
-        display_status: "sold", replacement_product_id: replacementProductIds[0] || null,
-        order_id: orderId, updated_by: userId,
+      const qtyNote = (mode === "warehouse" || mode === "showroom") ? ` — Qty: ${item.qty}` : "";
+      await supabase.from("hde_order_timeline" as any).insert({
+        order_id: orderId, action: "Order Created",
+        description: `${ORDER_TYPE_LABELS[mode]} — ${item.article.product_name}${companyReason ? ` (${REASON_LABELS[companyReason]})` : ""}${qtyNote}`,
+        performed_by: userId,
       });
+
+      if (mode === "showroom") {
+        await supabase.from("hde_display_items" as any).insert({
+          product_id: item.article.product_id, location_id: locationId,
+          display_status: "sold", replacement_product_id: replacementProductIds[0] || null,
+          order_id: orderId, updated_by: userId,
+        });
+      }
     }
 
     setSaving(false);
-    toast.success(`Order ${orderNum} created`);
+    toast.success(allItems.length > 1 ? `${allItems.length} orders created (${orderNums[0]}…)` : `Order ${orderNums[0]} created`);
     onCreated();
     onClose();
   };
@@ -745,10 +767,48 @@ function CreateOrderDialog({
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
+          {/* Primary article */}
           <div className="bg-muted/50 rounded-lg p-3">
             <p className="text-sm font-semibold">{article.product_name}</p>
             <p className="text-xs text-muted-foreground">{article.sku} · ₹{article.net_price.toLocaleString("en-IN")}</p>
           </div>
+
+          {/* Extra items added to this order */}
+          {(mode === "warehouse" || mode === "showroom") && (
+            <div className="space-y-2">
+              {extraItems.map((e, i) => (
+                <div key={e.article.product_id} className="flex items-center gap-2 bg-muted/30 border rounded-lg p-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold truncate">{e.article.product_name}</p>
+                    <p className="text-[10px] text-muted-foreground">{e.article.sku}</p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button onClick={() => setExtraItems(items => items.map((x, j) => j === i ? { ...x, qty: Math.max(1, x.qty - 1) } : x))} className="w-6 h-6 rounded border flex items-center justify-center text-sm hover:bg-muted">−</button>
+                    <span className="w-6 text-center text-xs font-medium">{e.qty}</span>
+                    <button onClick={() => { const max = e.article.locs.find(l => l.location_id === locationId)?.qty ?? 99; setExtraItems(items => items.map((x, j) => j === i ? { ...x, qty: Math.min(max, x.qty + 1) } : x)); }} className="w-6 h-6 rounded border flex items-center justify-center text-sm hover:bg-muted">+</button>
+                    <button onClick={() => setExtraItems(items => items.filter((_, j) => j !== i))} className="ml-1 text-muted-foreground hover:text-destructive text-sm">×</button>
+                  </div>
+                </div>
+              ))}
+              <div>
+                <Input placeholder="+ Add another product to this order…" value={extraItemSearch} onChange={e => setExtraItemSearch(e.target.value)} className="text-sm" />
+                {extraItemSearch && (
+                  <div className="border rounded-lg max-h-36 overflow-y-auto mt-1">
+                    {filteredExtraArticles.length === 0
+                      ? <p className="px-3 py-2 text-sm text-muted-foreground">No products found</p>
+                      : filteredExtraArticles.map(a => (
+                        <button key={a.product_id} onClick={() => { setExtraItems(items => [...items, { article: a, qty: 1 }]); setExtraItemSearch(""); }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 border-b last:border-0">
+                          <span className="font-medium">{a.product_name}</span>
+                          <span className="text-muted-foreground ml-2 text-xs">{a.sku}</span>
+                          {locationId && <span className="text-muted-foreground ml-1 text-xs">(stock: {a.locs.find(l => l.location_id === locationId)?.qty ?? 0})</span>}
+                        </button>
+                      ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {mode === "company" && (
             <div className="space-y-2">
@@ -782,7 +842,7 @@ function CreateOrderDialog({
 
           {(mode === "warehouse" || mode === "showroom") && (
             <div>
-              <Label>Quantity Sold <span className="text-destructive">*</span></Label>
+              <Label>{article.product_name} — Qty <span className="text-destructive">*</span></Label>
               <div className="flex items-center gap-2 mt-1">
                 <Input
                   type="number"
@@ -985,10 +1045,10 @@ function RequestProductDialog({
 // ─── Order Detail dialog ──────────────────────────────────────────────────────
 
 function OrderDetailDialog({
-  order, open, onClose, userId, userRole, fieldAgents, onUpdated,
+  order, open, onClose, userId, userRole, fieldAgents, locations, onUpdated,
 }: {
   order: HdeOrder | null; open: boolean; onClose: () => void; userId: string;
-  userRole: string; fieldAgents: Profile[]; onUpdated: () => void;
+  userRole: string; fieldAgents: Profile[]; locations: Location[]; onUpdated: () => void;
 }) {
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [photos, setPhotos] = useState<JobPhoto[]>([]);
@@ -1057,11 +1117,48 @@ function OrderDetailDialog({
     if (photos.length === 0) return toast.error("Upload at least one photo first");
     setSaving(true);
     await supabase.from("hde_orders" as any).update({ status: "completed", completed_at: new Date().toISOString(), completed_by: userId }).eq("id", order!.id);
+
     if (order!.order_type === "showroom") {
       await supabase.from("hde_display_items" as any).update({ display_status: "installed", updated_by: userId }).eq("order_id", order!.id);
+
+      // Auto-shift inventory: replacement products warehouse → showroom
+      const repIds: string[] = order!.replacement_product_ids?.length
+        ? order!.replacement_product_ids
+        : (order!.replacement_product_id ? [order!.replacement_product_id] : []);
+
+      if (repIds.length > 0 && order!.location_id) {
+        for (const repId of repIds) {
+          const { data: invRows } = await supabase.from("hde_inventory" as any).select("*").eq("product_id", repId);
+          const rows = (invRows as any[]) || [];
+
+          // Deduct from the warehouse with the most stock
+          const warehouseRow = rows
+            .filter(r => locations.find(l => l.id === r.location_id)?.type === "warehouse" && r.quantity > 0)
+            .sort((a, b) => b.quantity - a.quantity)[0];
+          if (warehouseRow) {
+            await supabase.from("hde_inventory" as any)
+              .update({ quantity: Math.max(0, warehouseRow.quantity - 1), updated_by: userId })
+              .eq("id", warehouseRow.id);
+          }
+
+          // Add to the target showroom
+          const showroomRow = rows.find(r => r.location_id === order!.location_id);
+          if (showroomRow) {
+            await supabase.from("hde_inventory" as any)
+              .update({ quantity: showroomRow.quantity + 1, updated_by: userId })
+              .eq("id", showroomRow.id);
+          } else {
+            await supabase.from("hde_inventory" as any).insert({
+              product_id: repId, location_id: order!.location_id,
+              quantity: 1, inventory_type: "display", updated_by: userId,
+            });
+          }
+        }
+      }
     }
-    await log("Job Completed", actionNote || "Work marked complete");
-    setSaving(false); toast.success("Completed"); onUpdated(); onClose();
+
+    await log("Job Completed", actionNote || "Work marked complete — inventory updated");
+    setSaving(false); toast.success("Completed — inventory updated"); onUpdated(); onClose();
   };
 
   const handlePhotoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2143,8 +2240,8 @@ export default function InventoryManager() {
       {/* Dialogs */}
       <AddArticleDialog open={addArticleOpen} onClose={() => setAddArticleOpen(false)} allProducts={allProducts} locations={locations} userId={user.id} onDone={loadAll} />
       <ReceiveStockDialog open={!!receiveArticle} onClose={() => setReceiveArticle(null)} article={receiveArticle} locations={locations} userId={user.id} onDone={loadAll} />
-      <CreateOrderDialog open={!!sellMode} onClose={() => { setSellMode(null); setSellArticle(null); }} mode={sellMode} article={sellArticle} allProducts={allProducts} locations={locations} userId={user.id} onCreated={loadAll} />
-      <OrderDetailDialog order={selectedOrder} open={orderDetailOpen} onClose={() => { setOrderDetailOpen(false); setSelectedOrder(null); }} userId={user.id} userRole={role} fieldAgents={fieldAgents} onUpdated={loadAll} />
+      <CreateOrderDialog open={!!sellMode} onClose={() => { setSellMode(null); setSellArticle(null); }} mode={sellMode} article={sellArticle} allProducts={allProducts} locations={locations} trackedArticles={trackedArticles} userId={user.id} onCreated={loadAll} />
+      <OrderDetailDialog order={selectedOrder} open={orderDetailOpen} onClose={() => { setOrderDetailOpen(false); setSelectedOrder(null); }} userId={user.id} userRole={role} fieldAgents={fieldAgents} locations={locations} onUpdated={loadAll} />
       <RequestProductDialog open={requestProductOpen} onClose={() => setRequestProductOpen(false)} allProducts={allProducts} userId={user.id} onCreated={loadAll} />
     </div>
   );
