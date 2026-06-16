@@ -2119,7 +2119,7 @@ export default function InventoryManager() {
           <p className="text-sm text-muted-foreground">Display articles, stock levels and fulfillment</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          {(isAdmin || isSales || isAccounts || isServiceHead) && (
+          {isAdmin && (
             <Button variant="outline" size="sm" onClick={() => setAddArticleOpen(true)}>
               <Plus className="w-4 h-4 mr-1" />Add Article
             </Button>
