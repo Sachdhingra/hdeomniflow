@@ -634,12 +634,13 @@ function ReceiveStockDialog({
 // ─── Create Order dialog ──────────────────────────────────────────────────────
 
 function CreateOrderDialog({
-  open, onClose, mode, article, allProducts, locations, trackedArticles, userId, onCreated,
+  open, onClose, mode, article, allProducts, locations, trackedArticles, userId, userRole, onCreated,
 }: {
   open: boolean; onClose: () => void; mode: "warehouse" | "showroom" | "company" | null;
   article: TrackedArticle | null; allProducts: RawProduct[]; locations: Location[];
-  trackedArticles: TrackedArticle[]; userId: string; onCreated: () => void;
+  trackedArticles: TrackedArticle[]; userId: string; userRole: string; onCreated: () => void;
 }) {
+  const isAdmin = userRole === "admin";
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [locationId, setLocationId] = useState("");
@@ -651,11 +652,23 @@ function CreateOrderDialog({
   const [replacementSearch, setReplacementSearch] = useState("");
   const [extraItems, setExtraItems] = useState<Array<{article: TrackedArticle; qty: number}>>([]);
   const [extraItemSearch, setExtraItemSearch] = useState("");
+  const [adminOverride, setAdminOverride] = useState(false);
+  const [overrideReason, setOverrideReason] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open) { setCustomerName(""); setCustomerPhone(""); setLocationId(""); setSoldQty(1); setNotes(""); setCustomSpecs(""); setCompanyReason(""); setReplacementProductIds([]); setReplacementSearch(""); setExtraItems([]); setExtraItemSearch(""); }
+    if (open) {
+      setCustomerName(""); setCustomerPhone(""); setLocationId(""); setSoldQty(1); setNotes("");
+      setCustomSpecs(""); setCompanyReason(""); setReplacementProductIds([]); setReplacementSearch("");
+      setExtraItems([]); setExtraItemSearch(""); setAdminOverride(false); setOverrideReason("");
+    }
   }, [open]);
+
+  // Display stock for the selected showroom location (for the primary article)
+  const showroomDisplayQty = (mode === "showroom" && article && locationId)
+    ? (article.locs.find(l => l.location_id === locationId)?.qty ?? 0)
+    : null;
+  const needsAdminOverride = mode === "showroom" && showroomDisplayQty === 0;
 
   const filteredReplacement = useMemo(() => {
     const excluded = new Set(replacementProductIds);
