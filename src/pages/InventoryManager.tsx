@@ -1881,6 +1881,391 @@ function StockTable({ articles, locations, userId, isAdmin, userMap, onRefresh }
   );
 }
 
+// ─── Stock Count (admin) ──────────────────────────────────────────────────────
+
+interface CountCell { product_id: string; product_name: string; sku: string; location_id: string; location_name: string; system_qty: number; physical: string; reason: string; }
+
+function StockCountView({ articles, locations, userId, onRefresh }: { articles: TrackedArticle[]; locations: Location[]; userId: string; onRefresh: () => void; }) {
+  const [cells, setCells] = useState<CountCell[]>([]);
+  const [search, setSearch] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [report, setReport] = useState<CountCell[] | null>(null);
+
+  useEffect(() => {
+    const next: CountCell[] = [];
+    const parts = articles.flatMap(a => a.parts ?? [a as any]);
+    parts.forEach((a: any) => {
+      locations.forEach(l => {
+        const cell = a.locs.find((x: LocEntry) => x.location_id === l.id);
+        next.push({
+          product_id: a.product_id, product_name: a.product_name, sku: a.sku,
+          location_id: l.id, location_name: l.name,
+          system_qty: cell?.qty ?? 0, physical: "", reason: "",
+        });
+      });
+    });
+    setCells(next);
+    setReport(null);
+  }, [articles, locations]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return cells;
+    return cells.filter(c => c.product_name.toLowerCase().includes(q) || c.sku.toLowerCase().includes(q));
+  }, [cells, search]);
+
+  const updateCell = (idx: number, patch: Partial<CountCell>) => {
+    setCells(prev => prev.map((c, i) => i === idx ? { ...c, ...patch } : c));
+  };
+
+  const handleSubmit = async () => {
+    // Validate: cells with physical filled in
+    const changes = cells.filter(c => c.physical !== "" && !isNaN(parseInt(c.physical)));
+    if (changes.length === 0) { toast.error("Enter at least one physical count"); return; }
+    const variances = changes.filter(c => parseInt(c.physical) !== c.system_qty);
+    const missingReason = variances.find(v => !v.reason.trim());
+    if (missingReason) {
+      toast.error(`Reason required for variance on ${missingReason.product_name} @ ${missingReason.location_name}`);
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      for (const c of changes) {
+        const physical = parseInt(c.physical);
+        if (physical === c.system_qty) continue;
+        const locType = locations.find(l => l.id === c.location_id)?.type;
+        // Update hde_inventory
+        await supabase.from("hde_inventory" as any).upsert(
+          { product_id: c.product_id, location_id: c.location_id, quantity: physical, inventory_type: locType === "warehouse" ? "warehouse" : "display", updated_by: userId },
+          { onConflict: "product_id,location_id" }
+        );
+        // Audit log
+        await supabase.from("inventory_audit_log" as any).insert({
+          product_id: c.product_id,
+          action: "stock_count",
+          quantity_change: physical - c.system_qty,
+          location_id: c.location_id,
+          reason: c.reason || null,
+          created_by: userId,
+        });
+      }
+      toast.success(`Stock count recorded — ${variances.length} variance${variances.length === 1 ? "" : "s"}`);
+      setReport(variances.length > 0 ? variances : changes);
+      onRefresh();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save count");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <Input placeholder="Search article or SKU…" value={search} onChange={e => setSearch(e.target.value)} className="h-9 pl-7 text-sm" />
+        </div>
+        <p className="text-xs text-muted-foreground">{filtered.length} row{filtered.length === 1 ? "" : "s"}</p>
+        <Button onClick={handleSubmit} disabled={submitting} size="sm" className="gap-1">
+          {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckSquare className="w-3.5 h-3.5" />}
+          Submit Count
+        </Button>
+      </div>
+
+      {report && (
+        <Card className="p-3 border-amber-300 bg-amber-50">
+          <p className="text-sm font-semibold mb-2">Variance report</p>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader><TableRow>
+                <TableHead>Article</TableHead><TableHead>Location</TableHead>
+                <TableHead className="text-right">System</TableHead>
+                <TableHead className="text-right">Physical</TableHead>
+                <TableHead className="text-right">Variance</TableHead>
+                <TableHead>Reason</TableHead>
+              </TableRow></TableHeader>
+              <TableBody>
+                {report.map((r, i) => {
+                  const v = parseInt(r.physical) - r.system_qty;
+                  return (
+                    <TableRow key={i}>
+                      <TableCell className="text-sm">{r.product_name}<div className="text-xs text-muted-foreground font-mono">{r.sku}</div></TableCell>
+                      <TableCell className="text-sm">{r.location_name}</TableCell>
+                      <TableCell className="text-right text-sm">{r.system_qty}</TableCell>
+                      <TableCell className="text-right text-sm font-semibold">{r.physical}</TableCell>
+                      <TableCell className={`text-right text-sm font-bold ${v > 0 ? "text-green-600" : v < 0 ? "text-destructive" : ""}`}>{v > 0 ? `+${v}` : v}</TableCell>
+                      <TableCell className="text-xs">{r.reason || "—"}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </Card>
+      )}
+
+      <div className="overflow-x-auto rounded-lg border">
+        <Table>
+          <TableHeader><TableRow>
+            <TableHead>Article</TableHead><TableHead>SKU</TableHead><TableHead>Location</TableHead>
+            <TableHead className="text-right">System Qty</TableHead>
+            <TableHead>Physical Count</TableHead>
+            <TableHead>Variance</TableHead>
+            <TableHead>Reason (if variance)</TableHead>
+          </TableRow></TableHeader>
+          <TableBody>
+            {filtered.map((c, idx) => {
+              const realIdx = cells.indexOf(c);
+              const phys = parseInt(c.physical);
+              const variance = c.physical === "" || isNaN(phys) ? null : phys - c.system_qty;
+              return (
+                <TableRow key={`${c.product_id}-${c.location_id}`}>
+                  <TableCell className="text-sm">{c.product_name}</TableCell>
+                  <TableCell className="text-xs font-mono text-muted-foreground">{c.sku}</TableCell>
+                  <TableCell className="text-sm">{c.location_name}</TableCell>
+                  <TableCell className="text-right text-sm">{c.system_qty}</TableCell>
+                  <TableCell>
+                    <Input type="number" min={0} value={c.physical}
+                      onChange={e => updateCell(realIdx, { physical: e.target.value })}
+                      className="h-8 w-20 text-center" />
+                  </TableCell>
+                  <TableCell className={`text-sm font-semibold ${variance === null ? "text-muted-foreground" : variance > 0 ? "text-green-600" : variance < 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                    {variance === null ? "—" : variance > 0 ? `+${variance}` : variance}
+                  </TableCell>
+                  <TableCell>
+                    {variance !== null && variance !== 0 && (
+                      <Input value={c.reason} onChange={e => updateCell(realIdx, { reason: e.target.value })}
+                        placeholder="Required" className="h-8 text-sm" />
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+            {filtered.length === 0 && (
+              <TableRow><TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-8">No rows.</TableCell></TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Pending Display Resolution (admin) ───────────────────────────────────────
+
+function PendingDisplayView({ userId }: { userId: string }) {
+  const [rows, setRows] = useState<any[]>([]);
+  const [productMap, setProductMap] = useState<Map<string, { name: string; sku: string }>>(new Map());
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data } = await supabase.from("pending_display" as any).select("*").order("date_marked", { ascending: false });
+    const list = (data as any[]) || [];
+    setRows(list);
+    if (list.length > 0) {
+      const ids = list.map(r => r.product_id);
+      // Try inventory_products first (the legacy FK target), then fall back to products
+      const [{ data: invP }, { data: prods }] = await Promise.all([
+        supabase.from("inventory_products" as any).select("id, name").in("id", ids),
+        supabase.from("products" as any).select("id, product_name, sku").in("id", ids),
+      ]);
+      const m = new Map<string, { name: string; sku: string }>();
+      ((invP as any[]) || []).forEach((p: any) => m.set(p.id, { name: p.name, sku: "" }));
+      ((prods as any[]) || []).forEach((p: any) => m.set(p.id, { name: p.product_name, sku: p.sku }));
+      setProductMap(m);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const markDisplayed = async (row: any) => {
+    setBusy(row.id);
+    try {
+      await supabase.from("pending_display" as any).delete().eq("id", row.id);
+      await supabase.from("inventory_audit_log" as any).insert({
+        product_id: row.product_id,
+        action: "pending_resolved",
+        quantity_change: row.quantity_pending,
+        reason: "Marked as displayed",
+        created_by: userId,
+      });
+      toast.success("Marked as displayed");
+      load();
+    } catch (e: any) {
+      toast.error(e.message || "Failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  if (loading) return <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" />Loading…</div>;
+  if (rows.length === 0) return <Card className="p-8 text-center text-muted-foreground"><CheckCircle className="w-10 h-10 mx-auto mb-2 opacity-30" /><p>No pending display items.</p></Card>;
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">Items waiting to be physically put on display. Older than 7 days highlighted in amber.</p>
+      <div className="overflow-x-auto rounded-lg border">
+        <Table>
+          <TableHeader><TableRow>
+            <TableHead>Product</TableHead><TableHead>SKU</TableHead>
+            <TableHead className="text-right">Qty Pending</TableHead>
+            <TableHead>Marked</TableHead><TableHead>Age</TableHead><TableHead className="text-right">Action</TableHead>
+          </TableRow></TableHeader>
+          <TableBody>
+            {rows.map(r => {
+              const info = productMap.get(r.product_id);
+              const days = Math.floor((Date.now() - new Date(r.date_marked).getTime()) / 86400000);
+              const stale = days > 7;
+              return (
+                <TableRow key={r.id} className={stale ? "bg-amber-50" : ""}>
+                  <TableCell className="text-sm">{info?.name || `[${r.product_id.slice(0, 8)}]`}</TableCell>
+                  <TableCell className="text-xs font-mono text-muted-foreground">{info?.sku || "—"}</TableCell>
+                  <TableCell className="text-right text-sm font-semibold">{r.quantity_pending}</TableCell>
+                  <TableCell className="text-xs">{new Date(r.date_marked).toLocaleDateString("en-IN")}</TableCell>
+                  <TableCell>
+                    {stale ? <Badge className="bg-amber-500 hover:bg-amber-500 text-white">{days}d (overdue)</Badge> : <span className="text-xs text-muted-foreground">{days}d</span>}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button size="sm" variant="outline" onClick={() => markDisplayed(r)} disabled={busy === r.id} className="gap-1">
+                      {busy === r.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckSquare className="w-3 h-3" />}
+                      Mark as Displayed
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Audit Log (admin) ────────────────────────────────────────────────────────
+
+function AuditLogView({ locations, userMap, allProducts }: { locations: Location[]; userMap: Map<string, string>; allProducts: RawProduct[]; }) {
+  const [rows, setRows] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionFilter, setActionFilter] = useState("all");
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const { data } = await supabase.from("inventory_audit_log" as any)
+        .select("*").order("created_at", { ascending: false }).limit(1000);
+      setRows((data as any[]) || []);
+      setLoading(false);
+    })();
+  }, []);
+
+  const productMap = useMemo(() => new Map(allProducts.map(p => [p.id, p])), [allProducts]);
+  const locMap = useMemo(() => new Map(locations.map(l => [l.id, l.name])), [locations]);
+
+  const actions = useMemo(() => {
+    const s = new Set<string>();
+    rows.forEach((r: any) => s.add(r.action));
+    return Array.from(s).sort();
+  }, [rows]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rows.filter((r: any) => {
+      if (actionFilter !== "all" && r.action !== actionFilter) return false;
+      if (q) {
+        const p = productMap.get(r.product_id);
+        if (!(p?.product_name?.toLowerCase().includes(q) || p?.sku?.toLowerCase().includes(q))) return false;
+      }
+      return true;
+    });
+  }, [rows, actionFilter, search, productMap]);
+
+  const downloadCsv = () => {
+    const esc = (v: any) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const headers = ["Created", "Product", "SKU", "Action", "Qty change", "Location", "User", "Lead", "Reason"];
+    const lines = [headers.map(esc).join(",")];
+    filtered.forEach((r: any) => {
+      const p = productMap.get(r.product_id);
+      lines.push([
+        new Date(r.created_at).toISOString(), p?.product_name || r.product_id, p?.sku || "",
+        r.action, r.quantity_change, locMap.get(r.location_id) || "—",
+        userMap.get(r.created_by) || "—", r.lead_id || "—", r.reason || "—",
+      ].map(esc).join(","));
+    });
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `audit_log_${new Date().toISOString().split("T")[0]}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  if (loading) return <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" />Loading…</div>;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <Input placeholder="Search product…" value={search} onChange={e => setSearch(e.target.value)} className="h-9 pl-7 text-sm" />
+        </div>
+        <Select value={actionFilter} onValueChange={setActionFilter}>
+          <SelectTrigger className="h-9 w-[200px] text-sm"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All actions</SelectItem>
+            {actions.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Button size="sm" variant="outline" onClick={downloadCsv} className="h-9 gap-1">
+          <ClipboardList className="w-3.5 h-3.5" />CSV
+        </Button>
+        <p className="text-xs text-muted-foreground ml-2">{filtered.length} entr{filtered.length === 1 ? "y" : "ies"}</p>
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border">
+        <Table>
+          <TableHeader><TableRow>
+            <TableHead>Created</TableHead><TableHead>Product</TableHead>
+            <TableHead>Action</TableHead><TableHead className="text-right">Qty Δ</TableHead>
+            <TableHead>Location</TableHead><TableHead>User</TableHead>
+            <TableHead>Lead</TableHead><TableHead>Reason</TableHead>
+          </TableRow></TableHeader>
+          <TableBody>
+            {filtered.map((r: any) => {
+              const p = productMap.get(r.product_id);
+              const flagged = !r.lead_id && r.action === "manual_adjustment";
+              return (
+                <TableRow key={r.id} className={flagged ? "bg-amber-50" : ""}>
+                  <TableCell className="text-xs whitespace-nowrap">{new Date(r.created_at).toLocaleString("en-IN")}</TableCell>
+                  <TableCell className="text-sm">
+                    <div>{p?.product_name || `[${r.product_id.slice(0, 8)}]`}</div>
+                    {p?.sku && <div className="text-xs font-mono text-muted-foreground">{p.sku}</div>}
+                  </TableCell>
+                  <TableCell><Badge variant={flagged ? "destructive" : "outline"} className="text-xs">{r.action}</Badge></TableCell>
+                  <TableCell className={`text-right text-sm font-semibold ${r.quantity_change > 0 ? "text-green-600" : r.quantity_change < 0 ? "text-destructive" : ""}`}>
+                    {r.quantity_change > 0 ? `+${r.quantity_change}` : r.quantity_change}
+                  </TableCell>
+                  <TableCell className="text-xs">{locMap.get(r.location_id) || "—"}</TableCell>
+                  <TableCell className="text-xs">{userMap.get(r.created_by) || "—"}</TableCell>
+                  <TableCell className="text-xs font-mono">{r.lead_id ? r.lead_id.slice(0, 8) : "—"}</TableCell>
+                  <TableCell className="text-xs">{r.reason || "—"}</TableCell>
+                </TableRow>
+              );
+            })}
+            {filtered.length === 0 && (
+              <TableRow><TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-8">No audit entries.</TableCell></TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function InventoryManager() {
