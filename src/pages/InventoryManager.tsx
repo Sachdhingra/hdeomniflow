@@ -2248,7 +2248,7 @@ export default function InventoryManager() {
                       )}
 
                       {/* Receive stock button */}
-                      {(isAdmin || isSales || isAccounts || isServiceHead) && (
+                      {isAdmin && (
                         <Button size="sm" variant="outline" className="w-full text-xs h-7"
                           onClick={() => setReceiveArticle(a)}>
                           <Plus className="w-3 h-3 mr-1" />Receive Stock
