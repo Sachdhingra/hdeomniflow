@@ -1818,18 +1818,23 @@ function StockTable({ articles, locations, userId, isAdmin, userMap, onRefresh }
                     : "No history";
                   return (
                     <TableCell key={l.id}>
-                      {editing ? (
+                      {editing && isAdmin ? (
                         <div className="flex items-center gap-1">
                           <Input type="number" min={0} value={editQty} onChange={e => setEditQty(parseInt(e.target.value) || 0)} className="h-7 w-16 text-center" />
                           <Button size="icon" variant="ghost" className="h-7 w-7" onClick={save} disabled={saving}><CheckCircle className="w-3 h-3 text-green-600" /></Button>
                           <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditKey(null)}><X className="w-3 h-3" /></Button>
                         </div>
-                      ) : (
+                      ) : isAdmin ? (
                         <button onClick={() => { setEditKey(k); setEditQty(qty); }} title={tip} className="flex items-center gap-1 hover:text-primary">
                           <span className={`font-semibold ${qty === 0 ? "text-red-400" : ""}`}>{qty}</span>
                           {ageBadge(cell?.updated_at, qty)}
                           <Edit2 className="w-3 h-3 opacity-30" />
                         </button>
+                      ) : (
+                        <span title={tip} className="flex items-center gap-1">
+                          <span className={`font-semibold ${qty === 0 ? "text-red-400" : ""}`}>{qty}</span>
+                          {ageBadge(cell?.updated_at, qty)}
+                        </span>
                       )}
                     </TableCell>
                   );
