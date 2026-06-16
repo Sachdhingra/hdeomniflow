@@ -1274,8 +1274,10 @@ export type Database = {
           created_by: string | null
           id: string
           lead_id: string | null
+          location_id: string | null
           product_id: string
           quantity_change: number
+          reason: string | null
           service_job_id: string | null
         }
         Insert: {
@@ -1284,8 +1286,10 @@ export type Database = {
           created_by?: string | null
           id?: string
           lead_id?: string | null
+          location_id?: string | null
           product_id: string
           quantity_change: number
+          reason?: string | null
           service_job_id?: string | null
         }
         Update: {
@@ -1294,19 +1298,13 @@ export type Database = {
           created_by?: string | null
           id?: string
           lead_id?: string | null
+          location_id?: string | null
           product_id?: string
           quantity_change?: number
+          reason?: string | null
           service_job_id?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "inventory_audit_log_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "inventory_products"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       inventory_products: {
         Row: {

@@ -634,12 +634,13 @@ function ReceiveStockDialog({
 // ─── Create Order dialog ──────────────────────────────────────────────────────
 
 function CreateOrderDialog({
-  open, onClose, mode, article, allProducts, locations, trackedArticles, userId, onCreated,
+  open, onClose, mode, article, allProducts, locations, trackedArticles, userId, userRole, onCreated,
 }: {
   open: boolean; onClose: () => void; mode: "warehouse" | "showroom" | "company" | null;
   article: TrackedArticle | null; allProducts: RawProduct[]; locations: Location[];
-  trackedArticles: TrackedArticle[]; userId: string; onCreated: () => void;
+  trackedArticles: TrackedArticle[]; userId: string; userRole: string; onCreated: () => void;
 }) {
+  const isAdmin = userRole === "admin";
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [locationId, setLocationId] = useState("");
@@ -651,11 +652,23 @@ function CreateOrderDialog({
   const [replacementSearch, setReplacementSearch] = useState("");
   const [extraItems, setExtraItems] = useState<Array<{article: TrackedArticle; qty: number}>>([]);
   const [extraItemSearch, setExtraItemSearch] = useState("");
+  const [adminOverride, setAdminOverride] = useState(false);
+  const [overrideReason, setOverrideReason] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open) { setCustomerName(""); setCustomerPhone(""); setLocationId(""); setSoldQty(1); setNotes(""); setCustomSpecs(""); setCompanyReason(""); setReplacementProductIds([]); setReplacementSearch(""); setExtraItems([]); setExtraItemSearch(""); }
+    if (open) {
+      setCustomerName(""); setCustomerPhone(""); setLocationId(""); setSoldQty(1); setNotes("");
+      setCustomSpecs(""); setCompanyReason(""); setReplacementProductIds([]); setReplacementSearch("");
+      setExtraItems([]); setExtraItemSearch(""); setAdminOverride(false); setOverrideReason("");
+    }
   }, [open]);
+
+  // Display stock for the selected showroom location (for the primary article)
+  const showroomDisplayQty = (mode === "showroom" && article && locationId)
+    ? (article.locs.find(l => l.location_id === locationId)?.qty ?? 0)
+    : null;
+  const needsAdminOverride = mode === "showroom" && showroomDisplayQty === 0;
 
   const filteredReplacement = useMemo(() => {
     const excluded = new Set(replacementProductIds);
@@ -681,11 +694,30 @@ function CreateOrderDialog({
     if (mode === "showroom" && replacementProductIds.length === 0) return toast.error("Select at least one replacement product");
     if (!locationId) return toast.error("Select a location");
     if ((mode === "warehouse" || mode === "showroom") && soldQty < 1) return toast.error("Quantity must be at least 1");
+
+    // Showroom sales: enforce display stock rule
+    if (mode === "showroom") {
+      const displayQty = article.locs.find(l => l.location_id === locationId)?.qty ?? 0;
+      if (displayQty === 0) {
+        if (!isAdmin) {
+          return toast.error("Insufficient display stock. Contact admin.");
+        }
+        if (!adminOverride) {
+          return toast.error("Display stock is 0 — tick the admin override to proceed.");
+        }
+        if (!overrideReason.trim()) {
+          return toast.error("Override reason is required.");
+        }
+      }
+    }
+
     const availableQty = article.locs.find(l => l.location_id === locationId)?.qty ?? 0;
-    if ((mode === "warehouse" || mode === "showroom") && soldQty > availableQty) return toast.error(`Only ${availableQty} available for ${article.product_name}`);
+    if ((mode === "warehouse" || mode === "showroom") && !adminOverride && soldQty > availableQty) {
+      return toast.error(`Only ${availableQty} available for ${article.product_name}`);
+    }
     for (const e of extraItems) {
       const eAvail = e.article.locs.find(l => l.location_id === locationId)?.qty ?? 0;
-      if ((mode === "warehouse" || mode === "showroom") && e.qty > eAvail) return toast.error(`Only ${eAvail} available for ${e.article.product_name}`);
+      if ((mode === "warehouse" || mode === "showroom") && !adminOverride && e.qty > eAvail) return toast.error(`Only ${eAvail} available for ${e.article.product_name}`);
     }
 
     setSaving(true);
@@ -694,9 +726,14 @@ function CreateOrderDialog({
       ? ({ no_stock: "stock_out_order", fresh_piece: "fresh_piece_order", custom: "custom_order" } as any)[companyReason]
       : undefined;
 
+    // Pre-resolve replacement names (used in timeline + audit)
+    const replacementNames = replacementProductIds
+      .map(id => allProducts.find(p => p.id === id)?.product_name || id);
+
     // Build one order per picked item (initial article + extra items)
     const allItems = [{ article: article!, qty: soldQty }, ...extraItems];
     const orderNums: string[] = [];
+
 
     for (const item of allItems) {
       const numRes = await supabase.rpc("generate_hde_order_number" as any);
@@ -734,11 +771,27 @@ function CreateOrderDialog({
       }
 
       const qtyNote = (mode === "warehouse" || mode === "showroom") ? ` — Qty: ${item.qty}` : "";
+      const replNote = (mode === "showroom" && replacementNames.length > 0)
+        ? ` — Replacement${replacementNames.length > 1 ? "s" : ""}: ${replacementNames.join(" + ")}`
+        : "";
+      const overrideNote = (adminOverride && mode === "showroom") ? " — ADMIN OVERRIDE" : "";
       await supabase.from("hde_order_timeline" as any).insert({
         order_id: orderId, action: "Order Created",
-        description: `${ORDER_TYPE_LABELS[mode]} — ${item.article.product_name}${companyReason ? ` (${REASON_LABELS[companyReason]})` : ""}${qtyNote}`,
+        description: `${ORDER_TYPE_LABELS[mode]} — ${item.article.product_name}${companyReason ? ` (${REASON_LABELS[companyReason]})` : ""}${qtyNote}${replNote}${overrideNote}`,
         performed_by: userId,
       });
+
+      // Audit log entry for admin override sales
+      if (adminOverride && mode === "showroom") {
+        await supabase.from("inventory_audit_log" as any).insert({
+          product_id: item.article.product_id,
+          action: "admin_override_sale",
+          quantity_change: -item.qty,
+          location_id: locationId,
+          reason: overrideReason,
+          created_by: userId,
+        });
+      }
 
       if (mode === "showroom") {
         await supabase.from("hde_display_items" as any).insert({
@@ -894,6 +947,42 @@ function CreateOrderDialog({
               )}
             </div>
           )}
+
+          {/* Display stock guard — block sale or surface admin override */}
+          {needsAdminOverride && !isAdmin && (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm flex gap-2">
+              <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-destructive">Insufficient display stock</p>
+                <p className="text-xs text-destructive/80 mt-0.5">This product has 0 units on display at the selected showroom. Contact admin to override.</p>
+              </div>
+            </div>
+          )}
+          {needsAdminOverride && isAdmin && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 space-y-2">
+              <div className="flex gap-2 items-start">
+                <Shield className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-amber-900">Display stock is 0 — admin override required</p>
+                  <p className="text-xs text-amber-800 mt-0.5">Selling without display stock is logged in the inventory audit log.</p>
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={adminOverride} onChange={e => setAdminOverride(e.target.checked)} />
+                <span>Force-submit as admin</span>
+              </label>
+              {adminOverride && (
+                <Textarea
+                  placeholder="Reason for override (required)…"
+                  value={overrideReason}
+                  onChange={e => setOverrideReason(e.target.value)}
+                  rows={2}
+                  className="bg-white"
+                />
+              )}
+            </div>
+          )}
+
 
           <div className="grid grid-cols-2 gap-3">
             <div><Label>Customer Name</Label><Input value={customerName} onChange={e => setCustomerName(e.target.value)} /></div>
@@ -1729,18 +1818,23 @@ function StockTable({ articles, locations, userId, isAdmin, userMap, onRefresh }
                     : "No history";
                   return (
                     <TableCell key={l.id}>
-                      {editing ? (
+                      {editing && isAdmin ? (
                         <div className="flex items-center gap-1">
                           <Input type="number" min={0} value={editQty} onChange={e => setEditQty(parseInt(e.target.value) || 0)} className="h-7 w-16 text-center" />
                           <Button size="icon" variant="ghost" className="h-7 w-7" onClick={save} disabled={saving}><CheckCircle className="w-3 h-3 text-green-600" /></Button>
                           <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditKey(null)}><X className="w-3 h-3" /></Button>
                         </div>
-                      ) : (
+                      ) : isAdmin ? (
                         <button onClick={() => { setEditKey(k); setEditQty(qty); }} title={tip} className="flex items-center gap-1 hover:text-primary">
                           <span className={`font-semibold ${qty === 0 ? "text-red-400" : ""}`}>{qty}</span>
                           {ageBadge(cell?.updated_at, qty)}
                           <Edit2 className="w-3 h-3 opacity-30" />
                         </button>
+                      ) : (
+                        <span title={tip} className="flex items-center gap-1">
+                          <span className={`font-semibold ${qty === 0 ? "text-red-400" : ""}`}>{qty}</span>
+                          {ageBadge(cell?.updated_at, qty)}
+                        </span>
                       )}
                     </TableCell>
                   );
@@ -1779,6 +1873,391 @@ function StockTable({ articles, locations, userId, isAdmin, userMap, onRefresh }
                   No stock matches the current filters
                 </TableCell>
               </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Stock Count (admin) ──────────────────────────────────────────────────────
+
+interface CountCell { product_id: string; product_name: string; sku: string; location_id: string; location_name: string; system_qty: number; physical: string; reason: string; }
+
+function StockCountView({ articles, locations, userId, onRefresh }: { articles: TrackedArticle[]; locations: Location[]; userId: string; onRefresh: () => void; }) {
+  const [cells, setCells] = useState<CountCell[]>([]);
+  const [search, setSearch] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [report, setReport] = useState<CountCell[] | null>(null);
+
+  useEffect(() => {
+    const next: CountCell[] = [];
+    const parts = articles.flatMap(a => a.parts ?? [a as any]);
+    parts.forEach((a: any) => {
+      locations.forEach(l => {
+        const cell = a.locs.find((x: LocEntry) => x.location_id === l.id);
+        next.push({
+          product_id: a.product_id, product_name: a.product_name, sku: a.sku,
+          location_id: l.id, location_name: l.name,
+          system_qty: cell?.qty ?? 0, physical: "", reason: "",
+        });
+      });
+    });
+    setCells(next);
+    setReport(null);
+  }, [articles, locations]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return cells;
+    return cells.filter(c => c.product_name.toLowerCase().includes(q) || c.sku.toLowerCase().includes(q));
+  }, [cells, search]);
+
+  const updateCell = (idx: number, patch: Partial<CountCell>) => {
+    setCells(prev => prev.map((c, i) => i === idx ? { ...c, ...patch } : c));
+  };
+
+  const handleSubmit = async () => {
+    // Validate: cells with physical filled in
+    const changes = cells.filter(c => c.physical !== "" && !isNaN(parseInt(c.physical)));
+    if (changes.length === 0) { toast.error("Enter at least one physical count"); return; }
+    const variances = changes.filter(c => parseInt(c.physical) !== c.system_qty);
+    const missingReason = variances.find(v => !v.reason.trim());
+    if (missingReason) {
+      toast.error(`Reason required for variance on ${missingReason.product_name} @ ${missingReason.location_name}`);
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      for (const c of changes) {
+        const physical = parseInt(c.physical);
+        if (physical === c.system_qty) continue;
+        const locType = locations.find(l => l.id === c.location_id)?.type;
+        // Update hde_inventory
+        await supabase.from("hde_inventory" as any).upsert(
+          { product_id: c.product_id, location_id: c.location_id, quantity: physical, inventory_type: locType === "warehouse" ? "warehouse" : "display", updated_by: userId },
+          { onConflict: "product_id,location_id" }
+        );
+        // Audit log
+        await supabase.from("inventory_audit_log" as any).insert({
+          product_id: c.product_id,
+          action: "stock_count",
+          quantity_change: physical - c.system_qty,
+          location_id: c.location_id,
+          reason: c.reason || null,
+          created_by: userId,
+        });
+      }
+      toast.success(`Stock count recorded — ${variances.length} variance${variances.length === 1 ? "" : "s"}`);
+      setReport(variances.length > 0 ? variances : changes);
+      onRefresh();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save count");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <Input placeholder="Search article or SKU…" value={search} onChange={e => setSearch(e.target.value)} className="h-9 pl-7 text-sm" />
+        </div>
+        <p className="text-xs text-muted-foreground">{filtered.length} row{filtered.length === 1 ? "" : "s"}</p>
+        <Button onClick={handleSubmit} disabled={submitting} size="sm" className="gap-1">
+          {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckSquare className="w-3.5 h-3.5" />}
+          Submit Count
+        </Button>
+      </div>
+
+      {report && (
+        <Card className="p-3 border-amber-300 bg-amber-50">
+          <p className="text-sm font-semibold mb-2">Variance report</p>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader><TableRow>
+                <TableHead>Article</TableHead><TableHead>Location</TableHead>
+                <TableHead className="text-right">System</TableHead>
+                <TableHead className="text-right">Physical</TableHead>
+                <TableHead className="text-right">Variance</TableHead>
+                <TableHead>Reason</TableHead>
+              </TableRow></TableHeader>
+              <TableBody>
+                {report.map((r, i) => {
+                  const v = parseInt(r.physical) - r.system_qty;
+                  return (
+                    <TableRow key={i}>
+                      <TableCell className="text-sm">{r.product_name}<div className="text-xs text-muted-foreground font-mono">{r.sku}</div></TableCell>
+                      <TableCell className="text-sm">{r.location_name}</TableCell>
+                      <TableCell className="text-right text-sm">{r.system_qty}</TableCell>
+                      <TableCell className="text-right text-sm font-semibold">{r.physical}</TableCell>
+                      <TableCell className={`text-right text-sm font-bold ${v > 0 ? "text-green-600" : v < 0 ? "text-destructive" : ""}`}>{v > 0 ? `+${v}` : v}</TableCell>
+                      <TableCell className="text-xs">{r.reason || "—"}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </Card>
+      )}
+
+      <div className="overflow-x-auto rounded-lg border">
+        <Table>
+          <TableHeader><TableRow>
+            <TableHead>Article</TableHead><TableHead>SKU</TableHead><TableHead>Location</TableHead>
+            <TableHead className="text-right">System Qty</TableHead>
+            <TableHead>Physical Count</TableHead>
+            <TableHead>Variance</TableHead>
+            <TableHead>Reason (if variance)</TableHead>
+          </TableRow></TableHeader>
+          <TableBody>
+            {filtered.map((c, idx) => {
+              const realIdx = cells.indexOf(c);
+              const phys = parseInt(c.physical);
+              const variance = c.physical === "" || isNaN(phys) ? null : phys - c.system_qty;
+              return (
+                <TableRow key={`${c.product_id}-${c.location_id}`}>
+                  <TableCell className="text-sm">{c.product_name}</TableCell>
+                  <TableCell className="text-xs font-mono text-muted-foreground">{c.sku}</TableCell>
+                  <TableCell className="text-sm">{c.location_name}</TableCell>
+                  <TableCell className="text-right text-sm">{c.system_qty}</TableCell>
+                  <TableCell>
+                    <Input type="number" min={0} value={c.physical}
+                      onChange={e => updateCell(realIdx, { physical: e.target.value })}
+                      className="h-8 w-20 text-center" />
+                  </TableCell>
+                  <TableCell className={`text-sm font-semibold ${variance === null ? "text-muted-foreground" : variance > 0 ? "text-green-600" : variance < 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                    {variance === null ? "—" : variance > 0 ? `+${variance}` : variance}
+                  </TableCell>
+                  <TableCell>
+                    {variance !== null && variance !== 0 && (
+                      <Input value={c.reason} onChange={e => updateCell(realIdx, { reason: e.target.value })}
+                        placeholder="Required" className="h-8 text-sm" />
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+            {filtered.length === 0 && (
+              <TableRow><TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-8">No rows.</TableCell></TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Pending Display Resolution (admin) ───────────────────────────────────────
+
+function PendingDisplayView({ userId }: { userId: string }) {
+  const [rows, setRows] = useState<any[]>([]);
+  const [productMap, setProductMap] = useState<Map<string, { name: string; sku: string }>>(new Map());
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data } = await supabase.from("pending_display" as any).select("*").order("date_marked", { ascending: false });
+    const list = (data as any[]) || [];
+    setRows(list);
+    if (list.length > 0) {
+      const ids = list.map(r => r.product_id);
+      // Try inventory_products first (the legacy FK target), then fall back to products
+      const [{ data: invP }, { data: prods }] = await Promise.all([
+        supabase.from("inventory_products" as any).select("id, name").in("id", ids),
+        supabase.from("products" as any).select("id, product_name, sku").in("id", ids),
+      ]);
+      const m = new Map<string, { name: string; sku: string }>();
+      ((invP as any[]) || []).forEach((p: any) => m.set(p.id, { name: p.name, sku: "" }));
+      ((prods as any[]) || []).forEach((p: any) => m.set(p.id, { name: p.product_name, sku: p.sku }));
+      setProductMap(m);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const markDisplayed = async (row: any) => {
+    setBusy(row.id);
+    try {
+      await supabase.from("pending_display" as any).delete().eq("id", row.id);
+      await supabase.from("inventory_audit_log" as any).insert({
+        product_id: row.product_id,
+        action: "pending_resolved",
+        quantity_change: row.quantity_pending,
+        reason: "Marked as displayed",
+        created_by: userId,
+      });
+      toast.success("Marked as displayed");
+      load();
+    } catch (e: any) {
+      toast.error(e.message || "Failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  if (loading) return <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" />Loading…</div>;
+  if (rows.length === 0) return <Card className="p-8 text-center text-muted-foreground"><CheckCircle className="w-10 h-10 mx-auto mb-2 opacity-30" /><p>No pending display items.</p></Card>;
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">Items waiting to be physically put on display. Older than 7 days highlighted in amber.</p>
+      <div className="overflow-x-auto rounded-lg border">
+        <Table>
+          <TableHeader><TableRow>
+            <TableHead>Product</TableHead><TableHead>SKU</TableHead>
+            <TableHead className="text-right">Qty Pending</TableHead>
+            <TableHead>Marked</TableHead><TableHead>Age</TableHead><TableHead className="text-right">Action</TableHead>
+          </TableRow></TableHeader>
+          <TableBody>
+            {rows.map(r => {
+              const info = productMap.get(r.product_id);
+              const days = Math.floor((Date.now() - new Date(r.date_marked).getTime()) / 86400000);
+              const stale = days > 7;
+              return (
+                <TableRow key={r.id} className={stale ? "bg-amber-50" : ""}>
+                  <TableCell className="text-sm">{info?.name || `[${r.product_id.slice(0, 8)}]`}</TableCell>
+                  <TableCell className="text-xs font-mono text-muted-foreground">{info?.sku || "—"}</TableCell>
+                  <TableCell className="text-right text-sm font-semibold">{r.quantity_pending}</TableCell>
+                  <TableCell className="text-xs">{new Date(r.date_marked).toLocaleDateString("en-IN")}</TableCell>
+                  <TableCell>
+                    {stale ? <Badge className="bg-amber-500 hover:bg-amber-500 text-white">{days}d (overdue)</Badge> : <span className="text-xs text-muted-foreground">{days}d</span>}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button size="sm" variant="outline" onClick={() => markDisplayed(r)} disabled={busy === r.id} className="gap-1">
+                      {busy === r.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckSquare className="w-3 h-3" />}
+                      Mark as Displayed
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Audit Log (admin) ────────────────────────────────────────────────────────
+
+function AuditLogView({ locations, userMap, allProducts }: { locations: Location[]; userMap: Map<string, string>; allProducts: RawProduct[]; }) {
+  const [rows, setRows] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionFilter, setActionFilter] = useState("all");
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const { data } = await supabase.from("inventory_audit_log" as any)
+        .select("*").order("created_at", { ascending: false }).limit(1000);
+      setRows((data as any[]) || []);
+      setLoading(false);
+    })();
+  }, []);
+
+  const productMap = useMemo(() => new Map(allProducts.map(p => [p.id, p])), [allProducts]);
+  const locMap = useMemo(() => new Map(locations.map(l => [l.id, l.name])), [locations]);
+
+  const actions = useMemo(() => {
+    const s = new Set<string>();
+    rows.forEach((r: any) => s.add(r.action));
+    return Array.from(s).sort();
+  }, [rows]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rows.filter((r: any) => {
+      if (actionFilter !== "all" && r.action !== actionFilter) return false;
+      if (q) {
+        const p = productMap.get(r.product_id);
+        if (!(p?.product_name?.toLowerCase().includes(q) || p?.sku?.toLowerCase().includes(q))) return false;
+      }
+      return true;
+    });
+  }, [rows, actionFilter, search, productMap]);
+
+  const downloadCsv = () => {
+    const esc = (v: any) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const headers = ["Created", "Product", "SKU", "Action", "Qty change", "Location", "User", "Lead", "Reason"];
+    const lines = [headers.map(esc).join(",")];
+    filtered.forEach((r: any) => {
+      const p = productMap.get(r.product_id);
+      lines.push([
+        new Date(r.created_at).toISOString(), p?.product_name || r.product_id, p?.sku || "",
+        r.action, r.quantity_change, locMap.get(r.location_id) || "—",
+        userMap.get(r.created_by) || "—", r.lead_id || "—", r.reason || "—",
+      ].map(esc).join(","));
+    });
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `audit_log_${new Date().toISOString().split("T")[0]}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  if (loading) return <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" />Loading…</div>;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <Input placeholder="Search product…" value={search} onChange={e => setSearch(e.target.value)} className="h-9 pl-7 text-sm" />
+        </div>
+        <Select value={actionFilter} onValueChange={setActionFilter}>
+          <SelectTrigger className="h-9 w-[200px] text-sm"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All actions</SelectItem>
+            {actions.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Button size="sm" variant="outline" onClick={downloadCsv} className="h-9 gap-1">
+          <ClipboardList className="w-3.5 h-3.5" />CSV
+        </Button>
+        <p className="text-xs text-muted-foreground ml-2">{filtered.length} entr{filtered.length === 1 ? "y" : "ies"}</p>
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border">
+        <Table>
+          <TableHeader><TableRow>
+            <TableHead>Created</TableHead><TableHead>Product</TableHead>
+            <TableHead>Action</TableHead><TableHead className="text-right">Qty Δ</TableHead>
+            <TableHead>Location</TableHead><TableHead>User</TableHead>
+            <TableHead>Lead</TableHead><TableHead>Reason</TableHead>
+          </TableRow></TableHeader>
+          <TableBody>
+            {filtered.map((r: any) => {
+              const p = productMap.get(r.product_id);
+              const flagged = !r.lead_id && r.action === "manual_adjustment";
+              return (
+                <TableRow key={r.id} className={flagged ? "bg-amber-50" : ""}>
+                  <TableCell className="text-xs whitespace-nowrap">{new Date(r.created_at).toLocaleString("en-IN")}</TableCell>
+                  <TableCell className="text-sm">
+                    <div>{p?.product_name || `[${r.product_id.slice(0, 8)}]`}</div>
+                    {p?.sku && <div className="text-xs font-mono text-muted-foreground">{p.sku}</div>}
+                  </TableCell>
+                  <TableCell><Badge variant={flagged ? "destructive" : "outline"} className="text-xs">{r.action}</Badge></TableCell>
+                  <TableCell className={`text-right text-sm font-semibold ${r.quantity_change > 0 ? "text-green-600" : r.quantity_change < 0 ? "text-destructive" : ""}`}>
+                    {r.quantity_change > 0 ? `+${r.quantity_change}` : r.quantity_change}
+                  </TableCell>
+                  <TableCell className="text-xs">{locMap.get(r.location_id) || "—"}</TableCell>
+                  <TableCell className="text-xs">{userMap.get(r.created_by) || "—"}</TableCell>
+                  <TableCell className="text-xs font-mono">{r.lead_id ? r.lead_id.slice(0, 8) : "—"}</TableCell>
+                  <TableCell className="text-xs">{r.reason || "—"}</TableCell>
+                </TableRow>
+              );
+            })}
+            {filtered.length === 0 && (
+              <TableRow><TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-8">No audit entries.</TableCell></TableRow>
             )}
           </TableBody>
         </Table>
@@ -2012,6 +2491,9 @@ export default function InventoryManager() {
     { value: "jobs", label: `My Jobs${myJobsCount > 0 ? ` (${myJobsCount})` : ""}`, show: isFieldAgent || isAdmin },
     { value: "dashboard", label: "Dashboard", show: isAdmin || isServiceHead || isAccounts },
     { value: "stock", label: "Stock Table", show: isAdmin || isAccounts || isServiceHead },
+    { value: "stock-count", label: "Stock Count", show: isAdmin },
+    { value: "pending", label: "Pending Display", show: isAdmin },
+    { value: "audit", label: "Audit Log", show: isAdmin },
   ].filter(t => t.show);
 
   const defaultTab = isFieldAgent ? "jobs" : "catalogue";
@@ -2025,7 +2507,7 @@ export default function InventoryManager() {
           <p className="text-sm text-muted-foreground">Display articles, stock levels and fulfillment</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          {(isAdmin || isSales || isAccounts || isServiceHead) && (
+          {isAdmin && (
             <Button variant="outline" size="sm" onClick={() => setAddArticleOpen(true)}>
               <Plus className="w-4 h-4 mr-1" />Add Article
             </Button>
@@ -2154,7 +2636,7 @@ export default function InventoryManager() {
                       )}
 
                       {/* Receive stock button */}
-                      {(isAdmin || isSales || isAccounts || isServiceHead) && (
+                      {isAdmin && (
                         <Button size="sm" variant="outline" className="w-full text-xs h-7"
                           onClick={() => setReceiveArticle(a)}>
                           <Plus className="w-3 h-3 mr-1" />Receive Stock
@@ -2262,13 +2744,34 @@ export default function InventoryManager() {
           <TabsContent value="stock" className="mt-4">
             <StockTable articles={trackedArticles} locations={locations} userId={user.id} isAdmin={isAdmin} userMap={userMap} onRefresh={loadAll} />
           </TabsContent>
+
+          {/* ── Stock count (admin) ── */}
+          {isAdmin && (
+            <TabsContent value="stock-count" className="mt-4">
+              <StockCountView articles={trackedArticles} locations={locations} userId={user.id} onRefresh={loadAll} />
+            </TabsContent>
+          )}
+
+          {/* ── Pending display (admin) ── */}
+          {isAdmin && (
+            <TabsContent value="pending" className="mt-4">
+              <PendingDisplayView userId={user.id} />
+            </TabsContent>
+          )}
+
+          {/* ── Audit log (admin) ── */}
+          {isAdmin && (
+            <TabsContent value="audit" className="mt-4">
+              <AuditLogView locations={locations} userMap={userMap} allProducts={allProducts} />
+            </TabsContent>
+          )}
         </Tabs>
       )}
 
       {/* Dialogs */}
       <AddArticleDialog open={addArticleOpen} onClose={() => setAddArticleOpen(false)} allProducts={allProducts} locations={locations} userId={user.id} onDone={loadAll} />
       <ReceiveStockDialog open={!!receiveArticle} onClose={() => setReceiveArticle(null)} article={receiveArticle} locations={locations} userId={user.id} onDone={loadAll} />
-      <CreateOrderDialog open={!!sellMode} onClose={() => { setSellMode(null); setSellArticle(null); }} mode={sellMode} article={sellArticle} allProducts={allProducts} locations={locations} trackedArticles={trackedArticles} userId={user.id} onCreated={loadAll} />
+      <CreateOrderDialog open={!!sellMode} onClose={() => { setSellMode(null); setSellArticle(null); }} mode={sellMode} article={sellArticle} allProducts={allProducts} locations={locations} trackedArticles={trackedArticles} userId={user.id} userRole={role} onCreated={loadAll} />
       <OrderDetailDialog order={selectedOrder} open={orderDetailOpen} onClose={() => { setOrderDetailOpen(false); setSelectedOrder(null); }} userId={user.id} userRole={role} fieldAgents={fieldAgents} locations={locations} onUpdated={loadAll} />
       <RequestProductDialog open={requestProductOpen} onClose={() => setRequestProductOpen(false)} allProducts={allProducts} userId={user.id} onCreated={loadAll} />
     </div>
