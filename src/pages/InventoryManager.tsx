@@ -2359,6 +2359,27 @@ export default function InventoryManager() {
           <TabsContent value="stock" className="mt-4">
             <StockTable articles={trackedArticles} locations={locations} userId={user.id} isAdmin={isAdmin} userMap={userMap} onRefresh={loadAll} />
           </TabsContent>
+
+          {/* ── Stock count (admin) ── */}
+          {isAdmin && (
+            <TabsContent value="stock-count" className="mt-4">
+              <StockCountView articles={trackedArticles} locations={locations} userId={user.id} onRefresh={loadAll} />
+            </TabsContent>
+          )}
+
+          {/* ── Pending display (admin) ── */}
+          {isAdmin && (
+            <TabsContent value="pending" className="mt-4">
+              <PendingDisplayView userId={user.id} />
+            </TabsContent>
+          )}
+
+          {/* ── Audit log (admin) ── */}
+          {isAdmin && (
+            <TabsContent value="audit" className="mt-4">
+              <AuditLogView locations={locations} userMap={userMap} allProducts={allProducts} />
+            </TabsContent>
+          )}
         </Tabs>
       )}
 
