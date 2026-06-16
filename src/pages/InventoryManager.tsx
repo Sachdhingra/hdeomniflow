@@ -2106,6 +2106,9 @@ export default function InventoryManager() {
     { value: "jobs", label: `My Jobs${myJobsCount > 0 ? ` (${myJobsCount})` : ""}`, show: isFieldAgent || isAdmin },
     { value: "dashboard", label: "Dashboard", show: isAdmin || isServiceHead || isAccounts },
     { value: "stock", label: "Stock Table", show: isAdmin || isAccounts || isServiceHead },
+    { value: "stock-count", label: "Stock Count", show: isAdmin },
+    { value: "pending", label: "Pending Display", show: isAdmin },
+    { value: "audit", label: "Audit Log", show: isAdmin },
   ].filter(t => t.show);
 
   const defaultTab = isFieldAgent ? "jobs" : "catalogue";
