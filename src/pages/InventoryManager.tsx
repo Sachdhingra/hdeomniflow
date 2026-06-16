@@ -771,11 +771,27 @@ function CreateOrderDialog({
       }
 
       const qtyNote = (mode === "warehouse" || mode === "showroom") ? ` — Qty: ${item.qty}` : "";
+      const replNote = (mode === "showroom" && replacementNames.length > 0)
+        ? ` — Replacement${replacementNames.length > 1 ? "s" : ""}: ${replacementNames.join(" + ")}`
+        : "";
+      const overrideNote = (adminOverride && mode === "showroom") ? " — ADMIN OVERRIDE" : "";
       await supabase.from("hde_order_timeline" as any).insert({
         order_id: orderId, action: "Order Created",
-        description: `${ORDER_TYPE_LABELS[mode]} — ${item.article.product_name}${companyReason ? ` (${REASON_LABELS[companyReason]})` : ""}${qtyNote}`,
+        description: `${ORDER_TYPE_LABELS[mode]} — ${item.article.product_name}${companyReason ? ` (${REASON_LABELS[companyReason]})` : ""}${qtyNote}${replNote}${overrideNote}`,
         performed_by: userId,
       });
+
+      // Audit log entry for admin override sales
+      if (adminOverride && mode === "showroom") {
+        await supabase.from("inventory_audit_log" as any).insert({
+          product_id: item.article.product_id,
+          action: "admin_override_sale",
+          quantity_change: -item.qty,
+          location_id: locationId,
+          reason: overrideReason,
+          created_by: userId,
+        });
+      }
 
       if (mode === "showroom") {
         await supabase.from("hde_display_items" as any).insert({
