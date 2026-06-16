@@ -948,6 +948,42 @@ function CreateOrderDialog({
             </div>
           )}
 
+          {/* Display stock guard — block sale or surface admin override */}
+          {needsAdminOverride && !isAdmin && (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm flex gap-2">
+              <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-destructive">Insufficient display stock</p>
+                <p className="text-xs text-destructive/80 mt-0.5">This product has 0 units on display at the selected showroom. Contact admin to override.</p>
+              </div>
+            </div>
+          )}
+          {needsAdminOverride && isAdmin && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 space-y-2">
+              <div className="flex gap-2 items-start">
+                <Shield className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-amber-900">Display stock is 0 — admin override required</p>
+                  <p className="text-xs text-amber-800 mt-0.5">Selling without display stock is logged in the inventory audit log.</p>
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={adminOverride} onChange={e => setAdminOverride(e.target.checked)} />
+                <span>Force-submit as admin</span>
+              </label>
+              {adminOverride && (
+                <Textarea
+                  placeholder="Reason for override (required)…"
+                  value={overrideReason}
+                  onChange={e => setOverrideReason(e.target.value)}
+                  rows={2}
+                  className="bg-white"
+                />
+              )}
+            </div>
+          )}
+
+
           <div className="grid grid-cols-2 gap-3">
             <div><Label>Customer Name</Label><Input value={customerName} onChange={e => setCustomerName(e.target.value)} /></div>
             <div><Label>Customer Phone</Label><Input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} /></div>
