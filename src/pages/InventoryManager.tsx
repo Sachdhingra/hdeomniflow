@@ -694,11 +694,30 @@ function CreateOrderDialog({
     if (mode === "showroom" && replacementProductIds.length === 0) return toast.error("Select at least one replacement product");
     if (!locationId) return toast.error("Select a location");
     if ((mode === "warehouse" || mode === "showroom") && soldQty < 1) return toast.error("Quantity must be at least 1");
+
+    // Showroom sales: enforce display stock rule
+    if (mode === "showroom") {
+      const displayQty = article.locs.find(l => l.location_id === locationId)?.qty ?? 0;
+      if (displayQty === 0) {
+        if (!isAdmin) {
+          return toast.error("Insufficient display stock. Contact admin.");
+        }
+        if (!adminOverride) {
+          return toast.error("Display stock is 0 — tick the admin override to proceed.");
+        }
+        if (!overrideReason.trim()) {
+          return toast.error("Override reason is required.");
+        }
+      }
+    }
+
     const availableQty = article.locs.find(l => l.location_id === locationId)?.qty ?? 0;
-    if ((mode === "warehouse" || mode === "showroom") && soldQty > availableQty) return toast.error(`Only ${availableQty} available for ${article.product_name}`);
+    if ((mode === "warehouse" || mode === "showroom") && !adminOverride && soldQty > availableQty) {
+      return toast.error(`Only ${availableQty} available for ${article.product_name}`);
+    }
     for (const e of extraItems) {
       const eAvail = e.article.locs.find(l => l.location_id === locationId)?.qty ?? 0;
-      if ((mode === "warehouse" || mode === "showroom") && e.qty > eAvail) return toast.error(`Only ${eAvail} available for ${e.article.product_name}`);
+      if ((mode === "warehouse" || mode === "showroom") && !adminOverride && e.qty > eAvail) return toast.error(`Only ${eAvail} available for ${e.article.product_name}`);
     }
 
     setSaving(true);
@@ -707,9 +726,14 @@ function CreateOrderDialog({
       ? ({ no_stock: "stock_out_order", fresh_piece: "fresh_piece_order", custom: "custom_order" } as any)[companyReason]
       : undefined;
 
+    // Pre-resolve replacement names (used in timeline + audit)
+    const replacementNames = replacementProductIds
+      .map(id => allProducts.find(p => p.id === id)?.product_name || id);
+
     // Build one order per picked item (initial article + extra items)
     const allItems = [{ article: article!, qty: soldQty }, ...extraItems];
     const orderNums: string[] = [];
+
 
     for (const item of allItems) {
       const numRes = await supabase.rpc("generate_hde_order_number" as any);
