@@ -728,7 +728,10 @@ function CreateOrderDialog({
 
     // Pre-resolve replacement names (used in timeline + audit)
     const replacementNames = replacementProductIds
-      .map(id => allProducts.find(p => p.id === id)?.product_name || id);
+      .map(id => {
+        const p = allProducts.find(p => p.id === id);
+        return p ? `${p.product_name} [${p.sku}]` : id;
+      });
 
     // Build one order per picked item (initial article + extra items)
     const allItems = [{ article: article!, qty: soldQty }, ...extraItems];
@@ -781,7 +784,7 @@ function CreateOrderDialog({
       const overrideNote = (adminOverride && mode === "showroom") ? " — ADMIN OVERRIDE" : "";
       await supabase.from("hde_order_timeline" as any).insert({
         order_id: orderId, action: "Order Created",
-        description: `${ORDER_TYPE_LABELS[mode]} — ${item.article.product_name}${companyReason ? ` (${REASON_LABELS[companyReason]})` : ""}${qtyNote}${replNote}${overrideNote}`,
+        description: `${ORDER_TYPE_LABELS[mode]} — ${item.article.product_name} [${item.article.sku}]${companyReason ? ` (${REASON_LABELS[companyReason]})` : ""}${qtyNote}${replNote}${overrideNote}`,
         performed_by: userId,
       });
 
@@ -1058,7 +1061,7 @@ function RequestProductDialog({
 
         await supabase.from("hde_order_timeline" as any).insert({
           order_id: (data as any).id, action: "Order Created",
-          description: `Warehouse request — ${item.product.product_name} × ${item.qty} (${REASON_LABELS[reason]})`,
+          description: `Warehouse request — ${item.product.product_name} [${item.product.sku}] × ${item.qty} (${REASON_LABELS[reason]})`,
           performed_by: userId,
         });
       }
@@ -2369,7 +2372,7 @@ export default function InventoryManager() {
       }
       setUserMap(profMap);
 
-      const prodNameMap = new Map((prodList || []).map((p: any) => [p.id, p.product_name as string]));
+      const prodInfoMap = new Map<string, { name: string; sku: string }>((prodList || []).map((p: any) => [p.id, { name: p.product_name as string, sku: p.sku as string }]));
       setOrders(ordList.map((o: any) => {
         // Resolve replacement product IDs from three sources (in priority order):
         // 1. replacement_product_ids column (post-migration)
@@ -2387,10 +2390,18 @@ export default function InventoryManager() {
         if (!repIds.length && o.replacement_product_id) {
           repIds = [o.replacement_product_id];
         }
-        const replacementNames = repIds.map((id: string) => prodNameMap.get(id)).filter(Boolean) as string[];
+        const replacementNames = repIds
+          .map((id: string) => {
+            const info = prodInfoMap.get(id);
+            return info ? `${info.name} [${info.sku}]` : null;
+          })
+          .filter(Boolean) as string[];
+        const mainInfo = prodInfoMap.get(o.product_id);
+        const mainName = o.products?.product_name || mainInfo?.name;
+        const mainSku = mainInfo?.sku;
         return {
           ...o,
-          product_name: o.products?.product_name,
+          product_name: mainName && mainSku ? `${mainName} [${mainSku}]` : mainName,
           creator_name: profMap.get(o.created_by),
           field_agent_name: o.field_assigned_to ? profMap.get(o.field_assigned_to) : undefined,
           replacement_product_name: replacementNames[0],
