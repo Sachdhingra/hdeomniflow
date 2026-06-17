@@ -1332,7 +1332,7 @@ function OrderDetailDialog({
             </div>
           </div>
           {order.notes && <div className="text-sm bg-muted/30 rounded p-2"><b>Notes:</b> {order.notes}</div>}
-          {order.custom_specs && <div className="text-sm bg-muted/30 rounded p-2"><b>Custom Specs:</b> {order.custom_specs}</div>}
+          {order.custom_specs && !order.custom_specs.startsWith('{"_rids"') && <div className="text-sm bg-muted/30 rounded p-2"><b>Custom Specs:</b> {order.custom_specs}</div>}
           {(order.replacement_product_names?.length ?? 0) > 0 && (
             <div className="text-sm bg-blue-50 rounded p-2">
               <b>Replacement{(order.replacement_product_names!.length > 1) ? "s" : ""}:</b>{" "}
