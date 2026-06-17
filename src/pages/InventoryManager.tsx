@@ -753,7 +753,11 @@ function CreateOrderDialog({
 
       let { data, error } = await supabase.from("hde_orders" as any).insert(orderPayload).select().single();
       if (error?.message?.includes("replacement_product_ids")) {
-        const { replacement_product_ids: _, ...fallbackPayload } = orderPayload;
+        // Column not yet migrated — store all replacement IDs in custom_specs as fallback
+        const { replacement_product_ids: _rids, ...fallbackPayload } = orderPayload;
+        if (_rids?.length > 1) {
+          fallbackPayload.custom_specs = JSON.stringify({ _rids });
+        }
         const res2 = await supabase.from("hde_orders" as any).insert(fallbackPayload).select().single();
         data = res2.data; error = res2.error;
       }
@@ -1239,9 +1243,14 @@ function OrderDetailDialog({
       await supabase.from("hde_display_items" as any).update({ display_status: "installed", updated_by: userId }).eq("order_id", order!.id);
 
       // Auto-shift inventory: replacement products warehouse → showroom
-      const repIds: string[] = order!.replacement_product_ids?.length
-        ? order!.replacement_product_ids
-        : (order!.replacement_product_id ? [order!.replacement_product_id] : []);
+      // Resolve from all three storage paths (post-migration column, fallback JSON, FK column)
+      let repIds: string[] = [];
+      if (order!.replacement_product_ids?.length) {
+        repIds = order!.replacement_product_ids;
+      } else if (order!.custom_specs) {
+        try { const p = JSON.parse(order!.custom_specs); if (Array.isArray(p._rids)) repIds = p._rids; } catch {}
+      }
+      if (!repIds.length && order!.replacement_product_id) repIds = [order!.replacement_product_id];
 
       if (repIds.length > 0 && order!.location_id) {
         for (const repId of repIds) {
@@ -2362,9 +2371,23 @@ export default function InventoryManager() {
 
       const prodNameMap = new Map((prodList || []).map((p: any) => [p.id, p.product_name as string]));
       setOrders(ordList.map((o: any) => {
-        const replacementNames: string[] = o.replacement_product_ids?.length
-          ? o.replacement_product_ids.map((id: string) => prodNameMap.get(id)).filter(Boolean)
-          : o.replacement?.product_name ? [o.replacement.product_name] : [];
+        // Resolve replacement product IDs from three sources (in priority order):
+        // 1. replacement_product_ids column (post-migration)
+        // 2. custom_specs fallback JSON { _rids: [...] } (pre-migration workaround)
+        // 3. replacement_product_id FK (original single-product column)
+        let repIds: string[] = [];
+        if (o.replacement_product_ids?.length) {
+          repIds = o.replacement_product_ids;
+        } else if (o.custom_specs) {
+          try {
+            const parsed = JSON.parse(o.custom_specs);
+            if (Array.isArray(parsed._rids)) repIds = parsed._rids;
+          } catch {}
+        }
+        if (!repIds.length && o.replacement_product_id) {
+          repIds = [o.replacement_product_id];
+        }
+        const replacementNames = repIds.map((id: string) => prodNameMap.get(id)).filter(Boolean) as string[];
         return {
           ...o,
           product_name: o.products?.product_name,
