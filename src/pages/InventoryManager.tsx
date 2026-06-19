@@ -72,7 +72,7 @@ interface HdeOrder {
   company_order_reason?: string; product_id: string; replacement_product_id?: string;
   replacement_product_ids?: string[];
   location_id?: string; customer_name?: string; customer_phone?: string;
-  status: string; notes?: string; custom_specs?: string; created_at: string;
+  status: string; notes?: string; custom_specs?: string; qty_sold?: number; created_at: string;
   created_by: string; field_assigned_to?: string; due_date?: string;
   completed_at?: string; updated_at: string;
   product_name?: string; creator_name?: string; field_agent_name?: string;
@@ -1009,13 +1009,14 @@ function CreateOrderDialog({
 // ─── Request Product dialog (sales pull from warehouse, no inventory needed) ──
 
 function RequestProductDialog({
-  open, onClose, allProducts, userId, onCreated,
+  open, onClose, allProducts, locations, userId, onCreated,
 }: {
-  open: boolean; onClose: () => void; allProducts: RawProduct[]; userId: string; onCreated: () => void;
+  open: boolean; onClose: () => void; allProducts: RawProduct[]; locations: Location[]; userId: string; onCreated: () => void;
 }) {
   const [search, setSearch] = useState("");
   const [pickedItems, setPickedItems] = useState<Array<{product: RawProduct; qty: number}>>([]);
   const [reason, setReason] = useState<string>("no_stock");
+  const [destinationLocationId, setDestinationLocationId] = useState<string>("");
   const [customSpecs, setCustomSpecs] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -1023,7 +1024,7 @@ function RequestProductDialog({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open) { setSearch(""); setPickedItems([]); setReason("no_stock"); setCustomSpecs(""); setCustomerName(""); setCustomerPhone(""); setNotes(""); }
+    if (open) { setSearch(""); setPickedItems([]); setReason("no_stock"); setDestinationLocationId(""); setCustomSpecs(""); setCustomerName(""); setCustomerPhone(""); setNotes(""); }
   }, [open]);
 
   const pickedIds = useMemo(() => new Set(pickedItems.map(i => i.product.id)), [pickedItems]);
@@ -1052,6 +1053,7 @@ function RequestProductDialog({
           order_number: orderNum, order_type: "company",
           company_order_reason: reason, order_tag: orderTag,
           product_id: item.product.id, status: "pending_approval",
+          location_id: destinationLocationId || null,
           customer_name: customerName || null, customer_phone: customerPhone || null,
           notes: notes || null, custom_specs: customSpecs || null,
           created_by: userId, qty_sold: item.qty,
@@ -1146,6 +1148,15 @@ function RequestProductDialog({
                 {reason === "custom" && (
                   <Textarea value={customSpecs} onChange={e => setCustomSpecs(e.target.value)} placeholder="Custom fabric, colour, size, specs…" rows={2} />
                 )}
+              </div>
+              <div>
+                <Label>Deliver to Location <span className="text-xs text-muted-foreground">(optional — inventory auto-updates on completion)</span></Label>
+                <Select value={destinationLocationId} onValueChange={setDestinationLocationId}>
+                  <SelectTrigger><SelectValue placeholder="Select showroom / warehouse…" /></SelectTrigger>
+                  <SelectContent>
+                    {locations.map(l => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div><Label>Customer Name</Label><Input value={customerName} onChange={e => setCustomerName(e.target.value)} /></div>
@@ -1283,6 +1294,24 @@ function OrderDetailDialog({
             });
           }
         }
+      }
+    }
+
+    // Auto-update inventory when a warehouse/company request is delivered
+    if (order!.order_type === "company" && order!.location_id) {
+      const addQty = (order as any).qty_sold || 1;
+      const { data: invRows } = await supabase.from("hde_inventory" as any).select("*")
+        .eq("product_id", order!.product_id).eq("location_id", order!.location_id);
+      const existing = ((invRows as any[]) || [])[0];
+      if (existing) {
+        await supabase.from("hde_inventory" as any)
+          .update({ quantity: existing.quantity + addQty, updated_by: userId })
+          .eq("id", existing.id);
+      } else {
+        await supabase.from("hde_inventory" as any).insert({
+          product_id: order!.product_id, location_id: order!.location_id,
+          quantity: addQty, inventory_type: "warehouse", updated_by: userId,
+        });
       }
     }
 
@@ -2828,7 +2857,7 @@ export default function InventoryManager() {
       <ReceiveStockDialog open={!!receiveArticle} onClose={() => setReceiveArticle(null)} article={receiveArticle} locations={locations} userId={user.id} onDone={loadAll} />
       <CreateOrderDialog open={!!sellMode} onClose={() => { setSellMode(null); setSellArticle(null); }} mode={sellMode} article={sellArticle} allProducts={allProducts} locations={locations} trackedArticles={trackedArticles} userId={user.id} userRole={role} onCreated={loadAll} />
       <OrderDetailDialog order={selectedOrder} open={orderDetailOpen} onClose={() => { setOrderDetailOpen(false); setSelectedOrder(null); }} userId={user.id} userRole={role} fieldAgents={fieldAgents} locations={locations} onUpdated={loadAll} />
-      <RequestProductDialog open={requestProductOpen} onClose={() => setRequestProductOpen(false)} allProducts={allProducts} userId={user.id} onCreated={loadAll} />
+      <RequestProductDialog open={requestProductOpen} onClose={() => setRequestProductOpen(false)} allProducts={allProducts} locations={locations} userId={user.id} onCreated={loadAll} />
     </div>
   );
 }
