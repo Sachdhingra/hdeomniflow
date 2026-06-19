@@ -1256,8 +1256,9 @@ function OrderDetailDialog({
     if (order!.order_type === "showroom") {
       await supabase.from("hde_display_items" as any).update({ display_status: "installed", updated_by: userId }).eq("order_id", order!.id);
 
-      // Auto-shift inventory: replacement products warehouse → showroom
-      // Resolve from all three storage paths (post-migration column, fallback JSON, FK column)
+      // Auto-update inventory on display-order completion:
+      //   • Primary product → ensure a display row exists at the showroom (create or +qty)
+      //   • Replacement products → deduct from warehouse + add to showroom display
       let repIds: string[] = [];
       if (order!.replacement_product_ids?.length) {
         repIds = order!.replacement_product_ids;
@@ -1266,31 +1267,38 @@ function OrderDetailDialog({
       }
       if (!repIds.length && order!.replacement_product_id) repIds = [order!.replacement_product_id];
 
-      if (repIds.length > 0 && order!.location_id) {
-        for (const repId of repIds) {
-          const { data: invRows } = await supabase.from("hde_inventory" as any).select("*").eq("product_id", repId);
+      if (order!.location_id) {
+        const displayProductIds = new Set<string>();
+        if (order!.product_id) displayProductIds.add(order!.product_id);
+        repIds.forEach(id => displayProductIds.add(id));
+        const qty = Math.max(1, order!.qty_sold || 1);
+
+        for (const pid of displayProductIds) {
+          const { data: invRows } = await supabase.from("hde_inventory" as any).select("*").eq("product_id", pid);
           const rows = (invRows as any[]) || [];
 
-          // Deduct from the warehouse with the most stock
-          const warehouseRow = rows
-            .filter(r => locations.find(l => l.id === r.location_id)?.type === "warehouse" && r.quantity > 0)
-            .sort((a, b) => b.quantity - a.quantity)[0];
-          if (warehouseRow) {
-            await supabase.from("hde_inventory" as any)
-              .update({ quantity: Math.max(0, warehouseRow.quantity - 1), updated_by: userId })
-              .eq("id", warehouseRow.id);
+          // Replacement products: deduct from warehouse with most stock
+          if (repIds.includes(pid)) {
+            const warehouseRow = rows
+              .filter(r => locations.find(l => l.id === r.location_id)?.type === "warehouse" && r.quantity > 0)
+              .sort((a, b) => b.quantity - a.quantity)[0];
+            if (warehouseRow) {
+              await supabase.from("hde_inventory" as any)
+                .update({ quantity: Math.max(0, warehouseRow.quantity - qty), updated_by: userId })
+                .eq("id", warehouseRow.id);
+            }
           }
 
-          // Add to the target showroom
-          const showroomRow = rows.find(r => r.location_id === order!.location_id);
+          // Add to / create the showroom display row (auto-catalogue if missing)
+          const showroomRow = rows.find(r => r.location_id === order!.location_id && r.inventory_type === "display");
           if (showroomRow) {
             await supabase.from("hde_inventory" as any)
-              .update({ quantity: showroomRow.quantity + 1, updated_by: userId })
+              .update({ quantity: showroomRow.quantity + qty, updated_by: userId })
               .eq("id", showroomRow.id);
           } else {
             await supabase.from("hde_inventory" as any).insert({
-              product_id: repId, location_id: order!.location_id,
-              quantity: 1, inventory_type: "display", updated_by: userId,
+              product_id: pid, location_id: order!.location_id,
+              quantity: qty, inventory_type: "display", updated_by: userId,
             });
           }
         }
