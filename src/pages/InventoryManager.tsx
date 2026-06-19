@@ -1330,9 +1330,11 @@ function OrderDetailDialog({
             <div className="bg-muted/40 rounded-lg p-3 space-y-1">
               {order.customer_name && <p><span className="font-medium">Customer:</span> {order.customer_name}</p>}
               {order.customer_phone && <p><span className="font-medium">Phone:</span> {order.customer_phone}</p>}
+              {order.creator_name && <p><span className="font-medium">Requested by:</span> {order.creator_name}</p>}
               <p className="text-xs text-muted-foreground">Created: {new Date(order.created_at).toLocaleDateString("en-IN")}</p>
               {order.due_date && <p className="text-xs">Due: {new Date(order.due_date).toLocaleDateString("en-IN")}</p>}
             </div>
+
           </div>
           {order.notes && <div className="text-sm bg-muted/30 rounded p-2"><b>Notes:</b> {order.notes}</div>}
           {order.custom_specs && !order.custom_specs.startsWith('{"_rids"') && <div className="text-sm bg-muted/30 rounded p-2"><b>Custom Specs:</b> {order.custom_specs}</div>}
