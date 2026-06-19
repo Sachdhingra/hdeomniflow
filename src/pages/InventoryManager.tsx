@@ -1297,23 +1297,8 @@ function OrderDetailDialog({
       }
     }
 
-    // Auto-update inventory when a warehouse/company request is delivered
-    if (order!.order_type === "company" && order!.location_id) {
-      const addQty = (order as any).qty_sold || 1;
-      const { data: invRows } = await supabase.from("hde_inventory" as any).select("*")
-        .eq("product_id", order!.product_id).eq("location_id", order!.location_id);
-      const existing = ((invRows as any[]) || [])[0];
-      if (existing) {
-        await supabase.from("hde_inventory" as any)
-          .update({ quantity: existing.quantity + addQty, updated_by: userId })
-          .eq("id", existing.id);
-      } else {
-        await supabase.from("hde_inventory" as any).insert({
-          product_id: order!.product_id, location_id: order!.location_id,
-          quantity: addQty, inventory_type: "warehouse", updated_by: userId,
-        });
-      }
-    }
+    // Note: company order inventory upsert is handled by DB trigger
+    // trg_hde_company_order_completion — no duplicate app-level update needed here.
 
     // Copy after-photos to the product photo library so every called-for / replacement
     // article picks up the installation photo automatically.
