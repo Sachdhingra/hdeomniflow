@@ -382,23 +382,40 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (!user || leads.length === 0) return;
     const todayStr = new Date().toISOString().split("T")[0];
+
+    // Mark as overdue when follow-up date is in the past
     const overdueLeads = leads.filter(l =>
       l.next_follow_up_date &&
       l.next_follow_up_date < todayStr &&
       !["won", "lost", "overdue", "converted"].includes(l.status)
     );
     if (overdueLeads.length > 0) {
-      // Batch update overdue leads
       overdueLeads.forEach(l => {
         supabase.from("leads").update({ status: "overdue" as any, updated_by: user.id }).eq("id", l.id)
           .then(() => {});
       });
-      // Optimistic local update
       setLeads(prev => prev.map(l =>
         overdueLeads.some(o => o.id === l.id) ? { ...l, status: "overdue" as any } : l
       ));
     }
+
+    // Reverse overdue when follow-up date has been pushed to today or future
+    const recoveredLeads = leads.filter(l =>
+      l.status === "overdue" &&
+      l.next_follow_up_date &&
+      l.next_follow_up_date >= todayStr
+    );
+    if (recoveredLeads.length > 0) {
+      recoveredLeads.forEach(l => {
+        supabase.from("leads").update({ status: "follow_up" as any, updated_by: user.id }).eq("id", l.id)
+          .then(() => {});
+      });
+      setLeads(prev => prev.map(l =>
+        recoveredLeads.some(o => o.id === l.id) ? { ...l, status: "follow_up" as any } : l
+      ));
+    }
   }, [leads, user]);
+
 
   // Auto-refresh on tab visibility change
   useEffect(() => {
