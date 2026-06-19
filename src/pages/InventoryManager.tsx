@@ -1286,9 +1286,28 @@ function OrderDetailDialog({
       }
     }
 
+    // Copy after-photos to the product photo library so every called-for / replacement
+    // article picks up the installation photo automatically.
+    const afterPhotoUrls = photos.filter(p => p.photo_type === "after").map(p => p.photo_url);
+    if (afterPhotoUrls.length > 0) {
+      const productIds = new Set<string>();
+      if (order!.product_id) productIds.add(order!.product_id);
+      if (order!.replacement_product_ids?.length) order!.replacement_product_ids.forEach(id => productIds.add(id));
+      if (order!.replacement_product_id) productIds.add(order!.replacement_product_id);
+
+      const rows: any[] = [];
+      productIds.forEach(pid => afterPhotoUrls.forEach(url => rows.push({
+        product_id: pid, photo_url: url, uploaded_by: userId,
+      })));
+      if (rows.length) {
+        await supabase.from("hde_product_photos" as any).insert(rows);
+      }
+    }
+
     await log("Job Completed", actionNote || "Work marked complete — inventory updated");
     setSaving(false); toast.success("Completed — inventory updated"); onUpdated(); onClose();
   };
+
 
   const handlePhotoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
