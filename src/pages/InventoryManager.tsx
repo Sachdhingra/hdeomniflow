@@ -1286,9 +1286,28 @@ function OrderDetailDialog({
       }
     }
 
+    // Copy after-photos to the product photo library so every called-for / replacement
+    // article picks up the installation photo automatically.
+    const afterPhotoUrls = photos.filter(p => p.photo_type === "after").map(p => p.photo_url);
+    if (afterPhotoUrls.length > 0) {
+      const productIds = new Set<string>();
+      if (order!.product_id) productIds.add(order!.product_id);
+      if (order!.replacement_product_ids?.length) order!.replacement_product_ids.forEach(id => productIds.add(id));
+      if (order!.replacement_product_id) productIds.add(order!.replacement_product_id);
+
+      const rows: any[] = [];
+      productIds.forEach(pid => afterPhotoUrls.forEach(url => rows.push({
+        product_id: pid, photo_url: url, uploaded_by: userId,
+      })));
+      if (rows.length) {
+        await supabase.from("hde_product_photos" as any).insert(rows);
+      }
+    }
+
     await log("Job Completed", actionNote || "Work marked complete — inventory updated");
     setSaving(false); toast.success("Completed — inventory updated"); onUpdated(); onClose();
   };
+
 
   const handlePhotoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1330,9 +1349,11 @@ function OrderDetailDialog({
             <div className="bg-muted/40 rounded-lg p-3 space-y-1">
               {order.customer_name && <p><span className="font-medium">Customer:</span> {order.customer_name}</p>}
               {order.customer_phone && <p><span className="font-medium">Phone:</span> {order.customer_phone}</p>}
+              {order.creator_name && <p><span className="font-medium">Requested by:</span> {order.creator_name}</p>}
               <p className="text-xs text-muted-foreground">Created: {new Date(order.created_at).toLocaleDateString("en-IN")}</p>
               {order.due_date && <p className="text-xs">Due: {new Date(order.due_date).toLocaleDateString("en-IN")}</p>}
             </div>
+
           </div>
           {order.notes && <div className="text-sm bg-muted/30 rounded p-2"><b>Notes:</b> {order.notes}</div>}
           {order.custom_specs && !order.custom_specs.startsWith('{"_rids"') && <div className="text-sm bg-muted/30 rounded p-2"><b>Custom Specs:</b> {order.custom_specs}</div>}
