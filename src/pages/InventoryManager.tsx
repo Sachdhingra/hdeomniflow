@@ -1308,17 +1308,20 @@ function OrderDetailDialog({
     // Note: company order inventory upsert is handled by DB trigger
     // trg_hde_company_order_completion — no duplicate app-level update needed here.
 
-    // Copy after-photos to the product photo library so every called-for / replacement
-    // article picks up the installation photo automatically.
-    const afterPhotoUrls = photos.filter(p => p.photo_type === "after").map(p => p.photo_url);
-    if (afterPhotoUrls.length > 0) {
+    // Copy job photos (after / other — anything that isn't a "before" shot) to the
+    // product photo library so each called-for / replacement article picks up an
+    // installation photo automatically and shows in inventory.
+    const productPhotoUrls = photos
+      .filter(p => p.photo_type !== "before")
+      .map(p => p.photo_url);
+    if (productPhotoUrls.length > 0) {
       const productIds = new Set<string>();
       if (order!.product_id) productIds.add(order!.product_id);
       if (order!.replacement_product_ids?.length) order!.replacement_product_ids.forEach(id => productIds.add(id));
       if (order!.replacement_product_id) productIds.add(order!.replacement_product_id);
 
       const rows: any[] = [];
-      productIds.forEach(pid => afterPhotoUrls.forEach(url => rows.push({
+      productIds.forEach(pid => productPhotoUrls.forEach(url => rows.push({
         product_id: pid, photo_url: url, uploaded_by: userId,
       })));
       if (rows.length) {
