@@ -640,7 +640,7 @@ function CreateOrderDialog({
   article: TrackedArticle | null; allProducts: RawProduct[]; locations: Location[];
   trackedArticles: TrackedArticle[]; userId: string; userRole: string; onCreated: () => void;
 }) {
-  const isAdmin = userRole === "admin";
+  const isAdmin = userRole === "admin" || userRole === "accounts";
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [locationId, setLocationId] = useState("");
