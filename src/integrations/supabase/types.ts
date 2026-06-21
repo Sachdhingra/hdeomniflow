@@ -2620,6 +2620,8 @@ export type Database = {
           description: string
           id: string
           inventory_product_id: string | null
+          invoice_date: string | null
+          invoice_number: string | null
           is_foc: boolean
           location_lat: number | null
           location_lng: number | null
@@ -2661,6 +2663,8 @@ export type Database = {
           description?: string
           id?: string
           inventory_product_id?: string | null
+          invoice_date?: string | null
+          invoice_number?: string | null
           is_foc?: boolean
           location_lat?: number | null
           location_lng?: number | null
@@ -2702,6 +2706,8 @@ export type Database = {
           description?: string
           id?: string
           inventory_product_id?: string | null
+          invoice_date?: string | null
+          invoice_number?: string | null
           is_foc?: boolean
           location_lat?: number | null
           location_lng?: number | null
