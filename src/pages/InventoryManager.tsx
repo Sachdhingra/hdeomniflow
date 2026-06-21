@@ -2333,9 +2333,9 @@ export default function InventoryManager() {
   const role = user.role as string;
   if (!["admin","sales","service_head","accounts","field_agent","site_agent"].includes(role)) return <Navigate to="/" replace />;
 
-  const isAdmin = role === "admin";
-  const isSales = role === "sales" || role === "site_agent";
   const isAccounts = role === "accounts";
+  const isAdmin = role === "admin" || isAccounts; // Accounts gets same inventory access as Admin
+  const isSales = role === "sales" || role === "site_agent";
   const isServiceHead = role === "service_head";
   const isFieldAgent = role === "field_agent";
   const canUploadPhoto = isAdmin || isSales;
