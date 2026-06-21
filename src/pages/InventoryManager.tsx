@@ -1325,7 +1325,7 @@ function OrderDetailDialog({
         product_id: pid, photo_url: url, uploaded_by: userId,
       })));
       if (rows.length) {
-        await supabase.from("hde_product_photos" as any).insert(rows);
+        await supabase.from("hde_product_photos" as any).upsert(rows, { onConflict: "product_id" });
       }
     }
 
