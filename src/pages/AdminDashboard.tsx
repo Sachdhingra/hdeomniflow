@@ -30,6 +30,7 @@ import { Link } from "react-router-dom";
 import UnassignedLeadsCard from "@/components/UnassignedLeadsCard";
 import WorkloadDistributionCard from "@/components/WorkloadDistributionCard";
 import DailyAttendanceCard from "@/components/DailyAttendanceCard";
+import WonLeadsDialog from "@/components/WonLeadsDialog";
 
 const MessageLogsPanel = () => {
   const [logs, setLogs] = useState<any[]>([]);
@@ -126,6 +127,7 @@ const AdminDashboard = () => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [assignedFilter, setAssignedFilter] = useState("all");
+  const [wonDialogOpen, setWonDialogOpen] = useState(false);
 
   const filteredLeads = useMemo(() => {
     let result = leads;
@@ -143,7 +145,8 @@ const AdminDashboard = () => {
   }, [leads, nameSearch, phoneSearch, statusFilter, categoryFilter, assignedFilter]);
 
   const totalPipeline = leads.reduce((s, l) => s + Number(l.value_in_rupees), 0);
-  const wonValue = leads.filter(l => l.status === "won").reduce((s, l) => s + Number(l.value_in_rupees), 0);
+  // Note: team-wide won totals come from `summary` (full DB aggregate) instead
+  // of the paginated `leads` array, otherwise the figure under-counts.
   const serviceRevenue = serviceJobs.filter(j => !j.is_foc && j.status === "completed" && j.type === "service").reduce((s, j) => s + Number(j.value), 0);
   const todayStr = new Date().toISOString().split("T")[0];
   const overdueLeads = leads.filter(l => l.status === "overdue");
@@ -342,9 +345,19 @@ const AdminDashboard = () => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard title="Sales Leads" value={summaryLoading ? "..." : summary.totalLeads} icon={<Users className="w-5 h-5" />} />
         <StatCard title="Pipeline Value" value={summaryLoading ? "..." : `₹${(summary.totalPipelineValue / 1000).toFixed(0)}K`} icon={<IndianRupee className="w-5 h-5" />} />
-        <StatCard title="Won Value" value={`₹${(wonValue / 1000).toFixed(0)}K`} icon={<TrendingUp className="w-5 h-5" />} trendUp trend="Closed" />
+        <button type="button" onClick={() => setWonDialogOpen(true)} className="text-left focus:outline-none focus:ring-2 focus:ring-primary rounded-lg" aria-label="View won leads">
+          <StatCard
+            title="Won Value (Month)"
+            value={summaryLoading ? "..." : `₹${(summary.teamMonthWonValue / 1000).toFixed(0)}K`}
+            icon={<TrendingUp className="w-5 h-5" />}
+            trendUp
+            trend={`${summary.teamMonthWonCount} won · Tap to view`}
+          />
+        </button>
         <StatCard title="Service Revenue" value={`₹${serviceRevenue.toLocaleString("en-IN")}`} icon={<Wrench className="w-5 h-5" />} />
       </div>
+
+      <WonLeadsDialog open={wonDialogOpen} onOpenChange={setWonDialogOpen} />
 
       <Tabs value={tab} onValueChange={setTab}>
         <div className="w-full overflow-x-auto -mx-1 px-1 pb-1">
