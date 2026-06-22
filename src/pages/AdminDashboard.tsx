@@ -145,7 +145,8 @@ const AdminDashboard = () => {
   }, [leads, nameSearch, phoneSearch, statusFilter, categoryFilter, assignedFilter]);
 
   const totalPipeline = leads.reduce((s, l) => s + Number(l.value_in_rupees), 0);
-  const wonValue = leads.filter(l => l.status === "won").reduce((s, l) => s + Number(l.value_in_rupees), 0);
+  // Note: team-wide won totals come from `summary` (full DB aggregate) instead
+  // of the paginated `leads` array, otherwise the figure under-counts.
   const serviceRevenue = serviceJobs.filter(j => !j.is_foc && j.status === "completed" && j.type === "service").reduce((s, j) => s + Number(j.value), 0);
   const todayStr = new Date().toISOString().split("T")[0];
   const overdueLeads = leads.filter(l => l.status === "overdue");
