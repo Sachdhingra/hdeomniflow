@@ -45,19 +45,24 @@ const AdminSalesTargets = () => {
   }, [currentMonth]);
 
   // Fetch each rep's monthly won value directly from the DB.
-  // Filters by assigned_to (not created_by) and stage_changed_at (not updated_at).
+  // Filters by assigned_to and COALESCE(stage_changed_at, updated_at) — matches
+  // the same logic used by the dashboard summary RPC so per-rep achievement
+  // stays in sync with the team Won-this-month figure.
   useEffect(() => {
     const fetchAchievements = async () => {
+      const monthStart = `${currentMonth}-01`;
       const { data } = await supabase
         .from("leads")
-        .select("assigned_to, value_in_rupees")
+        .select("assigned_to, value_in_rupees, stage_changed_at, updated_at")
         .eq("status", "won")
         .is("deleted_at", null)
-        .like("stage_changed_at", `${currentMonth}%`);
+        .or(`stage_changed_at.gte.${monthStart},and(stage_changed_at.is.null,updated_at.gte.${monthStart})`);
 
       const map: Record<string, number> = {};
       (data ?? []).forEach(l => {
         if (!l.assigned_to) return;
+        const ref = (l.stage_changed_at || l.updated_at || "").slice(0, 7);
+        if (ref !== currentMonth) return;
         map[l.assigned_to] = (map[l.assigned_to] ?? 0) + Number(l.value_in_rupees);
       });
       setAchievedValues(map);
