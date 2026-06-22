@@ -127,6 +127,7 @@ const AdminDashboard = () => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [assignedFilter, setAssignedFilter] = useState("all");
+  const [wonDialogOpen, setWonDialogOpen] = useState(false);
 
   const filteredLeads = useMemo(() => {
     let result = leads;
