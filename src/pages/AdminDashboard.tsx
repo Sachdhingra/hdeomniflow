@@ -30,6 +30,7 @@ import { Link } from "react-router-dom";
 import UnassignedLeadsCard from "@/components/UnassignedLeadsCard";
 import WorkloadDistributionCard from "@/components/WorkloadDistributionCard";
 import DailyAttendanceCard from "@/components/DailyAttendanceCard";
+import WonLeadsDialog from "@/components/WonLeadsDialog";
 
 const MessageLogsPanel = () => {
   const [logs, setLogs] = useState<any[]>([]);
