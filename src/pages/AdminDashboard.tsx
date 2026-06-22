@@ -344,9 +344,19 @@ const AdminDashboard = () => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard title="Sales Leads" value={summaryLoading ? "..." : summary.totalLeads} icon={<Users className="w-5 h-5" />} />
         <StatCard title="Pipeline Value" value={summaryLoading ? "..." : `₹${(summary.totalPipelineValue / 1000).toFixed(0)}K`} icon={<IndianRupee className="w-5 h-5" />} />
-        <StatCard title="Won Value" value={`₹${(wonValue / 1000).toFixed(0)}K`} icon={<TrendingUp className="w-5 h-5" />} trendUp trend="Closed" />
+        <button type="button" onClick={() => setWonDialogOpen(true)} className="text-left focus:outline-none focus:ring-2 focus:ring-primary rounded-lg" aria-label="View won leads">
+          <StatCard
+            title="Won Value (Month)"
+            value={summaryLoading ? "..." : `₹${(summary.teamMonthWonValue / 1000).toFixed(0)}K`}
+            icon={<TrendingUp className="w-5 h-5" />}
+            trendUp
+            trend={`${summary.teamMonthWonCount} won · Tap to view`}
+          />
+        </button>
         <StatCard title="Service Revenue" value={`₹${serviceRevenue.toLocaleString("en-IN")}`} icon={<Wrench className="w-5 h-5" />} />
       </div>
+
+      <WonLeadsDialog open={wonDialogOpen} onOpenChange={setWonDialogOpen} />
 
       <Tabs value={tab} onValueChange={setTab}>
         <div className="w-full overflow-x-auto -mx-1 px-1 pb-1">
