@@ -42,9 +42,13 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
   const { profile } = useStaffProfile();
   const { notifications, error, summary } = useData();
   const { totalUnread: chatUnread } = useChatUnread();
+  const { isOnDuty, isFieldAgent } = useFieldAgentDuty();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   if (!user) return null;
+
+  // During field agent duty hours, suppress logout controls entirely.
+  const hideLogout = isFieldAgent && isOnDuty;
 
   const overdueCount = summary.overdueLeads;
   const pendingJobCount = summary.pendingJobs;
@@ -64,6 +68,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       LOGISTICS_NAV,
       { to: "/service", label: "Service", icon: <Wrench className="w-5 h-5" />, badge: pendingJobCount || undefined },
       { to: "/calendar", label: "Dispatch Calendar", icon: <CalendarDays className="w-5 h-5" /> },
+      { to: "/admin/live-tracking", label: "Live Tracking", icon: <MapPinned className="w-5 h-5" /> },
       { to: "/accounts/approvals", label: "Accounts Approvals", icon: <ShieldCheck className="w-5 h-5" /> },
       { to: "/accounts/purchases", label: "Company Purchases", icon: <Receipt className="w-5 h-5" /> },
       { to: "/accounts/suppliers", label: "Suppliers", icon: <Truck className="w-5 h-5" /> },
@@ -202,14 +207,16 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
               <p className="text-sm font-medium text-sidebar-foreground truncate">{user.name}</p>
               <p className="text-xs text-sidebar-foreground/50">{ROLE_LABELS[user.role]}</p>
             </div>
-            <div className="flex flex-col gap-1">
-              <button onClick={logout} className="text-sidebar-foreground/50 hover:text-sidebar-foreground" title="Logout">
-                <LogOut className="w-4 h-4" />
-              </button>
-              <button onClick={forceLogout} className="text-destructive/50 hover:text-destructive" title="Force Logout (clears all data)">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
+            {!hideLogout && (
+              <div className="flex flex-col gap-1">
+                <button onClick={logout} className="text-sidebar-foreground/50 hover:text-sidebar-foreground" title="Logout">
+                  <LogOut className="w-4 h-4" />
+                </button>
+                <button onClick={forceLogout} className="text-destructive/50 hover:text-destructive" title="Force Logout (clears all data)">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </aside>
