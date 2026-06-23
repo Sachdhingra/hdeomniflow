@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, MapPin } from "lucide-react";
 import { useData } from "@/contexts/DataContext";
+import type { ServiceJobStatus } from "@/contexts/DataContext";
 
 // Fix default icon paths (Leaflet + bundlers)
 const makeIcon = (color: string) =>
@@ -19,7 +20,7 @@ const makeIcon = (color: string) =>
 
 const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316"];
 const LOST_COLOR = "#9ca3af";
-const ACTIVE_JOB_STATUSES = ["assigned", "on_route", "on_site", "in_progress"];
+const ACTIVE_JOB_STATUSES = ["assigned", "on_route", "on_site", "in_progress"] as const;
 
 interface Ping {
   agent_id: string;
@@ -31,7 +32,7 @@ interface Ping {
 
 interface ActiveJob {
   assigned_agent: string | null;
-  status: string;
+  status: ServiceJobStatus;
   customer_name: string;
   address: string;
   location_lat: number | null;
@@ -79,14 +80,14 @@ const LiveTracking = () => {
   const fetchLatest = useCallback(async () => {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const [{ data: pings }, { data: jobs }] = await Promise.all([
-      (supabase as any)
+      supabase
         .from("agent_live_locations")
         .select("agent_id, agent_name, latitude, longitude, captured_at")
         .eq("shift_date", istToday())
         .gte("captured_at", since)
         .order("captured_at", { ascending: false })
         .limit(500),
-      (supabase as any)
+      supabase
         .from("service_jobs")
         .select("assigned_agent, status, customer_name, address, location_lat, location_lng, updated_at")
         .is("deleted_at", null)
