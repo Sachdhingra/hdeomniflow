@@ -1,3 +1,6 @@
+# MCP config (contains secrets - keep local only)
+.mcp.json
+
 # Logs
 logs
 *.log
