@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -76,23 +76,58 @@ const LiveTracking = () => {
   const [loading, setLoading] = useState(true);
   const [, setTick] = useState(0);
 
-  const fetchLatest = async () => {
+  const fetchLatest = useCallback(async () => {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { data } = await (supabase as any)
-      .from("agent_live_locations")
-      .select("agent_id, agent_name, latitude, longitude, captured_at")
-      .eq("shift_date", istToday())
-      .gte("captured_at", since)
-      .order("captured_at", { ascending: false })
-      .limit(500);
+    const [{ data: pings }, { data: jobs }] = await Promise.all([
+      (supabase as any)
+        .from("agent_live_locations")
+        .select("agent_id, agent_name, latitude, longitude, captured_at")
+        .eq("shift_date", istToday())
+        .gte("captured_at", since)
+        .order("captured_at", { ascending: false })
+        .limit(500),
+      (supabase as any)
+        .from("service_jobs")
+        .select("assigned_agent, status, customer_name, address, location_lat, location_lng, updated_at")
+        .is("deleted_at", null)
+        .not("assigned_agent", "is", null)
+        .in("status", ACTIVE_JOB_STATUSES)
+        .order("updated_at", { ascending: false })
+        .limit(500),
+    ]);
 
     const byAgent = new Map<string, Ping>();
-    (data as Ping[] | null)?.forEach((p) => {
+    (pings as Ping[] | null)?.forEach((p) => {
       if (!byAgent.has(p.agent_id)) byAgent.set(p.agent_id, p);
     });
-    setLatest(Array.from(byAgent.values()));
+
+    const activeByAgent = new Map<string, ActiveJob>();
+    (jobs as ActiveJob[] | null)?.forEach((job) => {
+      if (job.assigned_agent && !activeByAgent.has(job.assigned_agent)) activeByAgent.set(job.assigned_agent, job);
+    });
+
+    const agentIds = new Set([...byAgent.keys(), ...activeByAgent.keys()]);
+    const tracked = Array.from(agentIds).map((agentId) => {
+      const ping = byAgent.get(agentId);
+      const job = activeByAgent.get(agentId);
+      const profile = profiles.find((p) => p.id === agentId);
+      return {
+        agent_id: agentId,
+        agent_name: ping?.agent_name || profile?.name || "Field Agent",
+        latitude: ping?.latitude ?? job?.location_lat ?? null,
+        longitude: ping?.longitude ?? job?.location_lng ?? null,
+        captured_at: ping?.captured_at ?? null,
+        hasLivePing: !!ping,
+        job_status: job?.status,
+        job_customer: job?.customer_name,
+        job_address: job?.address,
+        job_updated_at: job?.updated_at,
+      } satisfies TrackedAgent;
+    });
+
+    setLatest(tracked);
     setLoading(false);
-  };
+  }, [profiles]);
 
   useEffect(() => {
     fetchLatest();
@@ -102,7 +137,7 @@ const LiveTracking = () => {
       window.clearInterval(i);
       window.clearInterval(t);
     };
-  }, []);
+  }, [fetchLatest]);
 
   const center = useMemo<[number, number]>(() => {
     if (latest.length === 0) return [28.6139, 77.209]; // Delhi default
