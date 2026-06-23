@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, MapPin } from "lucide-react";
+import { useData } from "@/contexts/DataContext";
 
 // Fix default icon paths (Leaflet + bundlers)
 const makeIcon = (color: string) =>
@@ -70,7 +71,8 @@ const timeAgo = (iso: string) => {
 };
 
 const LiveTracking = () => {
-  const [latest, setLatest] = useState<Ping[]>([]);
+  const { profiles } = useData();
+  const [latest, setLatest] = useState<TrackedAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [, setTick] = useState(0);
 
