@@ -28,6 +28,8 @@ const isPastAutoLogout = () => {
   return h > 20 || (h === 20 && m >= 5);
 };
 
+const ACTIVE_TRACKING_JOB_STATUSES = ["assigned", "on_route", "on_site", "in_progress"];
+
 /**
  * Tracks whether a field_agent is currently "on duty" (clocked in, not out,
  * before 8:05 PM IST auto-logout). For field_agents on duty, captures GPS
@@ -42,7 +44,6 @@ export const useFieldAgentDuty = () => {
   const checkRef = useRef<number | null>(null);
 
   const isFieldAgent = user?.role === "field_agent";
-  const activeJobStatuses = ["assigned", "on_route", "on_site", "in_progress"];
 
   const refreshDuty = useCallback(async () => {
     if (!user || !isFieldAgent) {
@@ -67,7 +68,7 @@ export const useFieldAgentDuty = () => {
         .select("id")
         .eq("assigned_agent", user.id)
         .is("deleted_at", null)
-        .in("status", activeJobStatuses)
+        .in("status", ACTIVE_TRACKING_JOB_STATUSES)
         .limit(1),
     ]);
 
