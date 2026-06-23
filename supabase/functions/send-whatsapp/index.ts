@@ -1,4 +1,5 @@
 // Send WhatsApp messages via Twilio REST API (direct).
+// Reads secrets fresh per-request so updates apply immediately.
 // Same input contract so all existing callers (nurture-engine, SendTemplateDialog, etc.) keep working.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 
