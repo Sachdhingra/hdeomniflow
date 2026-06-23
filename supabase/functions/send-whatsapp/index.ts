@@ -197,7 +197,7 @@ Deno.serve(async (req) => {
         provider: "twilio",
       }),
       {
-        status: result.success ? 200 : 502,
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       },
     );
