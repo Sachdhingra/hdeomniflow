@@ -140,11 +140,14 @@ const LiveTracking = () => {
   }, [fetchLatest]);
 
   const center = useMemo<[number, number]>(() => {
-    if (latest.length === 0) return [28.6139, 77.209]; // Delhi default
-    const avgLat = latest.reduce((s, p) => s + p.latitude, 0) / latest.length;
-    const avgLng = latest.reduce((s, p) => s + p.longitude, 0) / latest.length;
+    const mapped = latest.filter((p) => p.latitude != null && p.longitude != null);
+    if (mapped.length === 0) return [28.6139, 77.209]; // Delhi default
+    const avgLat = mapped.reduce((s, p) => s + Number(p.latitude), 0) / mapped.length;
+    const avgLng = mapped.reduce((s, p) => s + Number(p.longitude), 0) / mapped.length;
     return [avgLat, avgLng];
   }, [latest]);
+
+  const mappedAgents = latest.filter((p) => p.latitude != null && p.longitude != null);
 
   const colorFor = (id: string, idx: number, stale: boolean) =>
     stale ? LOST_COLOR : COLORS[idx % COLORS.length];
