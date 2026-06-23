@@ -49,6 +49,7 @@ const InventoryManager = lazy(() => import("@/pages/InventoryManager"));
 const LogisticsCalculator = lazy(() => import("@/pages/LogisticsCalculator"));
 const LogisticsCalculatorSettings = lazy(() => import("@/pages/LogisticsCalculatorSettings"));
 const LogisticsHistory = lazy(() => import("@/pages/LogisticsHistory"));
+const LiveTracking = lazy(() => import("@/pages/LiveTracking"));
 import KioskModeWrapper from "@/components/kiosk/KioskModeWrapper";
 import ProfileGate from "@/components/staff/ProfileGate";
 
@@ -110,6 +111,7 @@ const AppRoutes = () => {
             <Route path="/accounts/purchases" element={<AdminCompanyPurchases />} />
             <Route path="/accounts/suppliers" element={<AdminSuppliers />} />
             <Route path="/calendar" element={<ServiceCalendar />} />
+            <Route path="/admin/live-tracking" element={<LiveTracking />} />
           </>
         );
       case "accounts":
