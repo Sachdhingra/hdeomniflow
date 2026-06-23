@@ -19,6 +19,7 @@ import LeadNotifier from "@/components/LeadNotifier";
 import AttendanceClockButton from "@/components/AttendanceClockButton";
 import DiscountCalculator from "@/components/DiscountCalculator";
 import { useChatUnread } from "@/contexts/ChatUnreadContext";
+import { useFieldAgentDuty } from "@/hooks/useFieldAgentDuty";
 
 interface NavItem {
   to: string;
