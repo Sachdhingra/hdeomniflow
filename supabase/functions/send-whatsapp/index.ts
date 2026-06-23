@@ -10,10 +10,14 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID");
-const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN");
-// e.g. "whatsapp:+14155238886" (sandbox) or your approved WA-enabled number
-const TWILIO_WHATSAPP_FROM = Deno.env.get("TWILIO_WHATSAPP_FROM");
+// Read Twilio credentials fresh on every request so secret updates take effect immediately.
+function getTwilioCreds() {
+  return {
+    accountSid: Deno.env.get("TWILIO_ACCOUNT_SID"),
+    authToken: Deno.env.get("TWILIO_AUTH_TOKEN"),
+    whatsappFrom: Deno.env.get("TWILIO_WHATSAPP_FROM"),
+  };
+}
 
 interface SendResult {
   success: boolean;
@@ -32,36 +36,30 @@ function normalizePhone(raw: string): { e164: string } {
   return { e164: `+91${digits}` };
 }
 
-function waFrom(): string {
-  const f = (TWILIO_WHATSAPP_FROM || "").trim();
-  if (!f) return "";
-  return f.startsWith("whatsapp:") ? f : `whatsapp:${f}`;
-}
-
 async function sendViaTwilio(params: {
   phone: string;
   message?: string;
-  // Twilio uses content templates (HX...) rather than Meta's named templates.
   content_sid?: string;
   content_variables?: Record<string, string>;
 }): Promise<SendResult> {
+  const { accountSid, authToken, whatsappFrom } = getTwilioCreds();
   const { e164 } = normalizePhone(params.phone);
   if (!e164) return { success: false, error: "Invalid phone number", phone: e164 };
-  if (!TWILIO_ACCOUNT_SID) {
+  if (!accountSid) {
     return { success: false, error: "TWILIO_ACCOUNT_SID not configured", phone: e164 };
   }
-  if (!TWILIO_AUTH_TOKEN) {
+  if (!authToken) {
     return { success: false, error: "TWILIO_AUTH_TOKEN not configured", phone: e164 };
   }
-  const from = waFrom();
-  if (!from) {
+  const rawFrom = (whatsappFrom || "").trim();
+  if (!rawFrom) {
     return { success: false, error: "TWILIO_WHATSAPP_FROM not configured", phone: e164 };
   }
+  const from = rawFrom.startsWith("whatsapp:") ? rawFrom : `whatsapp:${rawFrom}`;
 
   const body = new URLSearchParams();
   body.set("To", `whatsapp:${e164}`);
   body.set("From", from);
-  // Twilio will POST delivery status updates here.
   const statusCallback = `${supabaseUrl}/functions/v1/twilio-status`;
   if (statusCallback && /^https?:\/\//.test(statusCallback)) {
     body.set("StatusCallback", statusCallback);
@@ -75,8 +73,8 @@ async function sendViaTwilio(params: {
     body.set("Body", params.message || "");
   }
 
-  const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
-  const basicAuth = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
+  const basicAuth = btoa(`${accountSid}:${authToken}`);
   console.log("[send-whatsapp] →", { url, to: e164, kind: params.content_sid ? "template" : "text" });
 
   try {
