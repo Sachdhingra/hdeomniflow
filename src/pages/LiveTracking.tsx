@@ -174,21 +174,23 @@ const LiveTracking = () => {
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-            {latest.map((p, idx) => {
-              const ageMin = (Date.now() - new Date(p.captured_at).getTime()) / 60000;
-              const stale = ageMin > 5;
+            {mappedAgents.map((p, idx) => {
+              const ageMin = p.captured_at ? (Date.now() - new Date(p.captured_at).getTime()) / 60000 : Infinity;
+              const stale = !p.hasLivePing || ageMin > 5;
               return (
                 <Marker
                   key={p.agent_id}
-                  position={[p.latitude, p.longitude]}
+                  position={[Number(p.latitude), Number(p.longitude)]}
                   icon={makeIcon(colorFor(p.agent_id, idx, stale))}
                 >
                   <Popup>
                     <div className="text-sm">
                       <div className="font-semibold">{p.agent_name}</div>
                       <div className="text-muted-foreground">
-                        {stale ? "Signal Lost" : `Updated ${timeAgo(p.captured_at)}`}
+                        {stale ? "Signal Lost" : `Updated ${timeAgo(p.captured_at!)}`}
                       </div>
+                      {p.job_customer && <div>Job: {p.job_customer}</div>}
+                      {p.job_status && <div className="capitalize">Status: {p.job_status.replace("_", " ")}</div>}
                     </div>
                   </Popup>
                 </Marker>
@@ -199,28 +201,35 @@ const LiveTracking = () => {
       </Card>
 
       <Card className="p-4">
-        <h2 className="text-sm font-semibold mb-3">On-duty agents ({latest.length})</h2>
+        <h2 className="text-sm font-semibold mb-3">Tracked agents ({latest.length})</h2>
         {latest.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No location pings received today yet.</p>
+          <p className="text-sm text-muted-foreground">No active assigned/en-route agents found yet.</p>
         ) : (
           <ul className="space-y-2">
             {latest.map((p, idx) => {
-              const ageMin = (Date.now() - new Date(p.captured_at).getTime()) / 60000;
-              const stale = ageMin > 5;
+              const ageMin = p.captured_at ? (Date.now() - new Date(p.captured_at).getTime()) / 60000 : Infinity;
+              const stale = !p.hasLivePing || ageMin > 5;
               return (
-                <li key={p.agent_id} className="flex items-center justify-between text-sm">
+                <li key={p.agent_id} className="flex items-start justify-between gap-3 text-sm">
                   <div className="flex items-center gap-2">
                     <span
-                      className="inline-block w-3 h-3 rounded-full"
+                      className="inline-block w-3 h-3 rounded-full mt-1"
                       style={{ background: colorFor(p.agent_id, idx, stale) }}
                     />
-                    <span className="font-medium">{p.agent_name}</span>
+                    <div>
+                      <div className="font-medium">{p.agent_name}</div>
+                      {p.job_customer && <div className="text-xs text-muted-foreground">{p.job_customer}</div>}
+                      {p.job_address && <div className="text-xs text-muted-foreground line-clamp-1">{p.job_address}</div>}
+                    </div>
                   </div>
-                  {stale ? (
-                    <Badge variant="secondary">Signal Lost</Badge>
-                  ) : (
-                    <span className="text-muted-foreground">Updated {timeAgo(p.captured_at)}</span>
-                  )}
+                  <div className="text-right shrink-0 space-y-1">
+                    {p.job_status && <Badge variant="outline" className="capitalize">{p.job_status.replace("_", " ")}</Badge>}
+                    {stale ? (
+                      <Badge variant="secondary">Signal Lost</Badge>
+                    ) : (
+                      <div className="text-muted-foreground">Updated {timeAgo(p.captured_at!)}</div>
+                    )}
+                  </div>
                 </li>
               );
             })}
