@@ -28,7 +28,7 @@ const isPastAutoLogout = () => {
   return h > 20 || (h === 20 && m >= 5);
 };
 
-const ACTIVE_TRACKING_JOB_STATUSES = ["assigned", "on_route", "on_site", "in_progress"];
+const ACTIVE_TRACKING_JOB_STATUSES = ["assigned", "on_route", "on_site", "in_progress"] as const;
 
 /**
  * Tracks whether a field_agent is currently "on duty" (clocked in, not out,
