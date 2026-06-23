@@ -55,6 +55,39 @@ export type Database = {
           },
         ]
       }
+      agent_live_locations: {
+        Row: {
+          agent_id: string
+          agent_name: string
+          captured_at: string
+          created_at: string
+          id: string
+          latitude: number
+          longitude: number
+          shift_date: string
+        }
+        Insert: {
+          agent_id: string
+          agent_name: string
+          captured_at?: string
+          created_at?: string
+          id?: string
+          latitude: number
+          longitude: number
+          shift_date?: string
+        }
+        Update: {
+          agent_id?: string
+          agent_name?: string
+          captured_at?: string
+          created_at?: string
+          id?: string
+          latitude?: number
+          longitude?: number
+          shift_date?: string
+        }
+        Relationships: []
+      }
       agent_scores: {
         Row: {
           agent_id: string
