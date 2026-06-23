@@ -57,13 +57,13 @@ export const useFieldAgentDuty = () => {
       return;
     }
     const [{ data: attendance }, { data: activeJobs }] = await Promise.all([
-      (supabase as any)
+      supabase
         .from("attendance")
         .select("clock_in, clock_out")
         .eq("user_id", user.id)
         .eq("date", istToday())
         .maybeSingle(),
-      (supabase as any)
+      supabase
         .from("service_jobs")
         .select("id")
         .eq("assigned_agent", user.id)
@@ -107,7 +107,7 @@ export const useFieldAgentDuty = () => {
       navigator.geolocation.getCurrentPosition(
         async (pos) => {
           try {
-            const { error } = await (supabase as any).from("agent_live_locations").insert({
+            const { error } = await supabase.from("agent_live_locations").insert({
               agent_id: user.id,
               agent_name: user.name,
               latitude: pos.coords.latitude,
