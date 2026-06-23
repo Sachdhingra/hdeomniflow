@@ -18,6 +18,7 @@ const makeIcon = (color: string) =>
 
 const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316"];
 const LOST_COLOR = "#9ca3af";
+const ACTIVE_JOB_STATUSES = ["assigned", "on_route", "on_site", "in_progress"];
 
 interface Ping {
   agent_id: string;
@@ -25,6 +26,29 @@ interface Ping {
   latitude: number;
   longitude: number;
   captured_at: string;
+}
+
+interface ActiveJob {
+  assigned_agent: string | null;
+  status: string;
+  customer_name: string;
+  address: string;
+  location_lat: number | null;
+  location_lng: number | null;
+  updated_at: string;
+}
+
+interface TrackedAgent {
+  agent_id: string;
+  agent_name: string;
+  latitude: number | null;
+  longitude: number | null;
+  captured_at: string | null;
+  hasLivePing: boolean;
+  job_status?: string;
+  job_customer?: string;
+  job_address?: string;
+  job_updated_at?: string;
 }
 
 const istToday = () => {
