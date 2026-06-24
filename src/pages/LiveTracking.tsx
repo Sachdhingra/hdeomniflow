@@ -71,15 +71,25 @@ const timeAgo = (iso: string) => {
   return `${Math.floor(diff / 86400)}d ago`;
 };
 
+interface SignalLog {
+  id: string;
+  agent_id: string;
+  agent_name: string | null;
+  event_type: string;
+  occurred_at: string;
+  duration_minutes: number | null;
+}
+
 const LiveTracking = () => {
   const { profiles } = useData();
   const [latest, setLatest] = useState<TrackedAgent[]>([]);
+  const [signalLogs, setSignalLogs] = useState<SignalLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [, setTick] = useState(0);
 
   const fetchLatest = useCallback(async () => {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const [{ data: pings }, { data: jobs }] = await Promise.all([
+    const [{ data: pings }, { data: jobs }, { data: logs }] = await Promise.all([
       supabase
         .from("agent_live_locations")
         .select("agent_id, agent_name, latitude, longitude, captured_at")
@@ -94,6 +104,12 @@ const LiveTracking = () => {
         .not("assigned_agent", "is", null)
         .in("status", ACTIVE_JOB_STATUSES)
         .order("updated_at", { ascending: false })
+        .limit(500),
+      supabase
+        .from("agent_signal_logs")
+        .select("id, agent_id, agent_name, event_type, occurred_at, duration_minutes")
+        .eq("shift_date", istToday())
+        .order("occurred_at", { ascending: false })
         .limit(500),
     ]);
 
@@ -127,6 +143,7 @@ const LiveTracking = () => {
     });
 
     setLatest(tracked);
+    setSignalLogs((logs as SignalLog[] | null) ?? []);
     setLoading(false);
   }, [profiles]);
 
@@ -139,6 +156,29 @@ const LiveTracking = () => {
       window.clearInterval(t);
     };
   }, [fetchLatest]);
+
+  const SIGNAL_LOST_MIN = 10;
+  const isStale = (p: TrackedAgent) => {
+    const ageMin = p.captured_at ? (Date.now() - new Date(p.captured_at).getTime()) / 60000 : Infinity;
+    return !p.hasLivePing || ageMin > SIGNAL_LOST_MIN;
+  };
+
+  const eventLabel = (t: string) => {
+    const map: Record<string, string> = {
+      gps_off: "GPS Off",
+      gps_restored: "GPS Restored",
+      offline: "Offline",
+      online: "Online",
+      signal_lost: "Signal Lost",
+      signal_restored: "Signal Restored",
+    };
+    return map[t] || t;
+  };
+  const eventClass = (t: string) =>
+    ["gps_off", "offline", "signal_lost"].includes(t)
+      ? "text-destructive"
+      : "text-success";
+
 
   const center = useMemo<[number, number]>(() => {
     const mapped = latest.filter((p) => p.latitude != null && p.longitude != null);
