@@ -237,6 +237,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
         </main>
       </div>
       <DiscountCalculator />
+      <FieldAgentGpsGuard />
     </div>
   );
 };
