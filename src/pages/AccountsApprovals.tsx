@@ -31,6 +31,8 @@ type Job = {
   accounts_rejection_reason: string | null;
   accounts_notes: string | null;
   accounts_approved_at: string | null;
+  invoice_number: string | null;
+  invoice_date: string | null;
 };
 
 const STATUS_BADGE: Record<string, string> = {
@@ -59,7 +61,7 @@ const AccountsApprovals = () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("service_jobs")
-      .select("id,customer_name,customer_phone,category,type,value,date_to_attend,date_received,description,source_lead_id,accounts_approval_status,accounts_rejection_reason,accounts_notes,accounts_approved_at")
+      .select("id,customer_name,customer_phone,category,type,value,date_to_attend,date_received,description,source_lead_id,accounts_approval_status,accounts_rejection_reason,accounts_notes,accounts_approved_at,invoice_number,invoice_date")
       .is("deleted_at", null)
       .order("date_received", { ascending: false })
       .limit(200);
@@ -194,7 +196,11 @@ const AccountsApprovals = () => {
       });
       if (lErr) throw lErr;
 
-      toast.success(actionType === "approve" ? "✅ Dispatch approved" : "❌ Dispatch rejected");
+      toast.success(
+        actionType === "approve"
+          ? (isSelfDelivery ? "✅ Self-delivery approved & closed" : "✅ Dispatch approved — forwarded to service")
+          : "❌ Dispatch rejected"
+      );
       setActionJob(null);
       load();
     } catch (e: any) {
@@ -211,7 +217,7 @@ const AccountsApprovals = () => {
           <ShieldCheck className="w-6 h-6 text-primary" /> Accounts Approvals
         </h1>
         <p className="text-sm text-muted-foreground">
-          Verify customer dues & approve dispatches before service dispatch
+          Verify customer dues & approve dispatches. Self-delivery cases close immediately on approval — no service dispatch needed.
         </p>
       </div>
 
@@ -269,6 +275,12 @@ const AccountsApprovals = () => {
                         </p>
                       )}
                       {job.description && <p className="text-sm mt-1">{job.description}</p>}
+                      {job.type === "self_delivery" && (job.invoice_number || job.invoice_date) && (
+                        <p className="text-xs mt-1 font-medium text-primary flex items-center gap-3 flex-wrap">
+                          {job.invoice_number && <span>🧾 Inv: {job.invoice_number}</span>}
+                          {job.invoice_date && <span>📅 Inv Date: {job.invoice_date}</span>}
+                        </p>
+                      )}
                     </div>
                     <div className="text-right">
                       <p className="font-bold flex items-center gap-1 justify-end">
@@ -420,7 +432,9 @@ const AccountsApprovals = () => {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {actionType === "approve" ? (
-                <><CheckCircle2 className="w-5 h-5 text-success" /> Approve dispatch</>
+                actionJob?.type === "self_delivery"
+                  ? <><CheckCircle2 className="w-5 h-5 text-success" /> Approve & close self-delivery</>
+                  : <><CheckCircle2 className="w-5 h-5 text-success" /> Approve dispatch</>
               ) : (
                 <><XCircle className="w-5 h-5 text-destructive" /> Reject dispatch</>
               )}
@@ -433,7 +447,19 @@ const AccountsApprovals = () => {
                 <p className="text-xs text-muted-foreground">
                   {actionJob.customer_phone} · ₹{Number(actionJob.value).toLocaleString("en-IN")}
                 </p>
+                {actionJob.type === "self_delivery" && (actionJob.invoice_number || actionJob.invoice_date) && (
+                  <p className="text-xs mt-1 font-medium text-primary flex gap-3 flex-wrap">
+                    {actionJob.invoice_number && <span>🧾 Inv: {actionJob.invoice_number}</span>}
+                    {actionJob.invoice_date && <span>📅 Inv Date: {actionJob.invoice_date}</span>}
+                  </p>
+                )}
               </div>
+              {actionType === "approve" && actionJob.type === "self_delivery" && (
+                <div className="p-2 rounded bg-success/10 border border-success/30 text-xs text-success flex gap-2 items-start">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  <span>Approving will <strong>close this case immediately</strong>. No service dispatch or service head forwarding is needed for self-delivery.</span>
+                </div>
+              )}
               {actionType === "reject" && (
                 <div className="space-y-1.5">
                   <Label>Rejection reason *</Label>
@@ -456,7 +482,9 @@ const AccountsApprovals = () => {
               onClick={submitAction}
               disabled={saving}
             >
-              {saving ? "Saving..." : actionType === "approve" ? "Confirm Approval" : "Confirm Rejection"}
+              {saving ? "Saving..." : actionType === "approve"
+                ? (actionJob?.type === "self_delivery" ? "Approve & Close" : "Confirm Approval")
+                : "Confirm Rejection"}
             </Button>
           </DialogFooter>
         </DialogContent>
