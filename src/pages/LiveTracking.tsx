@@ -71,15 +71,25 @@ const timeAgo = (iso: string) => {
   return `${Math.floor(diff / 86400)}d ago`;
 };
 
+interface SignalLog {
+  id: string;
+  agent_id: string;
+  agent_name: string | null;
+  event_type: string;
+  occurred_at: string;
+  duration_minutes: number | null;
+}
+
 const LiveTracking = () => {
   const { profiles } = useData();
   const [latest, setLatest] = useState<TrackedAgent[]>([]);
+  const [signalLogs, setSignalLogs] = useState<SignalLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [, setTick] = useState(0);
 
   const fetchLatest = useCallback(async () => {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const [{ data: pings }, { data: jobs }] = await Promise.all([
+    const [{ data: pings }, { data: jobs }, { data: logs }] = await Promise.all([
       supabase
         .from("agent_live_locations")
         .select("agent_id, agent_name, latitude, longitude, captured_at")
@@ -94,6 +104,12 @@ const LiveTracking = () => {
         .not("assigned_agent", "is", null)
         .in("status", ACTIVE_JOB_STATUSES)
         .order("updated_at", { ascending: false })
+        .limit(500),
+      supabase
+        .from("agent_signal_logs")
+        .select("id, agent_id, agent_name, event_type, occurred_at, duration_minutes")
+        .eq("shift_date", istToday())
+        .order("occurred_at", { ascending: false })
         .limit(500),
     ]);
 
@@ -127,6 +143,7 @@ const LiveTracking = () => {
     });
 
     setLatest(tracked);
+    setSignalLogs((logs as SignalLog[] | null) ?? []);
     setLoading(false);
   }, [profiles]);
 
@@ -139,6 +156,29 @@ const LiveTracking = () => {
       window.clearInterval(t);
     };
   }, [fetchLatest]);
+
+  const SIGNAL_LOST_MIN = 10;
+  const isStale = (p: TrackedAgent) => {
+    const ageMin = p.captured_at ? (Date.now() - new Date(p.captured_at).getTime()) / 60000 : Infinity;
+    return !p.hasLivePing || ageMin > SIGNAL_LOST_MIN;
+  };
+
+  const eventLabel = (t: string) => {
+    const map: Record<string, string> = {
+      gps_off: "GPS Off",
+      gps_restored: "GPS Restored",
+      offline: "Offline",
+      online: "Online",
+      signal_lost: "Signal Lost",
+      signal_restored: "Signal Restored",
+    };
+    return map[t] || t;
+  };
+  const eventClass = (t: string) =>
+    ["gps_off", "offline", "signal_lost"].includes(t)
+      ? "text-destructive"
+      : "text-success";
+
 
   const center = useMemo<[number, number]>(() => {
     const mapped = latest.filter((p) => p.latitude != null && p.longitude != null);
@@ -160,7 +200,7 @@ const LiveTracking = () => {
           <MapPin className="w-6 h-6 text-primary" /> Live Tracking
         </h1>
         <p className="text-sm text-muted-foreground">
-          Field agent locations refresh automatically every 60 seconds. Pins go grey after 5 minutes of silence.
+          Field agent locations refresh every 60 seconds. Agents flagged in red after {SIGNAL_LOST_MIN} minutes of silence.
         </p>
       </div>
 
@@ -176,19 +216,18 @@ const LiveTracking = () => {
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
             {mappedAgents.map((p, idx) => {
-              const ageMin = p.captured_at ? (Date.now() - new Date(p.captured_at).getTime()) / 60000 : Infinity;
-              const stale = !p.hasLivePing || ageMin > 5;
+              const stale = isStale(p);
               return (
                 <Marker
                   key={p.agent_id}
                   position={[Number(p.latitude), Number(p.longitude)]}
-                  icon={makeIcon(colorFor(p.agent_id, idx, stale))}
+                  icon={makeIcon(stale ? "#ef4444" : colorFor(p.agent_id, idx, false))}
                 >
                   <Popup>
                     <div className="text-sm">
                       <div className="font-semibold">{p.agent_name}</div>
-                      <div className="text-muted-foreground">
-                        {stale ? "Signal Lost" : `Updated ${timeAgo(p.captured_at!)}`}
+                      <div className={stale ? "text-destructive font-medium" : "text-muted-foreground"}>
+                        {stale ? "Suspicious – Signal Lost" : `Updated ${timeAgo(p.captured_at!)}`}
                       </div>
                       {p.job_customer && <div>Job: {p.job_customer}</div>}
                       {p.job_status && <div className="capitalize">Status: {p.job_status.replace("_", " ")}</div>}
@@ -208,17 +247,21 @@ const LiveTracking = () => {
         ) : (
           <ul className="space-y-2">
             {latest.map((p, idx) => {
-              const ageMin = p.captured_at ? (Date.now() - new Date(p.captured_at).getTime()) / 60000 : Infinity;
-              const stale = !p.hasLivePing || ageMin > 5;
+              const stale = isStale(p);
               return (
-                <li key={p.agent_id} className="flex items-start justify-between gap-3 text-sm">
+                <li
+                  key={p.agent_id}
+                  className={`flex items-start justify-between gap-3 text-sm rounded-md p-2 ${
+                    stale ? "bg-destructive/5 border border-destructive/30" : ""
+                  }`}
+                >
                   <div className="flex items-center gap-2">
                     <span
                       className="inline-block w-3 h-3 rounded-full mt-1"
-                      style={{ background: colorFor(p.agent_id, idx, stale) }}
+                      style={{ background: stale ? "#ef4444" : colorFor(p.agent_id, idx, false) }}
                     />
                     <div>
-                      <div className="font-medium">{p.agent_name}</div>
+                      <div className={`font-medium ${stale ? "text-destructive" : ""}`}>{p.agent_name}</div>
                       {p.job_customer && <div className="text-xs text-muted-foreground">{p.job_customer}</div>}
                       {p.job_address && <div className="text-xs text-muted-foreground line-clamp-1">{p.job_address}</div>}
                     </div>
@@ -226,7 +269,7 @@ const LiveTracking = () => {
                   <div className="text-right shrink-0 space-y-1">
                     {p.job_status && <Badge variant="outline" className="capitalize">{p.job_status.replace("_", " ")}</Badge>}
                     {stale ? (
-                      <Badge variant="secondary">Signal Lost</Badge>
+                      <Badge variant="destructive">Suspicious – Signal Lost</Badge>
                     ) : (
                       <div className="text-muted-foreground">Updated {timeAgo(p.captured_at!)}</div>
                     )}
@@ -235,6 +278,49 @@ const LiveTracking = () => {
               );
             })}
           </ul>
+        )}
+      </Card>
+
+      <Card className="p-4">
+        <h2 className="text-sm font-semibold mb-3">Today's Signal Log ({signalLogs.length})</h2>
+        {signalLogs.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No signal events recorded today.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-xs text-muted-foreground border-b border-border">
+                <tr className="text-left">
+                  <th className="py-2 pr-3">Agent</th>
+                  <th className="py-2 pr-3">Event</th>
+                  <th className="py-2 pr-3">Time</th>
+                  <th className="py-2">Duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {signalLogs.map((log) => {
+                  const profile = profiles.find((p) => p.id === log.agent_id);
+                  const name = log.agent_name || profile?.name || "Field Agent";
+                  const t = new Date(log.occurred_at).toLocaleTimeString("en-IN", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    timeZone: "Asia/Kolkata",
+                  });
+                  return (
+                    <tr key={log.id} className="border-b border-border/50 last:border-0">
+                      <td className="py-2 pr-3 font-medium">{name}</td>
+                      <td className={`py-2 pr-3 font-medium ${eventClass(log.event_type)}`}>
+                        {eventLabel(log.event_type)}
+                      </td>
+                      <td className="py-2 pr-3 text-muted-foreground">{t}</td>
+                      <td className="py-2 text-muted-foreground">
+                        {log.duration_minutes != null ? `${log.duration_minutes} mins` : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </Card>
     </div>

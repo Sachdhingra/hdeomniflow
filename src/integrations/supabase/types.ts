@@ -124,6 +124,39 @@ export type Database = {
         }
         Relationships: []
       }
+      agent_signal_logs: {
+        Row: {
+          agent_id: string | null
+          agent_name: string | null
+          created_at: string
+          duration_minutes: number | null
+          event_type: string
+          id: string
+          occurred_at: string
+          shift_date: string
+        }
+        Insert: {
+          agent_id?: string | null
+          agent_name?: string | null
+          created_at?: string
+          duration_minutes?: number | null
+          event_type: string
+          id?: string
+          occurred_at?: string
+          shift_date?: string
+        }
+        Update: {
+          agent_id?: string | null
+          agent_name?: string | null
+          created_at?: string
+          duration_minutes?: number | null
+          event_type?: string
+          id?: string
+          occurred_at?: string
+          shift_date?: string
+        }
+        Relationships: []
+      }
       app_settings: {
         Row: {
           key: string
