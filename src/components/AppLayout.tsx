@@ -20,6 +20,7 @@ import AttendanceClockButton from "@/components/AttendanceClockButton";
 import DiscountCalculator from "@/components/DiscountCalculator";
 import { useChatUnread } from "@/contexts/ChatUnreadContext";
 import { useFieldAgentDuty } from "@/hooks/useFieldAgentDuty";
+import FieldAgentGpsGuard from "@/components/FieldAgentGpsGuard";
 
 interface NavItem {
   to: string;
