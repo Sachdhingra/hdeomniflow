@@ -46,6 +46,7 @@ const StaffDirectory = lazy(() => import("@/pages/StaffDirectory"));
 const MonthlyLeaderboard = lazy(() => import("@/pages/MonthlyLeaderboard"));
 const EliteCustomers = lazy(() => import("@/pages/EliteCustomers"));
 const CardBillEntries = lazy(() => import("@/pages/CardBillEntries"));
+const LoyaltyPoints = lazy(() => import("@/pages/LoyaltyPoints"));
 const InventoryManager = lazy(() => import("@/pages/InventoryManager"));
 const LogisticsCalculator = lazy(() => import("@/pages/LogisticsCalculator"));
 const LogisticsCalculatorSettings = lazy(() => import("@/pages/LogisticsCalculatorSettings"));
@@ -187,6 +188,7 @@ const AppRoutes = () => {
             <Route path="/dashboard/leaderboard" element={<MonthlyLeaderboard />} />
             <Route path="/elite-customers" element={<EliteCustomers />} />
             <Route path="/card-bills" element={<CardBillEntries />} />
+            <Route path="/loyalty-points" element={<LoyaltyPoints />} />
             <Route path="/inventory" element={<InventoryManager />} />
             <Route path="/logistics-calculator" element={<LogisticsCalculator />} />
             <Route path="/logistics-calculator/history" element={<LogisticsHistory />} />

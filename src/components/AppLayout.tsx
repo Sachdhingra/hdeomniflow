@@ -5,7 +5,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import {
   Building2, LayoutDashboard, Users, Wrench, Navigation, MapPin,
   LogOut, Menu, X, ChevronRight, CalendarDays, BarChart3,
-  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot, ShieldCheck, MessageSquare, TrendingUp, ShoppingBag, MessagesSquare, Sparkles, Clock, Star, Receipt, Trophy, UserCircle, BookUser, Boxes, Truck, Calculator, CreditCard
+  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot, ShieldCheck, MessageSquare, TrendingUp, ShoppingBag, MessagesSquare, Sparkles, Clock, Star, Receipt, Trophy, UserCircle, BookUser, Boxes, Truck, Calculator, CreditCard, Coins
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useStaffProfile } from "@/hooks/useStaffProfile";
@@ -57,6 +57,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
 
   const ELITE_NAV: NavItem = { to: "/elite-customers", label: "Elite Customers", icon: <Star className="w-5 h-5 text-amber-500" /> };
   const CARD_BILLS_NAV: NavItem = { to: "/card-bills", label: "Card Bill Entries", icon: <CreditCard className="w-5 h-5" /> };
+  const LOYALTY_POINTS_NAV: NavItem = { to: "/loyalty-points", label: "Loyalty Points", icon: <Coins className="w-5 h-5" /> };
   const INVENTORY_NAV: NavItem = { to: "/inventory", label: "Inventory", icon: <Boxes className="w-5 h-5" /> };
   const LOGISTICS_NAV: NavItem = { to: "/logistics-calculator", label: "Logistics Calculator", icon: <Calculator className="w-5 h-5" /> };
 
@@ -67,6 +68,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/leads/board", label: "Leads Board", icon: <KanbanSquare className="w-5 h-5" /> },
       ELITE_NAV,
       CARD_BILLS_NAV,
+      LOYALTY_POINTS_NAV,
       INVENTORY_NAV,
       LOGISTICS_NAV,
       { to: "/service", label: "Service", icon: <Wrench className="w-5 h-5" />, badge: pendingJobCount || undefined },
@@ -128,6 +130,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/accounts/approvals", label: "All Approvals", icon: <ClipboardList className="w-5 h-5" /> },
       ELITE_NAV,
       CARD_BILLS_NAV,
+      LOYALTY_POINTS_NAV,
       { to: "/accounts/purchases", label: "Company Purchases", icon: <Receipt className="w-5 h-5" /> },
       { to: "/accounts/suppliers", label: "Suppliers", icon: <Truck className="w-5 h-5" /> },
       INVENTORY_NAV,
