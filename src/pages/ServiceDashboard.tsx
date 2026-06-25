@@ -94,6 +94,13 @@ const ServiceDashboard = () => {
     else if (tab === "services") jobs = jobs.filter(j => j.type === "service");
     else if (tab === "pending") jobs = jobs.filter(j => j.status === "pending");
     else if (tab === "completed") jobs = jobs.filter(j => j.status === "completed");
+    else if (tab === "overdue") {
+      const today = new Date().toISOString().slice(0, 10);
+      jobs = jobs.filter(j =>
+        ["pending", "assigned", "on_route", "on_site"].includes(j.status) &&
+        j.date_to_attend && j.date_to_attend < today
+      );
+    }
     return jobs;
   }, [serviceJobs, dateFilter, phoneSearch, tab, isServiceHead, isAdmin]);
 
@@ -391,6 +398,7 @@ const ServiceDashboard = () => {
           <TabsList>
             <TabsTrigger value="all">All</TabsTrigger>
             <TabsTrigger value="pending">Pending</TabsTrigger>
+            <TabsTrigger value="overdue" className="data-[state=active]:bg-destructive data-[state=active]:text-destructive-foreground">Overdue</TabsTrigger>
             <TabsTrigger value="services">Services</TabsTrigger>
             <TabsTrigger value="deliveries">Deliveries</TabsTrigger>
             <TabsTrigger value="completed">Completed</TabsTrigger>
