@@ -382,13 +382,32 @@ const ChatPage = () => {
       setUploading(false);
     }
 
+    // Optimistic update: show the message immediately without waiting for realtime
+    const optimisticId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    setMessages(prev => [...prev, {
+      id: optimisticId,
+      channel_id: activeId,
+      sender_id: user.id,
+      body,
+      files: uploaded.length > 0 ? (uploaded as any) : null,
+      file_url: null,
+      pinned: false,
+      edited_at: null,
+      deleted_at: null,
+      parent_message_id: null,
+      created_at: now,
+    }]);
+
     const { error } = await supabase
       .from("chat_messages")
-      .insert({ channel_id: activeId, sender_id: user.id, body, files: uploaded as any });
+      .insert({ id: optimisticId, channel_id: activeId, sender_id: user.id, body, files: uploaded as any });
     if (error) {
       toast.error(error.message);
       setInput(body);
       setPendingFiles(filesToUpload);
+      // Roll back the optimistic message
+      setMessages(prev => prev.filter(m => m.id !== optimisticId));
     }
   };
 
