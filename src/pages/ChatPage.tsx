@@ -163,6 +163,8 @@ const ChatPage = () => {
   // Load messages + realtime per active channel
   useEffect(() => {
     if (!activeId) return;
+    // Clear search when switching channels so new messages aren't hidden by stale filter
+    setSearch("");
     let cancel = false;
     (async () => {
       const { data } = await supabase
@@ -175,12 +177,21 @@ const ChatPage = () => {
       if (!cancel) setMessages((data ?? []) as unknown as Message[]);
     })();
 
+    // Use an unfiltered subscription and filter client-side.
+    // Server-side postgres_changes filters can silently fail when RLS is active,
+    // while the unfiltered subscription (same approach as ChatNotifier) is reliable.
     const channel = supabase
-      .channel(`chat-${activeId}`)
+      .channel(`chat-live-${activeId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "chat_messages", filter: `channel_id=eq.${activeId}` },
+        { event: "*", schema: "public", table: "chat_messages" },
         (payload) => {
+          const incomingChannelId =
+            payload.eventType === "DELETE"
+              ? (payload.old as any)?.channel_id
+              : (payload.new as any)?.channel_id;
+          if (incomingChannelId !== activeId) return;
+
           setMessages(prev => {
             if (payload.eventType === "INSERT") {
               const n = payload.new as unknown as Message;
