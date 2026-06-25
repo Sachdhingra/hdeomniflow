@@ -118,15 +118,48 @@ CREATE TABLE IF NOT EXISTS card_settings (
 - All point writes / card data writes: staff roles only
 - Respect existing approval patterns
 
-## 6. BILL CREATION LOGIC
+## 6. BILL ENTRY LOGIC
 
-1. Look up customer card_tier and expiry
-2. Prestige gate: bill must be >= Rs 2,00,000
-3. Apply card discount, capped: base_discount + card_discount <= 15.5%
-4. Apply approved redemption_requests if any (cap: 5% of bill value)
-5. On accounts approval: credit points (if 2nd+ purchase and app_activated), expires_at = now() + 12 months
-6. On card sale: insert card_commissions row (flat by tier), card_number = HDEC-{TIER}-{YYYYMMDD}-{SEQ}, expiry = enrollment + 3 years
-7. On return: insert negative card_points reversal row
+> Bills are NOT generated inside OmniFlow. The salesperson enters figures manually
+> after the actual bill is raised (Tally/manual). OmniFlow is the record-keeper,
+> not the billing system.
+
+### card_bill_entries table (Step 2 schema)
+| Column | Notes |
+|---|---|
+| id | UUID PK |
+| customer_id | → elite_customers |
+| entered_by | → auth.users (salesperson) |
+| bill_reference | Free-text bill / invoice number |
+| bill_date | DATE |
+| gross_bill_amount | DECIMAL — MRP total before any discount |
+| base_scheme_discount_pct | DECIMAL — Godrej scheme discount already given |
+| card_discount_pct | DECIMAL — effective card discount (auto-capped, read-only after save) |
+| redemption_amount | DECIMAL — rupee value of approved redemption applied (0 if none) |
+| redemption_request_id | → redemption_requests (optional) |
+| net_bill_amount | DECIMAL — gross after all discounts |
+| is_card_sale | BOOLEAN — true if this entry is for the card purchase itself |
+| is_return | BOOLEAN — triggers points reversal |
+| approval_status | pending / approved / rejected |
+| approved_by | → auth.users (accounts) |
+| approved_at | TIMESTAMPTZ |
+| notes | TEXT |
+| created_at | TIMESTAMPTZ |
+
+### Entry flow (salesperson)
+1. Select card-holder customer → system shows tier, expiry, current points, any approved redemption
+2. Enter: bill_reference, bill_date, gross_bill_amount, base_scheme_discount_pct
+3. OmniFlow auto-computes card_discount_pct = min(tier_extra_discount, ceiling − base_scheme_discount_pct); shows warning if base alone already hits ceiling
+4. If an approved redemption_request exists for this customer, salesperson can attach it (cap displayed: 5% of gross)
+5. Save → row created with approval_status = 'pending'; commission row inserted immediately (flat by tier) if is_card_sale = true
+6. Accounts approves → approval_status = 'approved'; points credited if 2nd+ purchase and app_activated = true; expires_at = now() + 12 months
+7. If is_return = true → negative card_points reversal row inserted on approval
+
+### RLS for card_bill_entries
+- Sales: INSERT own rows; SELECT own rows
+- Accounts: SELECT all; UPDATE approval_status / approved_by / approved_at
+- Admin: full access (see all)
+- Customer app: no access
 
 ## 7. ONESIGNAL PUSH (customer app)
 
