@@ -245,6 +245,29 @@ export default function LoyaltyPoints() {
         .eq("id", actionReq.id);
       if (error) throw error;
       toast.success(actionType === "approve" ? "Redemption approved" : "Redemption rejected");
+
+      // Notify customer via push
+      if (actionType === "approve") {
+        supabase.functions.invoke("send-push", {
+          body: {
+            customer_id: actionReq.customer_id,
+            type: "redemption_approved",
+            title: "Redemption approved!",
+            message: `Your request to redeem ${actionReq.points_requested} points for ${fmtInr(actionReq.rupee_value)} has been approved. Use it on your next purchase!`,
+            data: { points: actionReq.points_requested, value: actionReq.rupee_value },
+          },
+        }).catch(() => {/* best-effort */});
+      } else {
+        supabase.functions.invoke("send-push", {
+          body: {
+            customer_id: actionReq.customer_id,
+            type: "redemption_rejected",
+            title: "Redemption not approved",
+            message: `Your redemption request of ${actionReq.points_requested} points could not be approved at this time. Please contact the store for details.`,
+          },
+        }).catch(() => {/* best-effort */});
+      }
+
       setActionReq(null);
       loadRedemptions();
       loadCustomers(); // refresh points

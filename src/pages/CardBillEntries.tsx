@@ -331,6 +331,37 @@ export default function CardBillEntries() {
       if (error) throw error;
 
       toast.success(actionType === "approve" ? "Entry approved" : "Entry rejected");
+
+      // Fire push notification to customer when a bill is approved
+      if (actionType === "approve") {
+        const isReturn = actionEntry.is_return;
+        const tier = actionEntry.card_tier;
+        const earnsTier = tier === "super_elite" || tier === "prestige_elite";
+
+        if (isReturn) {
+          // Return: points may have been reversed
+          supabase.functions.invoke("send-push", {
+            body: {
+              customer_id: actionEntry.customer_id,
+              type: "points_reversed",
+              title: "Return processed",
+              message: `Your return of ₹${Math.abs(actionEntry.gross_bill_amount).toLocaleString("en-IN")} has been processed. Any earned points have been adjusted.`,
+            },
+          }).catch(() => {/* best-effort */});
+        } else if (earnsTier) {
+          // Regular sale with points-eligible tier
+          supabase.functions.invoke("send-push", {
+            body: {
+              customer_id: actionEntry.customer_id,
+              type: "points_credited",
+              title: "Points credited!",
+              message: `Your purchase of ₹${actionEntry.net_bill_amount.toLocaleString("en-IN")} has been approved. Loyalty points have been added to your wallet.`,
+              data: { bill_id: actionEntry.id },
+            },
+          }).catch(() => {/* best-effort */});
+        }
+      }
+
       setActionEntry(null);
       loadEntries();
     } catch (e: any) {
