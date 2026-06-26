@@ -411,6 +411,7 @@ const MemberFormDialog = ({
   const [issue, setIssue] = useState(todayISO());
   const [notes, setNotes] = useState("");
   const [status, setStatus] = useState<"active" | "opted_out">("active");
+  const [referralCode, setReferralCode] = useState("");
   const [saving, setSaving] = useState(false);
   const [dupError, setDupError] = useState<string | null>(null);
 
@@ -425,7 +426,7 @@ const MemberFormDialog = ({
       setNotes(row.notes || "");
       setStatus((row.status === "opted_out" ? "opted_out" : "active"));
     } else {
-      setName(""); setP1(""); setP2(""); setIssue(todayISO()); setNotes(""); setStatus("active");
+      setName(""); setP1(""); setP2(""); setIssue(todayISO()); setNotes(""); setStatus("active"); setReferralCode("");
     }
   }, [open, mode, row]);
 
@@ -462,7 +463,28 @@ const MemberFormDialog = ({
           created_by: userId,
         }) as any);
         if (error) throw error;
-        toast.success(`⭐ ${name.trim()} added as Elite Member`);
+
+        // Referral bonus — if a referral code was entered, credit 20 pts to the referrer
+        const code = referralCode.trim().toUpperCase();
+        if (code) {
+          const { data: referrer } = await (supabase
+            .from("elite_customers" as any)
+            .select("id, customer_name")
+            .eq("referral_code", code)
+            .maybeSingle() as any);
+          if (referrer) {
+            await (supabase.from("card_points" as any).insert({
+              customer_id: referrer.id,
+              points: 20,
+              transaction_type: "referral",
+            }) as any);
+            toast.success(`⭐ ${name.trim()} added — 20 bonus pts credited to ${referrer.customer_name}`);
+          } else {
+            toast.warning(`⭐ ${name.trim()} added — referral code "${code}" not found, no bonus credited`);
+          }
+        } else {
+          toast.success(`⭐ ${name.trim()} added as Elite Member`);
+        }
       } else if (row) {
         const { error } = await (supabase.from("elite_customers" as any).update({
           customer_name: name.trim(),
@@ -541,6 +563,21 @@ const MemberFormDialog = ({
                   <SelectItem value="opted_out">Opted Out</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+          )}
+          {!isEdit && (
+            <div className="space-y-1.5">
+              <Label>Referred by (code)</Label>
+              <Input
+                value={referralCode}
+                onChange={e => setReferralCode(e.target.value.toUpperCase())}
+                placeholder="e.g. EC4521KRTM"
+                maxLength={12}
+                className="font-mono tracking-widest"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                If the new member was referred by an existing member, enter their referral code. 20 bonus points will be credited automatically.
+              </p>
             </div>
           )}
           <div className="space-y-1.5">
