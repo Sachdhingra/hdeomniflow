@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useData, LEAD_CATEGORIES, LeadCategory } from "@/contexts/DataContext";
 import StatCard from "@/components/StatCard";
@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Wrench, IndianRupee, Clock, Plus, AlertCircle, MapPin, Phone, Truck, UserPlus, CalendarClock, Pencil, ChevronDown } from "lucide-react";
+import { Wrench, IndianRupee, Clock, Plus, AlertCircle, MapPin, Phone, Truck, UserPlus, CalendarClock, Pencil, ChevronDown, ArrowRightCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -22,6 +22,18 @@ import LoadingError from "@/components/LoadingError";
 import { DashboardSkeleton } from "@/components/DashboardSkeleton";
 import { supabase } from "@/integrations/supabase/client";
 import type { ServiceJob } from "@/contexts/DataContext";
+
+type AppServiceRequest = {
+  id: string;
+  customer_id: string;
+  product_description: string;
+  issue_description: string;
+  contact_phone: string;
+  preferred_callback: string | null;
+  status: string;
+  created_at: string;
+  customer_name?: string;
+};
 
 const STATUS_BADGE: Record<string, string> = {
   pending: "bg-warning/10 text-warning",
@@ -66,6 +78,58 @@ const ServiceDashboard = () => {
     description: "", dateToAttend: "", value: "", isFOC: false,
     claimPartNo: "", claimReason: "", claimDueDate: "",
   });
+
+  const [appRequests, setAppRequests] = useState<AppServiceRequest[]>([]);
+  const [appRequestsLoading, setAppRequestsLoading] = useState(false);
+  const [convertingId, setConvertingId] = useState<string | null>(null);
+
+  const fetchAppRequests = useCallback(async () => {
+    setAppRequestsLoading(true);
+    const { data, error } = await (supabase
+      .from("app_service_requests" as any)
+      .select("*, elite_customers(customer_name)")
+      .order("created_at", { ascending: false }) as any);
+    if (error) {
+      toast.error("Failed to load app requests");
+    } else {
+      const rows = (data || []).map((r: any) => ({
+        ...r,
+        customer_name: r.elite_customers?.customer_name ?? "—",
+      }));
+      setAppRequests(rows);
+    }
+    setAppRequestsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (tab === "app_requests") fetchAppRequests();
+  }, [tab, fetchAppRequests]);
+
+  const handleConvertToJob = async (req: AppServiceRequest) => {
+    setConvertingId(req.id);
+    try {
+      await addServiceJob({
+        customer_name: req.customer_name ?? "—",
+        customer_phone: req.contact_phone,
+        description: `${req.product_description} — ${req.issue_description}`,
+        category: "others" as LeadCategory,
+        value: 0,
+        is_foc: false,
+        status: "pending",
+        type: "service",
+      });
+      await (supabase
+        .from("app_service_requests" as any)
+        .update({ status: "in_progress" })
+        .eq("id", req.id) as any);
+      toast.success("Service job created from app request");
+      fetchAppRequests();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to convert");
+    } finally {
+      setConvertingId(null);
+    }
+  };
 
   const fieldAgents = getProfilesByRole("field_agent");
   const isAdmin = user?.role === "admin";
@@ -402,6 +466,9 @@ const ServiceDashboard = () => {
             <TabsTrigger value="services">Services</TabsTrigger>
             <TabsTrigger value="deliveries">Deliveries</TabsTrigger>
             <TabsTrigger value="completed">Completed</TabsTrigger>
+            <TabsTrigger value="app_requests" className="gap-1">
+              <Phone className="w-3 h-3" />App Requests
+            </TabsTrigger>
           </TabsList>
         </Tabs>
         <Input
@@ -415,6 +482,58 @@ const ServiceDashboard = () => {
         <Input type="date" className="w-40" value={dateFilter} onChange={e => setDateFilter(e.target.value)} />
       </div>
 
+      {tab === "app_requests" ? (
+        <div className="space-y-3">
+          {appRequestsLoading ? (
+            <Card className="shadow-card"><CardContent className="p-8 text-center text-muted-foreground">Loading…</CardContent></Card>
+          ) : appRequests.length === 0 ? (
+            <Card className="shadow-card"><CardContent className="p-8 text-center text-muted-foreground">No app service requests.</CardContent></Card>
+          ) : appRequests.map(req => {
+            const statusCls =
+              req.status === "open"
+                ? "bg-warning/10 text-warning"
+                : req.status === "in_progress"
+                ? "bg-primary/10 text-primary"
+                : "bg-success/10 text-success";
+            const statusLabel =
+              req.status === "open" ? "Open" : req.status === "in_progress" ? "In Progress" : "Resolved";
+            return (
+              <Card key={req.id} className="shadow-card">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-semibold">{req.customer_name}</h3>
+                        <Badge className={statusCls}>{statusLabel}</Badge>
+                      </div>
+                      <p className="text-sm font-medium mt-1">{req.product_description}</p>
+                      <p className="text-sm text-muted-foreground mt-0.5">{req.issue_description}</p>
+                      <div className="flex items-center gap-4 mt-1.5 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{req.contact_phone}</span>
+                        {req.preferred_callback && (
+                          <span className="flex items-center gap-1"><Clock className="w-3 h-3" />Callback: {req.preferred_callback}</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">{new Date(req.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</p>
+                    </div>
+                    {req.status === "open" && canAssign && (
+                      <Button
+                        size="sm"
+                        className="gap-1 text-xs h-8 shrink-0"
+                        disabled={convertingId === req.id}
+                        onClick={() => handleConvertToJob(req)}
+                      >
+                        <ArrowRightCircle className="w-3.5 h-3.5" />
+                        {convertingId === req.id ? "Converting…" : "Convert to Job"}
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      ) : (
       <div className="space-y-3">
         {filteredJobs.map(job => {
           const photos = getJobPhotos(job);
@@ -503,8 +622,9 @@ const ServiceDashboard = () => {
           <Card className="shadow-card"><CardContent className="p-8 text-center text-muted-foreground">No jobs found.</CardContent></Card>
         )}
       </div>
+      )}
 
-      {hasMoreJobs && (
+      {tab !== "app_requests" && hasMoreJobs && (
         <div className="flex justify-center">
           <Button variant="outline" onClick={loadMoreJobs}>Load More Jobs</Button>
         </div>
