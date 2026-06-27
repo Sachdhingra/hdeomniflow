@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Building2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import LoginBannerCarousel from "@/components/LoginBannerCarousel";
 
 const Login = () => {
   const { login, loading: authLoading } = useAuth();
@@ -36,7 +37,9 @@ const Login = () => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="min-h-screen flex flex-col bg-background">
+      <LoginBannerCarousel />
+      <div className="flex-1 flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-2 gradient-primary rounded-xl px-4 py-2">
@@ -67,6 +70,7 @@ const Login = () => {
             </form>
           </CardContent>
         </Card>
+      </div>
       </div>
     </div>
   );
