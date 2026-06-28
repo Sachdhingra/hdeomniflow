@@ -167,14 +167,20 @@ const ChatPage = () => {
     setSearch("");
     let cancel = false;
     (async () => {
+      // Fetch the LATEST 200 messages (DESC + limit), then reverse to ascending
+      // for display. Using ASC + limit silently drops the newest messages once
+      // a channel grows past 200, causing fresh posts to vanish after refresh.
       const { data } = await supabase
         .from("chat_messages")
         .select("*")
         .eq("channel_id", activeId)
         .is("deleted_at", null)
-        .order("created_at", { ascending: true })
+        .order("created_at", { ascending: false })
         .limit(200);
-      if (!cancel) setMessages((data ?? []) as unknown as Message[]);
+      if (!cancel) {
+        const rows = ((data ?? []) as unknown as Message[]).slice().reverse();
+        setMessages(rows);
+      }
     })();
 
     // Use an unfiltered subscription and filter client-side.
