@@ -391,6 +391,13 @@ const EliteCustomers = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <InsiderActivityDialog
+        open={!!insiderRow}
+        onOpenChange={(v) => !v && setInsiderRow(null)}
+        customerId={insiderRow?.id || null}
+        customerName={insiderRow?.customer_name}
+      />
     </div>
   );
 };
