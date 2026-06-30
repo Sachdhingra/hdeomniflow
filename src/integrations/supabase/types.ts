@@ -157,6 +157,47 @@ export type Database = {
         }
         Relationships: []
       }
+      app_service_requests: {
+        Row: {
+          contact_phone: string
+          created_at: string
+          customer_id: string
+          id: string
+          issue_description: string
+          preferred_callback: string | null
+          product_description: string
+          status: string
+        }
+        Insert: {
+          contact_phone: string
+          created_at?: string
+          customer_id: string
+          id?: string
+          issue_description: string
+          preferred_callback?: string | null
+          product_description: string
+          status?: string
+        }
+        Update: {
+          contact_phone?: string
+          created_at?: string
+          customer_id?: string
+          id?: string
+          issue_description?: string
+          preferred_callback?: string | null
+          product_description?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "app_service_requests_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "elite_customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       app_settings: {
         Row: {
           key: string
@@ -177,6 +218,41 @@ export type Database = {
           value?: string
         }
         Relationships: []
+      }
+      app_users: {
+        Row: {
+          created_at: string
+          customer_id: string
+          id: string
+          onesignal_player_id: string | null
+          push_enabled: boolean
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          id?: string
+          onesignal_player_id?: string | null
+          push_enabled?: boolean
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          id?: string
+          onesignal_player_id?: string | null
+          push_enabled?: boolean
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "app_users_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "elite_customers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       attendance: {
         Row: {
@@ -372,6 +448,50 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      card_points: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          customer_id: string
+          expires_at: string | null
+          id: string
+          is_expired: boolean
+          notes: string | null
+          points: number
+          transaction_type: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          customer_id: string
+          expires_at?: string | null
+          id?: string
+          is_expired?: boolean
+          notes?: string | null
+          points: number
+          transaction_type?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string
+          expires_at?: string | null
+          id?: string
+          is_expired?: boolean
+          notes?: string | null
+          points?: number
+          transaction_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "card_points_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "elite_customers"
             referencedColumns: ["id"]
           },
         ]
@@ -805,44 +925,68 @@ export type Database = {
       }
       elite_customers: {
         Row: {
+          app_activated: boolean
+          card_enrollment_date: string | null
           card_expiry_date: string | null
           card_issue_date: string
+          card_number: string | null
+          card_tier: string
           created_at: string
           created_by: string | null
+          current_points: number
           customer_name: string
+          date_of_birth: string | null
           id: string
           lead_id: string | null
+          lifetime_points: number
           notes: string | null
           phone_1: string
           phone_2: string | null
+          referral_code: string | null
           status: string
           updated_at: string
         }
         Insert: {
+          app_activated?: boolean
+          card_enrollment_date?: string | null
           card_expiry_date?: string | null
           card_issue_date?: string
+          card_number?: string | null
+          card_tier?: string
           created_at?: string
           created_by?: string | null
+          current_points?: number
           customer_name: string
+          date_of_birth?: string | null
           id?: string
           lead_id?: string | null
+          lifetime_points?: number
           notes?: string | null
           phone_1: string
           phone_2?: string | null
+          referral_code?: string | null
           status?: string
           updated_at?: string
         }
         Update: {
+          app_activated?: boolean
+          card_enrollment_date?: string | null
           card_expiry_date?: string | null
           card_issue_date?: string
+          card_number?: string | null
+          card_tier?: string
           created_at?: string
           created_by?: string | null
+          current_points?: number
           customer_name?: string
+          date_of_birth?: string | null
           id?: string
           lead_id?: string | null
+          lifetime_points?: number
           notes?: string | null
           phone_1?: string
           phone_2?: string | null
+          referral_code?: string | null
           status?: string
           updated_at?: string
         }
@@ -2602,6 +2746,50 @@ export type Database = {
           },
         ]
       }
+      redemption_requests: {
+        Row: {
+          customer_id: string
+          id: string
+          notes: string | null
+          points_requested: number
+          processed_at: string | null
+          processed_by: string | null
+          requested_at: string
+          rupee_value: number
+          status: string
+        }
+        Insert: {
+          customer_id: string
+          id?: string
+          notes?: string | null
+          points_requested: number
+          processed_at?: string | null
+          processed_by?: string | null
+          requested_at?: string
+          rupee_value?: number
+          status?: string
+        }
+        Update: {
+          customer_id?: string
+          id?: string
+          notes?: string | null
+          points_requested?: number
+          processed_at?: string | null
+          processed_by?: string | null
+          requested_at?: string
+          rupee_value?: number
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "redemption_requests_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "elite_customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reschedule_history: {
         Row: {
           created_at: string
@@ -3295,6 +3483,7 @@ export type Database = {
           owner_name: string
         }[]
       }
+      get_loyalty_customer_id: { Args: { _uid: string }; Returns: string }
       get_or_create_dm_channel: { Args: { _other: string }; Returns: string }
       get_pending_approvals_count: { Args: never; Returns: number }
       get_user_role: {
@@ -3313,6 +3502,7 @@ export type Database = {
         Args: { _channel: string; _user: string }
         Returns: boolean
       }
+      is_loyalty_app_user: { Args: { _uid: string }; Returns: boolean }
       verify_daily_report_secret: { Args: { _token: string }; Returns: boolean }
     }
     Enums: {
