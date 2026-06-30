@@ -1559,6 +1559,7 @@ export type Database = {
           expires_at: string
           id: string
           phone: string
+          redeemed_user_id: string | null
           token: string
           used_at: string | null
         }
@@ -1568,6 +1569,7 @@ export type Database = {
           expires_at: string
           id?: string
           phone: string
+          redeemed_user_id?: string | null
           token: string
           used_at?: string | null
         }
@@ -1577,6 +1579,7 @@ export type Database = {
           expires_at?: string
           id?: string
           phone?: string
+          redeemed_user_id?: string | null
           token?: string
           used_at?: string | null
         }
