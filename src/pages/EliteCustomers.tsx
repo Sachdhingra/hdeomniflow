@@ -271,7 +271,7 @@ const EliteCustomers = () => {
                       <TableHead>Days Left</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Linked Lead</TableHead>
-                      {canEdit && <TableHead>Actions</TableHead>}
+                      {(canEdit || canViewInsider) && <TableHead>Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
