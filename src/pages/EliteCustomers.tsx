@@ -11,11 +11,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Star, Plus, Upload, Pencil, Search, Loader2, Download, CheckCircle2, XCircle, Lock, Trash2, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
+import { Star, Plus, Upload, Pencil, Search, Loader2, Download, CheckCircle2, XCircle, Lock, Trash2, AlertTriangle, ChevronLeft, ChevronRight, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import PhoneInput from "@/components/PhoneInput";
 import { extractTenDigits, isValidIndianMobile, toCanonicalPhone, formatPhoneDisplay } from "@/lib/phone";
 import { formatDate } from "@/lib/dateFormat";
+import InsiderActivityDialog from "@/components/InsiderActivityDialog";
 
 interface EliteRow {
   id: string;
@@ -83,6 +84,8 @@ const EliteCustomers = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   const canEdit = isAdmin || user?.role === "sales" || user?.role === "accounts";
+  const canViewInsider = isAdmin || user?.role === "sales";
+  const [insiderRow, setInsiderRow] = useState<EliteRow | null>(null);
 
   const [rows, setRows] = useState<EliteRow[]>([]);
   const [leads, setLeads] = useState<Record<string, LeadLite>>({});
@@ -268,7 +271,7 @@ const EliteCustomers = () => {
                       <TableHead>Days Left</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Linked Lead</TableHead>
-                      {canEdit && <TableHead>Actions</TableHead>}
+                      {(canEdit || canViewInsider) && <TableHead>Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -290,10 +293,17 @@ const EliteCustomers = () => {
                           <TableCell className={dayCls}>{left}</TableCell>
                           <TableCell><Badge variant="outline" className={meta.cls}>{meta.label}</Badge></TableCell>
                           <TableCell>{lead ? <span className="text-primary">{lead.customer_name}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
-                          {canEdit && (
+                          {(canEdit || canViewInsider) && (
                             <TableCell>
                               <div className="flex gap-1">
-                                <Button size="sm" variant="ghost" onClick={() => setEditRow(r)}><Pencil className="w-3.5 h-3.5" /></Button>
+                                {canViewInsider && (
+                                  <Button size="sm" variant="ghost" title="View Insider app activity" onClick={() => setInsiderRow(r)}>
+                                    <Smartphone className="w-3.5 h-3.5 text-primary" />
+                                  </Button>
+                                )}
+                                {canEdit && (
+                                  <Button size="sm" variant="ghost" onClick={() => setEditRow(r)}><Pencil className="w-3.5 h-3.5" /></Button>
+                                )}
                                 {isAdmin && (
                                   <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setDeleteRow(r)}>
                                     <Trash2 className="w-3.5 h-3.5" />
@@ -381,6 +391,13 @@ const EliteCustomers = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <InsiderActivityDialog
+        open={!!insiderRow}
+        onOpenChange={(v) => !v && setInsiderRow(null)}
+        customerId={insiderRow?.id || null}
+        customerName={insiderRow?.customer_name}
+      />
     </div>
   );
 };
