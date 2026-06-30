@@ -471,15 +471,22 @@ const MemberFormDialog = ({
           setSaving(false);
           return;
         }
-        const { error } = await (supabase.from("elite_customers" as any).insert({
+        const { data: inserted, error } = await (supabase.from("elite_customers" as any).insert({
           customer_name: name.trim(),
           phone_1: canonicalP1,
           phone_2: p2 ? toCanonicalPhone(p2) : null,
           card_issue_date: issue,
           notes: notes.trim() || null,
           created_by: userId,
-        }) as any);
+        }).select("id").single() as any);
         if (error) throw error;
+
+        // Send WhatsApp invite link to customer (fire-and-forget; don't block the UI)
+        supabase.functions.invoke("send-app-invite", {
+          body: { customerId: inserted.id, phone: canonicalP1, customerName: name.trim() },
+        }).then(({ error: fnErr }) => {
+          if (fnErr) console.warn("[send-app-invite]", fnErr.message);
+        });
 
         // Referral bonus — if a referral code was entered, credit 20 pts to the referrer
         const code = referralCode.trim().toUpperCase();
