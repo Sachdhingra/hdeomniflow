@@ -4,8 +4,11 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID")!;
 const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN")!;
+// PWA project (gfrfutlaqwiqdrqybfan) — invite_tokens lives there
+const PWA_SUPABASE_URL = Deno.env.get("PWA_SUPABASE_URL")!;
+const PWA_SERVICE_ROLE_KEY = Deno.env.get("PWA_SERVICE_ROLE_KEY")!;
 const WHATSAPP_FROM = "whatsapp:+15559890033";
-const PWA_URL = Deno.env.get("PWA_URL") ?? "https://home-decor-insider.pages.dev";
+const PWA_URL = Deno.env.get("PWA_URL") ?? "https://homedecorinsider.lovable.app";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -28,7 +31,8 @@ Deno.serve(async (req) => {
     });
   }
 
-  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  // PWA admin client — invite_tokens is in the PWA Supabase project
+  const pwaAdmin = createClient(PWA_SUPABASE_URL, PWA_SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
@@ -49,7 +53,7 @@ Deno.serve(async (req) => {
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 30);
 
-  const { error: insertErr } = await admin.from("invite_tokens").insert({
+  const { error: insertErr } = await pwaAdmin.from("invite_tokens").insert({
     token,
     customer_id: customerId,
     phone,
@@ -87,7 +91,6 @@ Deno.serve(async (req) => {
 
   if (!res.ok) {
     console.error("[send-app-invite] Twilio error:", await res.text());
-    // Token was created — don't fail the whole operation
     return new Response(
       JSON.stringify({ success: true, warning: "Token created but WhatsApp delivery failed" }),
       { headers: { ...cors, "Content-Type": "application/json" } },
