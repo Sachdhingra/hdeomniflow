@@ -84,6 +84,8 @@ const EliteCustomers = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   const canEdit = isAdmin || user?.role === "sales" || user?.role === "accounts";
+  const canViewInsider = isAdmin || user?.role === "sales";
+  const [insiderRow, setInsiderRow] = useState<EliteRow | null>(null);
 
   const [rows, setRows] = useState<EliteRow[]>([]);
   const [leads, setLeads] = useState<Record<string, LeadLite>>({});
