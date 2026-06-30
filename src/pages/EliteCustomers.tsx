@@ -11,12 +11,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Star, Plus, Upload, Pencil, Search, Loader2, Download, CheckCircle2, XCircle, Lock, Trash2, AlertTriangle, ChevronLeft, ChevronRight, Smartphone } from "lucide-react";
+import { Star, Plus, Upload, Pencil, Search, Loader2, Download, CheckCircle2, XCircle, Lock, Trash2, AlertTriangle, ChevronLeft, ChevronRight, Smartphone, QrCode } from "lucide-react";
 import { toast } from "sonner";
 import PhoneInput from "@/components/PhoneInput";
 import { extractTenDigits, isValidIndianMobile, toCanonicalPhone, formatPhoneDisplay } from "@/lib/phone";
 import { formatDate } from "@/lib/dateFormat";
 import InsiderActivityDialog from "@/components/InsiderActivityDialog";
+import InviteQRDialog from "@/components/InviteQRDialog";
 
 interface EliteRow {
   id: string;
@@ -86,6 +87,7 @@ const EliteCustomers = () => {
   const canEdit = isAdmin || user?.role === "sales" || user?.role === "accounts";
   const canViewInsider = isAdmin || user?.role === "sales";
   const [insiderRow, setInsiderRow] = useState<EliteRow | null>(null);
+  const [inviteRow, setInviteRow] = useState<EliteRow | null>(null);
 
   const [rows, setRows] = useState<EliteRow[]>([]);
   const [leads, setLeads] = useState<Record<string, LeadLite>>({});
@@ -301,6 +303,11 @@ const EliteCustomers = () => {
                                     <Smartphone className="w-3.5 h-3.5 text-primary" />
                                   </Button>
                                 )}
+                                {canViewInsider && (
+                                  <Button size="sm" variant="ghost" title="Show invite QR (scan to auto-login)" onClick={() => setInviteRow(r)}>
+                                    <QrCode className="w-3.5 h-3.5 text-amber-600" />
+                                  </Button>
+                                )}
                                 {canEdit && (
                                   <Button size="sm" variant="ghost" onClick={() => setEditRow(r)}><Pencil className="w-3.5 h-3.5" /></Button>
                                 )}
@@ -397,6 +404,14 @@ const EliteCustomers = () => {
         onOpenChange={(v) => !v && setInsiderRow(null)}
         customerId={insiderRow?.id || null}
         customerName={insiderRow?.customer_name}
+      />
+
+      <InviteQRDialog
+        open={!!inviteRow}
+        onOpenChange={(v) => !v && setInviteRow(null)}
+        customerId={inviteRow?.id || null}
+        customerName={inviteRow?.customer_name}
+        phone={inviteRow?.phone_1}
       />
     </div>
   );
