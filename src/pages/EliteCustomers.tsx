@@ -293,10 +293,17 @@ const EliteCustomers = () => {
                           <TableCell className={dayCls}>{left}</TableCell>
                           <TableCell><Badge variant="outline" className={meta.cls}>{meta.label}</Badge></TableCell>
                           <TableCell>{lead ? <span className="text-primary">{lead.customer_name}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
-                          {canEdit && (
+                          {(canEdit || canViewInsider) && (
                             <TableCell>
                               <div className="flex gap-1">
-                                <Button size="sm" variant="ghost" onClick={() => setEditRow(r)}><Pencil className="w-3.5 h-3.5" /></Button>
+                                {canViewInsider && (
+                                  <Button size="sm" variant="ghost" title="View Insider app activity" onClick={() => setInsiderRow(r)}>
+                                    <Smartphone className="w-3.5 h-3.5 text-primary" />
+                                  </Button>
+                                )}
+                                {canEdit && (
+                                  <Button size="sm" variant="ghost" onClick={() => setEditRow(r)}><Pencil className="w-3.5 h-3.5" /></Button>
+                                )}
                                 {isAdmin && (
                                   <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setDeleteRow(r)}>
                                     <Trash2 className="w-3.5 h-3.5" />
