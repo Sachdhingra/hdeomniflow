@@ -36,6 +36,12 @@ function monthStart(d = new Date()): Date {
 function istDateLabel(d: Date): string {
   return new Intl.DateTimeFormat("en-IN", { dateStyle: "long", timeZone: "Asia/Kolkata" }).format(d);
 }
+// Calendar date (YYYY-MM-DD) of a timestamp in IST, not the UTC date the raw ISO string carries.
+// Records created between 00:00-05:29 IST have a UTC date one day earlier, so comparing
+// raw iso.slice(0, 10) against an IST-derived "yesterday" bucket mis-files those rows.
+function istDateStr(iso: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date(iso));
+}
 function rupees(n: number): string {
   return "₹" + Math.round(n).toLocaleString("en-IN");
 }
@@ -81,10 +87,10 @@ function aggSales(leads: Lead[], userId: string, reportDate: Date) {
   const dayStr = reportDate.toISOString().slice(0, 10);
   const mStart = monthStart(reportDate).toISOString();
   const fStart = fyStart(reportDate).toISOString();
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = istDateStr(new Date().toISOString());
 
   const mine = leads.filter(l => l.assigned_to === userId);
-  const onDay = (l: Lead, iso: string) => iso.slice(0, 10) === dayStr;
+  const onDay = (l: Lead, iso: string) => istDateStr(iso) === dayStr;
 
   const leads_today = mine.filter(l => onDay(l, l.created_at)).length;
   const won_today_list = mine.filter(l => l.status === "won" && l.stage_changed_at && onDay(l, l.stage_changed_at));
@@ -194,9 +200,9 @@ function aggService(jobs: Job[], reportDate: Date) {
   const dayStr = reportDate.toISOString().slice(0, 10);
   const mStart = monthStart(reportDate).toISOString();
   const fStart = fyStart(reportDate).toISOString();
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = istDateStr(new Date().toISOString());
 
-  const dayJobs = jobs.filter(j => j.created_at.slice(0, 10) === dayStr);
+  const dayJobs = jobs.filter(j => istDateStr(j.created_at) === dayStr);
   const completedDay = dayJobs.filter(j => j.status === "completed").length;
   const jobs_today = dayJobs.length;
   const completion_rate_today = jobs_today ? +((completedDay / jobs_today) * 100).toFixed(1) : 0;
@@ -363,11 +369,16 @@ Deno.serve(async (req) => {
     }
 
     const fStart = fyStart(reportDate).toISOString();
+    // Ordered + capped explicitly: without this, PostgREST's default row cap (1000) can
+    // silently truncate the FY-to-date result set and drop yesterday's newest rows,
+    // making the report look "stuck" even though it keeps sending.
     const { data: leads, error: leadsErr } = await supabase
       .from("leads")
       .select("status, value_in_rupees, created_at, stage_changed_at, next_follow_up_date, assigned_to")
       .is("deleted_at", null)
-      .gte("created_at", fStart);
+      .gte("created_at", fStart)
+      .order("created_at", { ascending: false })
+      .limit(5000);
     if (leadsErr) throw leadsErr;
 
     const results: { recipient: string; status: string; error?: string }[] = [];
@@ -396,7 +407,9 @@ Deno.serve(async (req) => {
       .from("service_jobs")
       .select("status, created_at, completed_at, date_to_attend, category")
       .is("deleted_at", null)
-      .gte("created_at", fStart);
+      .gte("created_at", fStart)
+      .order("created_at", { ascending: false })
+      .limit(5000);
     if (jobsErr) throw jobsErr;
 
     const svcMetrics = aggService((jobs ?? []) as Job[], reportDate);
