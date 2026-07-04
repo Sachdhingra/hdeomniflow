@@ -1,8 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const PWA_SUPABASE_URL = Deno.env.get("PWA_SUPABASE_URL")!;
-const PWA_SERVICE_ROLE_KEY = Deno.env.get("PWA_SERVICE_ROLE_KEY")!;
 const PWA_URL = Deno.env.get("PWA_URL") ?? "https://homedecorinsider.lovable.app";
 
 const cors = {
@@ -26,7 +24,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  const pwaAdmin = createClient(PWA_SUPABASE_URL, PWA_SERVICE_ROLE_KEY, {
+  const admin = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
@@ -46,7 +44,7 @@ Deno.serve(async (req) => {
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 30);
 
-  const { error: insertErr } = await pwaAdmin.from("invite_tokens").insert({
+  const { error: insertErr } = await admin.from("invite_tokens").insert({
     token,
     customer_id: customerId,
     phone,

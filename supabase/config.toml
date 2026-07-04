@@ -17,3 +17,11 @@ verify_jwt = false
 
 [functions.twilio-webhook]
 verify_jwt = false
+
+# Called by unauthenticated PWA visitors redeeming an invite link
+[functions.redeem-invite]
+verify_jwt = false
+
+# Called by Supabase Auth SMS hook (no user JWT)
+[functions.whatsapp-otp]
+verify_jwt = false
