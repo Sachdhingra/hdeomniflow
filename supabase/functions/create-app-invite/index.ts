@@ -1,8 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+const PWA_SUPABASE_URL = Deno.env.get("PWA_SUPABASE_URL")!;
+const PWA_SERVICE_ROLE_KEY = Deno.env.get("PWA_SERVICE_ROLE_KEY")!;
 const PWA_URL = Deno.env.get("PWA_URL") ?? "https://homedecorinsider.lovable.app";
 
 const cors = {
@@ -13,8 +13,9 @@ const cors = {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
+  // Require authenticated caller
   const authHeader = req.headers.get("Authorization") ?? "";
-  const anon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  const anon = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
     auth: { autoRefreshToken: false, persistSession: false },
     global: { headers: { Authorization: authHeader } },
   });
@@ -25,37 +26,41 @@ Deno.serve(async (req) => {
     });
   }
 
+  const pwaAdmin = createClient(PWA_SUPABASE_URL, PWA_SERVICE_ROLE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
   let customerId: string, phone: string;
   try {
     ({ customerId, phone } = await req.json());
-    if (!customerId || !phone) throw new Error("missing");
   } catch {
-    return new Response(JSON.stringify({ error: "Invalid request" }), {
+    return new Response(JSON.stringify({ error: "Invalid JSON" }), {
       status: 400, headers: { ...cors, "Content-Type": "application/json" },
     });
   }
 
-  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-
   const token = Array.from(crypto.getRandomValues(new Uint8Array(32)))
-    .map((b) => b.toString(16).padStart(2, "0")).join("");
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 30);
 
-  const { error } = await admin.from("invite_tokens").insert({
-    token, customer_id: customerId, phone, expires_at: expiresAt.toISOString(),
+  const { error: insertErr } = await pwaAdmin.from("invite_tokens").insert({
+    token,
+    customer_id: customerId,
+    phone,
+    expires_at: expiresAt.toISOString(),
   });
-  if (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
+
+  if (insertErr) {
+    return new Response(JSON.stringify({ error: insertErr.message }), {
       status: 500, headers: { ...cors, "Content-Type": "application/json" },
     });
   }
 
-  const link = `${PWA_URL}/invite?token=${token}`;
-  return new Response(JSON.stringify({ link, token, expiresAt: expiresAt.toISOString() }), {
-    headers: { ...cors, "Content-Type": "application/json" },
-  });
+  return new Response(
+    JSON.stringify({ link: `${PWA_URL}/invite?token=${token}` }),
+    { headers: { ...cors, "Content-Type": "application/json" } },
+  );
 });
