@@ -241,7 +241,7 @@ export default function LoyaltyPoints() {
         .update({
           status: actionType === "approve" ? "approved" : "rejected",
           approved_by: user.id,
-        })
+        } as any)
         .eq("id", actionReq.id);
       if (error) throw error;
       toast.success(actionType === "approve" ? "Redemption approved" : "Redemption rejected");
