@@ -108,6 +108,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
     service_head: [
       { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" />, badge: pendingJobCount || undefined },
       { to: "/service-jobs", label: "Service Jobs", icon: <Wrench className="w-5 h-5" /> },
+      { to: "/pending-approvals", label: "Pending Approvals", icon: <ShieldCheck className="w-5 h-5" /> },
       ELITE_NAV,
       INVENTORY_NAV,
       LOGISTICS_NAV,
