@@ -198,12 +198,12 @@ export default function LoyaltyPoints() {
     setLoadingHistory(true);
     const { data, error } = await supabase
       .from("card_points")
-      .select("id, points, transaction_type, bill_id, expires_at, is_expired, created_at")
+      .select("id, points, transaction_type, bill_id, expires_at, is_expired, created_at" as any)
       .eq("customer_id", c.id)
       .order("created_at", { ascending: false })
       .limit(100);
     if (error) toast.error(error.message);
-    else setHistoryTx((data as PointsTransaction[]) ?? []);
+    else setHistoryTx(((data as unknown) as PointsTransaction[]) ?? []);
     setLoadingHistory(false);
   };
 
