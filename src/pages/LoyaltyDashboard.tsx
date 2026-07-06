@@ -163,7 +163,7 @@ export default function LoyaltyDashboard() {
 
       // Pending commission payout
       const { data: commPending } = await supabase
-        .from("card_commissions")
+        .from("card_commissions" as any)
         .select("commission_amount")
         .eq("payment_status", "pending");
       const pendingComm = (commPending ?? []).reduce(
@@ -180,7 +180,7 @@ export default function LoyaltyDashboard() {
 
       // Commission leaderboard
       const { data: commData } = await supabase
-        .from("card_commissions")
+        .from("card_commissions" as any)
         .select("salesperson_id, commission_amount, payment_status");
 
       const staffIds = [...new Set((commData ?? []).map((r: any) => r.salesperson_id as string))];
@@ -226,7 +226,7 @@ export default function LoyaltyDashboard() {
     (async () => {
       setLoadingLog(true);
       const { data, error } = await supabase
-        .from("push_notifications_log")
+        .from("push_notifications_log" as any)
         .select("id, customer_id, notification_type, title, message, delivery_status, sent_at, elite_customers(customer_name)")
         .order("sent_at", { ascending: false })
         .limit(200);

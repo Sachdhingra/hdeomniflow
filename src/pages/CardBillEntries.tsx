@@ -161,7 +161,7 @@ export default function CardBillEntries() {
 
   useEffect(() => {
     supabase
-      .from("card_settings")
+      .from("card_settings" as any)
       .select("value")
       .eq("key", "discount_ceiling_pct")
       .single()
@@ -190,7 +190,7 @@ export default function CardBillEntries() {
     setLoading(true);
     try {
       let q = supabase
-        .from("card_bill_entries")
+        .from("card_bill_entries" as any)
         .select("*, elite_customers(customer_name, card_tier, card_number)")
         .order("created_at", { ascending: false })
         .limit(400);
@@ -261,7 +261,7 @@ export default function CardBillEntries() {
 
     setSaving(true);
     try {
-      const { error: entryErr } = await supabase.from("card_bill_entries").insert({
+      const { error: entryErr } = await supabase.from("card_bill_entries" as any).insert({
         customer_id: selectedCustomer.id,
         entered_by: user.id,
         bill_reference: billRef.trim() || null,
@@ -282,7 +282,7 @@ export default function CardBillEntries() {
       if (isCardSale && selectedCustomer.card_tier) {
         const commAmt = COMMISSION_FLAT[selectedCustomer.card_tier] ?? 0;
         if (commAmt > 0) {
-          await supabase.from("card_commissions").insert({
+          await supabase.from("card_commissions" as any).insert({
             salesperson_id: user.id,
             customer_id: selectedCustomer.id,
             card_tier: selectedCustomer.card_tier,
@@ -320,7 +320,7 @@ export default function CardBillEntries() {
     setActionSaving(true);
     try {
       const { error } = await supabase
-        .from("card_bill_entries")
+        .from("card_bill_entries" as any)
         .update({
           approval_status: actionType === "approve" ? "approved" : "rejected",
           approved_by: user.id,
