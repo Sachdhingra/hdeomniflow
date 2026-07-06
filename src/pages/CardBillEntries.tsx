@@ -167,7 +167,7 @@ export default function CardBillEntries() {
       .single()
       .then(({ data }) => {
         if (data) {
-          const v = parseFloat(String(data.value).replace(/"/g, ""));
+          const v = parseFloat(String((data as any).value).replace(/"/g, ""));
           if (!isNaN(v)) setDiscountCeiling(v);
         }
       });
