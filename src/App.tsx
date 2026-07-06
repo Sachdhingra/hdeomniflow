@@ -30,6 +30,7 @@ const AdminAutomation = lazy(() => import("@/pages/AdminAutomation"));
 const AdminMessageTemplates = lazy(() => import("@/pages/AdminMessageTemplates"));
 const AdminFunnelAnalytics = lazy(() => import("@/pages/AdminFunnelAnalytics"));
 const AccountsApprovals = lazy(() => import("@/pages/AccountsApprovals"));
+const ServiceHeadPendingApprovals = lazy(() => import("@/pages/ServiceHeadPendingApprovals"));
 const AdminOrdersDashboard = lazy(() => import("@/pages/AdminOrdersDashboard"));
 const ChatPage = lazy(() => import("@/pages/ChatPage"));
 const AIAssistantPage = lazy(() => import("@/pages/AIAssistantPage"));
@@ -148,6 +149,7 @@ const AppRoutes = () => {
           <>
             <Route path="/" element={<ServiceDashboard />} />
             <Route path="/service-jobs" element={<ServiceDashboard />} />
+            <Route path="/pending-approvals" element={<ServiceHeadPendingApprovals />} />
             <Route path="/claims" element={<ServiceClaims />} />
             <Route path="/calendar" element={<ServiceCalendar />} />
             <Route path="/products" element={<ProductsView />} />
