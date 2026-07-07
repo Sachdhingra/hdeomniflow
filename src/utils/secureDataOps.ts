@@ -6,6 +6,25 @@
 
 import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@/contexts/AuthContext";
+import { isAllowedTable, isValidUUID } from "@/utils/inputValidation";
+import { reportSecurityEvent } from "@/utils/securityMonitor";
+
+/**
+ * Guard for all dynamic-table operations: reject table names outside the
+ * whitelist and malformed record IDs, and report the attempt as a
+ * security event (a well-behaved client never trips this).
+ */
+function assertSafeTarget(tableName: string, recordId?: string): string | null {
+  if (!isAllowedTable(tableName)) {
+    reportSecurityEvent("suspicious_input", { tableName, context: "secureDataOps" });
+    return `Operation rejected: '${tableName}' is not an allowed table`;
+  }
+  if (recordId !== undefined && !isValidUUID(recordId)) {
+    reportSecurityEvent("suspicious_input", { recordId, context: "secureDataOps" });
+    return "Operation rejected: invalid record ID";
+  }
+  return null;
+}
 
 export interface DeleteOperationResult {
   success: boolean;
@@ -33,6 +52,17 @@ export async function softDeleteRecord(
   recordId: string,
   reason?: string
 ): Promise<DeleteOperationResult> {
+  const guardError = assertSafeTarget(tableName, recordId);
+  if (guardError) {
+    return {
+      success: false,
+      recordId,
+      operation: 'soft_delete',
+      timestamp: new Date(),
+      message: guardError,
+    };
+  }
+
   try {
     const now = new Date();
 
@@ -77,6 +107,17 @@ export async function restoreRecord(
       operation: 'restore',
       timestamp: new Date(),
       message: 'Unauthorized: admin role required for restore',
+    };
+  }
+
+  const guardError = assertSafeTarget(tableName, recordId);
+  if (guardError) {
+    return {
+      success: false,
+      recordId,
+      operation: 'restore',
+      timestamp: new Date(),
+      message: guardError,
     };
   }
 
@@ -132,6 +173,17 @@ export async function hardDeleteRecord(
       operation: 'hard_delete',
       timestamp: new Date(),
       message: 'Unauthorized: admin role required for hard delete',
+    };
+  }
+
+  const guardError = assertSafeTarget(tableName, recordId);
+  if (guardError) {
+    return {
+      success: false,
+      recordId,
+      operation: 'hard_delete',
+      timestamp: new Date(),
+      message: guardError,
     };
   }
 
@@ -232,6 +284,9 @@ export async function getSoftDeletedRecords(
   if (!user || user.role !== 'admin') {
     throw new Error('Unauthorized: admin role required');
   }
+
+  const guardError = assertSafeTarget(tableName);
+  if (guardError) throw new Error(guardError);
 
   const { data, error } = await supabase
     .from(tableName)

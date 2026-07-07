@@ -1,6 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
+import {
+  checkLoginAllowed,
+  recordLoginAttempt,
+  startIdleTimeout,
+  bindSessionFingerprint,
+} from "@/utils/securityMonitor";
 
 export type UserRole = "admin" | "sales" | "service_head" | "field_agent" | "site_agent" | "accounts";
 
@@ -221,6 +227,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (user) refreshProfiles();
   }, [user]);
 
+  // Idle session watchdog: auto-logout after inactivity
+  // (30 min for staff, 15 min for admin) to limit stolen-device exposure.
+  useEffect(() => {
+    if (!user) return;
+    const stop = startIdleTimeout(user.role === "admin", () => {
+      logout();
+    });
+    return stop;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.role]);
+
   const login = async (username: string, password: string): Promise<string | null> => {
     if (loginInFlight.current) {
       console.warn("⚠️ [Auth] Login already in progress");
@@ -238,6 +255,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       clearAuthCache();
 
       const email = `${username.toLowerCase().replace(/\s+/g, ".")}@furncrm.local`;
+
+      // Brute-force guard: server-enforced rate limit (5 failures / 15 min)
+      const gate = await checkLoginAllowed(email);
+      if (!gate.allowed) {
+        console.warn("🚫 [Auth] Login blocked by rate limiter");
+        setState("UNAUTHENTICATED");
+        return gate.message ?? "Too many failed attempts. Try again later.";
+      }
+
       console.log("📤 [Auth] Sending credentials…");
 
       const { error } = await withTimeout(
@@ -248,6 +274,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (error) {
         console.error("❌ [Auth] Login failed:", error.message);
+        recordLoginAttempt(email, false);
         clearAuthCache();
         setState("UNAUTHENTICATED");
         if (error.message.includes("Invalid login")) return "Invalid username or password";
@@ -258,6 +285,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
 
       console.log("✅ [Auth] Login successful");
+      recordLoginAttempt(email, true);
+      bindSessionFingerprint();
       // onAuthStateChange will set AUTHENTICATED
       return null;
     } catch (e: any) {

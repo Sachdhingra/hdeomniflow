@@ -3,6 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- Security headers (CSP restricts where code/data can load from or be sent to) -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co ws://localhost:* http://localhost:*; object-src 'none'; base-uri 'self'; form-action 'self'"
+    />
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
     <title>OmniFlow</title>
     <meta name="description" content="Furniture CRM for sales, service, field & site agents">
     <meta name="author" content="Lovable" />

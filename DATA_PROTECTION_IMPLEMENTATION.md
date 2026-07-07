@@ -546,6 +546,84 @@ console.assert(logs[0].operation === "SOFT_DELETE", "Wrong operation logged");
 
 ---
 
+## External Attack Protection
+
+### 🚪 Brute-Force Login Protection
+Server-enforced via `public.check_login_allowed` / `public.record_login_attempt`
+(migration `20260709_external_attack_protection.sql`), wired into `AuthContext.login`:
+
+- **5 failed attempts per identifier in 15 minutes → locked for 15 minutes**
+- Lockouts are logged to `security_events` (severity: high)
+- A successful login clears the failure window
+- The check runs *before* credentials are sent; fails open on network error
+  (Supabase auth still gates the actual sign-in)
+
+### ⏱️ Idle Session Timeout
+`startIdleTimeout` (in `src/utils/securityMonitor.ts`) auto-logs-out inactive sessions:
+- Staff: **30 minutes**, Admin: **15 minutes** (higher privilege = shorter window)
+- Limits exposure from stolen/unattended devices
+- Timeout events are logged as `session_expired` security events
+
+### 🧬 Session Fingerprinting
+`bindSessionFingerprint` / `verifySessionFingerprint` store a coarse device hash
+(user agent + language + screen + timezone, SHA-256) at login. A mismatch on the
+same session is reported as an `integrity_violation` event — a signal of token theft.
+
+### 🧹 Input Validation & Sanitization (`src/utils/inputValidation.ts`)
+Run all user input through these before writes or rendering:
+
+```typescript
+import { validateForm, validateTextInput, validatePhone, validateEmail } from "@/utils/inputValidation";
+import { reportSecurityEvent } from "@/utils/securityMonitor";
+
+const result = validateForm({
+  name:  { value: nameInput,  type: "text", maxLength: 100 },
+  phone: { value: phoneInput, type: "phone" },
+  email: { value: emailInput, type: "email" },
+});
+
+if (result.attackSignatures.length > 0) {
+  // Someone is probing — log it for the admin
+  reportSecurityEvent("suspicious_input", { signatures: result.attackSignatures });
+}
+if (result.valid) {
+  await supabase.from("leads").insert(result.sanitized);
+}
+```
+
+Detects: script tags, `javascript:` URIs, inline event handlers, SQL keywords,
+destructive SQL, template injection, path traversal, data-URI HTML.
+
+### 🔒 Dynamic-Table Whitelist
+Every `secureDataOps` function now validates its `tableName` against a hard
+whitelist and its `recordId` as a UUID before touching the query builder.
+Violations are rejected *and* reported as `suspicious_input` security events.
+
+### 🛡️ Security Headers & Clickjacking
+- `index.html` ships a Content-Security-Policy meta tag: scripts only from self,
+  connections only to self + Supabase, no objects, no external form posts
+- `X-Content-Type-Options: nosniff` and strict referrer policy
+- `src/main.tsx` frame-busts if loaded inside a hostile iframe (meta CSP cannot
+  express `frame-ancestors`)
+- If you later control HTTP headers (custom domain/CDN), move the CSP to a real
+  header and add `frame-ancestors 'none'` + `Strict-Transport-Security`
+
+### 📡 Security Events Table
+All attack telemetry lands in `public.security_events` (admin-only read via RLS):
+
+```sql
+SELECT event_type, severity, identifier, details, created_at
+FROM public.security_events
+ORDER BY created_at DESC LIMIT 50;
+```
+
+Event types: `login_failed`, `login_locked`, `suspicious_input`,
+`session_expired`, `unauthorized_access`, `integrity_violation`.
+Client-reported events are rate-limited server-side (30/user/hour) so the
+log itself can't be flooded.
+
+---
+
 ## Compliance Notes
 
 ### GDPR / Right to be Forgotten
