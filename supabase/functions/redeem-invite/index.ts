@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -8,9 +8,22 @@ const cors = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-/** Stable virtual email derived from E.164 phone, never delivered to a real inbox */
+function json(body: Record<string, unknown>, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...cors, "Content-Type": "application/json" },
+  });
+}
+
+function normalizePhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  const ten = digits.length > 10 ? digits.slice(-10) : digits;
+  return ten.length === 10 ? `+91${ten}` : raw.trim();
+}
+
+/** Stable virtual email derived from the phone, never delivered to a real inbox */
 function virtualEmail(phone: string): string {
-  return `${phone.replace(/\+/g, "")}@invite.hdi.local`;
+  return `${normalizePhone(phone).replace(/\D/g, "")}@invite.hdi.local`;
 }
 
 Deno.serve(async (req) => {
@@ -24,9 +37,12 @@ Deno.serve(async (req) => {
   try {
     ({ token } = await req.json());
   } catch {
-    return new Response(JSON.stringify({ error: "Invalid JSON" }), {
-      status: 400, headers: { ...cors, "Content-Type": "application/json" },
-    });
+    return json({ error: "invalid_json" }, 400);
+  }
+
+  token = String(token || "").trim();
+  if (!token) {
+    return json({ error: "missing_token" }, 400);
   }
 
   // 1. Validate token
@@ -37,23 +53,18 @@ Deno.serve(async (req) => {
     .maybeSingle();
 
   if (inviteErr || !invite) {
-    return new Response(JSON.stringify({ error: "invalid" }), {
-      status: 404, headers: { ...cors, "Content-Type": "application/json" },
-    });
+    return json({ error: "invalid" }, 404);
   }
   if (invite.used_at) {
-    return new Response(JSON.stringify({ error: "already_used" }), {
-      status: 409, headers: { ...cors, "Content-Type": "application/json" },
-    });
+    return json({ error: "already_used" }, 409);
   }
   if (new Date(invite.expires_at) < new Date()) {
-    return new Response(JSON.stringify({ error: "expired" }), {
-      status: 410, headers: { ...cors, "Content-Type": "application/json" },
-    });
+    return json({ error: "expired" }, 410);
   }
 
   const { customer_id, phone } = invite;
-  const email = virtualEmail(phone);
+  const canonicalPhone = normalizePhone(phone);
+  const email = virtualEmail(canonicalPhone);
 
   // 2. Find or create auth user, ensuring app_users link exists
   let userId: string;
@@ -72,6 +83,7 @@ Deno.serve(async (req) => {
     const { data: created, error: createErr } = await admin.auth.admin.createUser({
       email,
       email_confirm: true,
+      user_metadata: { customer_id, phone: canonicalPhone },
     });
 
     if (createErr) {
@@ -79,21 +91,23 @@ Deno.serve(async (req) => {
       const { data: list } = await admin.auth.admin.listUsers({ perPage: 1000 });
       const existing = list?.users.find((u) => u.email === email);
       if (!existing) {
-        return new Response(JSON.stringify({ error: "auth_create_failed" }), {
-          status: 500, headers: { ...cors, "Content-Type": "application/json" },
-        });
+        return json({ error: "auth_create_failed", detail: createErr.message }, 500);
       }
       userId = existing.id;
     } else {
       userId = created!.user!.id;
     }
 
-    await admin
+    const { error: linkErr } = await admin
       .from("app_users")
       .upsert(
-        { user_id: userId, customer_id, phone, push_enabled: true },
+        { user_id: userId, customer_id, phone: canonicalPhone, push_enabled: true },
         { onConflict: "user_id" },
       );
+
+    if (linkErr) {
+      return json({ error: "app_user_link_failed", detail: linkErr.message }, 500);
+    }
 
     // First-activation: set app_activated + referral_code
     const { data: cust } = await admin
@@ -105,7 +119,7 @@ Deno.serve(async (req) => {
     const updates: Record<string, unknown> = {};
     if (!cust?.app_activated) updates.app_activated = true;
     if (!cust?.referral_code) {
-      const last4 = phone.slice(-4);
+      const last4 = canonicalPhone.slice(-4);
       const alpha = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
       let suffix = "";
       for (let i = 0; i < 4; i++) suffix += alpha[Math.floor(Math.random() * alpha.length)];
@@ -123,19 +137,18 @@ Deno.serve(async (req) => {
   });
 
   if (linkErr || !linkData?.properties?.hashed_token) {
-    return new Response(JSON.stringify({ error: "link_gen_failed" }), {
-      status: 500, headers: { ...cors, "Content-Type": "application/json" },
-    });
+    return json({ error: "link_gen_failed", detail: linkErr?.message }, 500);
   }
 
   // 4. Mark token as used
-  await admin
+  const { error: usedErr } = await admin
     .from("invite_tokens")
-    .update({ used_at: new Date().toISOString() })
+    .update({ used_at: new Date().toISOString(), redeemed_user_id: userId })
     .eq("token", token);
 
-  return new Response(
-    JSON.stringify({ hashed_token: linkData.properties.hashed_token, phone }),
-    { headers: { ...cors, "Content-Type": "application/json" } },
-  );
+  if (usedErr) {
+    return json({ error: "mark_used_failed", detail: usedErr.message }, 500);
+  }
+
+  return json({ hashed_token: linkData.properties.hashed_token, phone: canonicalPhone });
 });
