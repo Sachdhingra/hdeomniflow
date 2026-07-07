@@ -53,7 +53,7 @@ export function useGeolocation(enabled: boolean) {
         setError(null);
       },
       (err) => setError(err.message),
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
     );
 
     return () => navigator.geolocation.clearWatch(watchId);
@@ -65,4 +65,35 @@ export function useGeolocation(enabled: boolean) {
   };
 
   return { position, error, kmTraveled, resetOdometer };
+}
+
+/** Get position with high-frequency polling */
+export async function getPositionWithRetry(retries = 3): Promise<GeoPosition | null> {
+  if (typeof navigator === "undefined" || !navigator.geolocation) return null;
+
+  return new Promise((resolve) => {
+    let attempts = 0;
+    const tryGet = () => {
+      attempts++;
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          resolve({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            accuracy: pos.coords.accuracy,
+            timestamp: pos.timestamp,
+          });
+        },
+        () => {
+          if (attempts < retries) {
+            setTimeout(tryGet, 1000);
+          } else {
+            resolve(null);
+          }
+        },
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 8000 }
+      );
+    };
+    tryGet();
+  });
 }

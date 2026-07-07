@@ -88,7 +88,7 @@ export const useFieldAgentDuty = () => {
     };
   }, [refreshDuty]);
 
-  // Capture + push location every 60s while on duty
+  // Capture + push location every 30s while on duty (increased frequency)
   useEffect(() => {
     if (!user || !isFieldAgent || !isTrackingActive) {
       if (intervalRef.current) {
@@ -112,7 +112,11 @@ export const useFieldAgentDuty = () => {
               agent_name: user.name,
               latitude: pos.coords.latitude,
               longitude: pos.coords.longitude,
+              accuracy: pos.coords.accuracy,
+              altitude: pos.coords.altitude,
+              speed: pos.coords.speed,
               shift_date: istToday(),
+              timestamp: new Date(pos.timestamp).toISOString(),
             });
             if (error) throw error;
           } catch {
@@ -120,12 +124,12 @@ export const useFieldAgentDuty = () => {
           }
         },
         () => {},
-        { enableHighAccuracy: true, maximumAge: 30_000, timeout: 15_000 }
+        { enableHighAccuracy: true, maximumAge: 20_000, timeout: 8_000 }
       );
     };
 
     pushPing();
-    intervalRef.current = window.setInterval(pushPing, 60_000);
+    intervalRef.current = window.setInterval(pushPing, 30_000);
     return () => {
       if (intervalRef.current) {
         window.clearInterval(intervalRef.current);
