@@ -37,10 +37,10 @@ const Login = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen w-screen flex flex-col bg-background overflow-x-hidden">
       <LoginBannerCarousel />
       <div className="flex-1 flex items-center justify-center p-4">
-      <div className="w-full max-w-md space-y-6">
+      <div className="w-full max-w-md space-y-6 mx-auto">
         <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-2 gradient-primary rounded-xl px-4 py-2">
             <Building2 className="w-6 h-6 text-primary-foreground" />

@@ -60,8 +60,8 @@ const LoginBannerCarousel = () => {
   );
 
   return (
-    <div className="relative w-full overflow-hidden bg-muted">
-      <div className="w-full aspect-[16/6] sm:aspect-[21/6] max-h-[260px]">
+    <div className="relative w-full overflow-hidden bg-muted m-0 p-0">
+      <div className="w-full aspect-[16/6] sm:aspect-[16/9] md:aspect-[21/9] max-h-[260px]">
         {b.link_url ? (
           <a href={b.link_url} target="_blank" rel="noopener noreferrer" className="block w-full h-full">
             {inner}
