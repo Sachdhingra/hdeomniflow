@@ -27,7 +27,7 @@ ALTER TABLE public.audit_log ENABLE ROW LEVEL SECURITY;
 -- RLS Policy: Only admin can SELECT audit logs
 CREATE POLICY audit_log_admin_select ON public.audit_log
   FOR SELECT TO authenticated
-  USING (auth.jwt() ->> 'role' = 'admin');
+  USING (public.has_role(auth.uid(), 'admin'));
 
 -- RLS Policy: System/triggers can INSERT (no row-level check needed)
 CREATE POLICY audit_log_system_insert ON public.audit_log
@@ -74,7 +74,7 @@ BEGIN
     TG_TABLE_NAME,
     COALESCE(NEW.id, OLD.id),
     auth.uid(),
-    auth.jwt() ->> 'role',
+    public.get_user_role(auth.uid())::text,
     v_user_email,
     to_jsonb(OLD),
     to_jsonb(NEW),
@@ -111,7 +111,7 @@ BEGIN
       TG_TABLE_NAME,
       NEW.id,
       auth.uid(),
-      auth.jwt() ->> 'role',
+      public.get_user_role(auth.uid())::text,
       v_user_email,
       to_jsonb(OLD),
       to_jsonb(NEW),
@@ -136,7 +136,7 @@ BEGIN
   v_user_id := auth.uid();
 
   -- Check if user is admin
-  SELECT (auth.jwt() ->> 'role') = 'admin' INTO v_is_admin;
+  v_is_admin := public.has_role(auth.uid(), 'admin');
 
   IF NOT v_is_admin THEN
     RETURN false;
@@ -164,7 +164,7 @@ DECLARE
   v_is_admin BOOLEAN;
 BEGIN
   -- Check if requesting user is admin
-  SELECT (auth.jwt() ->> 'role') = 'admin' INTO v_is_admin;
+  v_is_admin := public.has_role(auth.uid(), 'admin');
 
   IF NOT v_is_admin THEN
     RETURN false;
@@ -193,7 +193,7 @@ DECLARE
   v_user_email TEXT;
 BEGIN
   -- Verify admin role
-  IF (auth.jwt() ->> 'role') != 'admin' THEN
+  IF NOT public.has_role(auth.uid(), 'admin') THEN
     RAISE EXCEPTION 'Unauthorized: hard delete requires admin role';
   END IF;
 

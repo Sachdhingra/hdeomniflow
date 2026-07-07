@@ -142,8 +142,8 @@ const ALLOWED_TABLES = new Set([
   'app_users',
   'card_points',
   'redemption_requests',
-  'bills',
-  'commissions',
+  'card_bill_entries',
+  'card_commissions',
 ]);
 
 export function isAllowedTable(tableName: string): boolean {

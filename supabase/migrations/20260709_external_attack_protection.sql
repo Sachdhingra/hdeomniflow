@@ -22,7 +22,7 @@ ALTER TABLE public.security_events ENABLE ROW LEVEL SECURITY;
 -- Only admin can read security events
 CREATE POLICY security_events_admin_select ON public.security_events
   FOR SELECT TO authenticated
-  USING (public.get_user_role(auth.uid()) = 'admin');
+  USING (public.has_role(auth.uid(), 'admin'));
 
 -- No direct INSERT/UPDATE/DELETE from clients; writes go through
 -- the SECURITY DEFINER functions below only.
