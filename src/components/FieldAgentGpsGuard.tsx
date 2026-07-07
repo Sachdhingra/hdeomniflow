@@ -14,8 +14,9 @@ const istToday = () => {
   return fmt.format(new Date());
 };
 
-const PROBE_INTERVAL_MS = 30_000;
-const SIGNAL_LOST_THRESHOLD_MS = 10 * 60_000;
+const PROBE_INTERVAL_MS = 15_000;
+const AGGRESSIVE_PROBE_INTERVAL_MS = 5_000;
+const SIGNAL_LOST_THRESHOLD_MS = 5 * 60_000;
 
 /**
  * Fullscreen GPS/connectivity enforcement for Field Agents on duty.
@@ -40,6 +41,8 @@ const FieldAgentGpsGuard = () => {
   const gpsOffSinceRef = useRef<number | null>(null);
   const offlineSinceRef = useRef<number | null>(null);
   const signalLostSinceRef = useRef<number | null>(null);
+  const consecutiveFailuresRef = useRef(0);
+  const probeIntervalRef = useRef<number>(PROBE_INTERVAL_MS);
 
   const logEvent = async (
     eventType:
@@ -60,6 +63,20 @@ const FieldAgentGpsGuard = () => {
         occurred_at: new Date().toISOString(),
         shift_date: istToday(),
         duration_minutes: durationMinutes ?? null,
+      });
+    } catch {
+      /* silent */
+    }
+  };
+
+  const logTamperingAttempt = async (eventType: string, failureCount: number) => {
+    if (!user) return;
+    try {
+      await supabase.from("gps_tampering_attempts").insert({
+        agent_id: user.id,
+        event_type: eventType,
+        failure_count: failureCount,
+        shift_date: istToday(),
       });
     } catch {
       /* silent */
@@ -131,11 +148,16 @@ const FieldAgentGpsGuard = () => {
     const probe = () => {
       if (!navigator.geolocation) {
         markGpsOff("GPS is not supported on this device.");
+        consecutiveFailuresRef.current++;
+        probeIntervalRef.current = AGGRESSIVE_PROBE_INTERVAL_MS;
         return;
       }
+
       navigator.geolocation.getCurrentPosition(
         () => {
           lastFixRef.current = Date.now();
+          consecutiveFailuresRef.current = 0;
+          probeIntervalRef.current = PROBE_INTERVAL_MS;
           markGpsOk();
           // Restore signal-lost if any
           if (signalLostSinceRef.current) {
@@ -147,24 +169,29 @@ const FieldAgentGpsGuard = () => {
           }
         },
         (err) => {
+          consecutiveFailuresRef.current++;
+          probeIntervalRef.current = AGGRESSIVE_PROBE_INTERVAL_MS;
+
+          if (consecutiveFailuresRef.current > 1 && consecutiveFailuresRef.current % 3 === 0) {
+            logTamperingAttempt(`gps_probe_failure_${err.code}`, consecutiveFailuresRef.current);
+          }
+
           if (err.code === err.PERMISSION_DENIED) {
-            markGpsOff("Location permission is denied.");
+            markGpsOff("Location permission is denied. Enable GPS to continue duty.");
           } else if (err.code === err.POSITION_UNAVAILABLE) {
-            markGpsOff("GPS signal unavailable.");
+            markGpsOff("GPS signal unavailable. Check GPS is enabled.");
           } else if (err.code === err.TIMEOUT) {
-            // Treat timeouts as soft failures: only flag GPS off if
-            // we've never gotten a fix; otherwise let signal-lost cover it.
             if (!lastFixRef.current) {
-              markGpsOff("GPS signal unavailable.");
+              markGpsOff("GPS signal unavailable. Check GPS is enabled.");
             }
           } else {
             markGpsOff("Location is required to continue duty.");
           }
         },
-        { enableHighAccuracy: true, maximumAge: 15_000, timeout: 15_000 }
+        { enableHighAccuracy: true, maximumAge: 10_000, timeout: 8_000 }
       );
 
-      // Signal-lost detection (10 min without a fresh fix)
+      // Signal-lost detection (5 min without a fresh fix)
       if (
         lastFixRef.current &&
         Date.now() - lastFixRef.current > SIGNAL_LOST_THRESHOLD_MS &&
@@ -176,7 +203,13 @@ const FieldAgentGpsGuard = () => {
     };
 
     probe();
-    const id = window.setInterval(probe, PROBE_INTERVAL_MS);
+    let id = window.setInterval(probe, PROBE_INTERVAL_MS);
+
+    const adjustInterval = () => {
+      window.clearInterval(id);
+      id = window.setInterval(probe, probeIntervalRef.current);
+    };
+    const adjustId = window.setInterval(adjustInterval, 5000);
 
     // Permissions API live updates (where supported)
     let permStatus: PermissionStatus | null = null;
@@ -194,6 +227,7 @@ const FieldAgentGpsGuard = () => {
     return () => {
       cancelled = true;
       window.clearInterval(id);
+      window.clearInterval(adjustId);
       permStatus?.removeEventListener?.("change", permHandler);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
