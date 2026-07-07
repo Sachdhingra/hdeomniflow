@@ -1,6 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
+import {
+  checkLoginAllowed,
+  recordLoginAttempt,
+  startIdleTimeout,
+  bindSessionFingerprint,
+} from "@/utils/securityMonitor";
 
 export type UserRole = "admin" | "sales" | "service_head" | "field_agent" | "site_agent" | "accounts";
 
@@ -9,6 +15,8 @@ export interface User {
   name: string;
   role: UserRole;
   email: string;
+  last_login?: Date;
+  mfa_verified?: boolean;
 }
 
 type AuthState = "UNAUTHENTICATED" | "AUTHENTICATING" | "AUTHENTICATED" | "LOGGING_OUT";
@@ -22,6 +30,15 @@ interface AuthContextType {
   forceLogout: () => Promise<void>;
   allProfiles: User[];
   refreshProfiles: () => Promise<void>;
+  // Admin guard functions
+  isAdmin: () => boolean;
+  requireAdmin: () => void;
+  canAccessAuditLog: () => boolean;
+  canPerformHardDelete: () => boolean;
+  canModifyRoles: () => boolean;
+  canRotateKeys: () => boolean;
+  verifyAdminPassword: (password: string) => Promise<boolean>;
+  verifyMFA: (code: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -210,6 +227,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (user) refreshProfiles();
   }, [user]);
 
+  // Idle session watchdog: auto-logout after inactivity
+  // (30 min for staff, 15 min for admin) to limit stolen-device exposure.
+  useEffect(() => {
+    if (!user) return;
+    const stop = startIdleTimeout(user.role === "admin", () => {
+      logout();
+    });
+    return stop;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.role]);
+
   const login = async (username: string, password: string): Promise<string | null> => {
     if (loginInFlight.current) {
       console.warn("⚠️ [Auth] Login already in progress");
@@ -227,6 +255,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       clearAuthCache();
 
       const email = `${username.toLowerCase().replace(/\s+/g, ".")}@furncrm.local`;
+
+      // Brute-force guard: server-enforced rate limit (5 failures / 15 min)
+      const gate = await checkLoginAllowed(email);
+      if (!gate.allowed) {
+        console.warn("🚫 [Auth] Login blocked by rate limiter");
+        setState("UNAUTHENTICATED");
+        return gate.message ?? "Too many failed attempts. Try again later.";
+      }
+
       console.log("📤 [Auth] Sending credentials…");
 
       const { error } = await withTimeout(
@@ -237,6 +274,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (error) {
         console.error("❌ [Auth] Login failed:", error.message);
+        recordLoginAttempt(email, false);
         clearAuthCache();
         setState("UNAUTHENTICATED");
         if (error.message.includes("Invalid login")) return "Invalid username or password";
@@ -247,6 +285,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
 
       console.log("✅ [Auth] Login successful");
+      recordLoginAttempt(email, true);
+      bindSessionFingerprint();
       // onAuthStateChange will set AUTHENTICATED
       return null;
     } catch (e: any) {
@@ -304,9 +344,111 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     window.location.href = "/";
   };
 
+  // Admin guard functions
+  const isAdmin = (): boolean => {
+    return user?.role === "admin" ?? false;
+  };
+
+  const requireAdmin = (): void => {
+    if (!isAdmin()) {
+      throw new Error("🚫 [Auth] Unauthorized: admin role required");
+    }
+  };
+
+  const canAccessAuditLog = (): boolean => {
+    return isAdmin();
+  };
+
+  const canPerformHardDelete = (): boolean => {
+    return isAdmin() && (user?.mfa_verified ?? false);
+  };
+
+  const canModifyRoles = (): boolean => {
+    return isAdmin() && (user?.mfa_verified ?? false);
+  };
+
+  const canRotateKeys = (): boolean => {
+    return isAdmin() && (user?.mfa_verified ?? false);
+  };
+
+  const verifyAdminPassword = async (password: string): Promise<boolean> => {
+    if (!isAdmin()) {
+      console.error("🚫 [Auth] Password verification requires admin role");
+      return false;
+    }
+
+    try {
+      // Verify against current session by attempting a sensitive operation
+      // This is a placeholder - actual implementation would call a backend function
+      // that verifies the password using Supabase's password hashing
+      const { data, error } = await supabase.rpc("verify_admin_password", {
+        _password: password,
+      });
+
+      if (error) {
+        console.error("❌ [Auth] Password verification failed:", error.message);
+        return false;
+      }
+
+      return data === true;
+    } catch (e) {
+      console.error("❌ [Auth] Password verification error:", e);
+      return false;
+    }
+  };
+
+  const verifyMFA = async (code: string): Promise<boolean> => {
+    if (!user) {
+      console.error("🚫 [Auth] MFA verification requires authenticated user");
+      return false;
+    }
+
+    try {
+      // This is a placeholder - actual implementation would validate TOTP code
+      // or integrate with a 2FA service (e.g., Authy, Google Authenticator)
+      const { data, error } = await supabase.rpc("verify_mfa_code", {
+        _user_id: user.id,
+        _code: code,
+      });
+
+      if (error) {
+        console.error("❌ [Auth] MFA verification failed:", error.message);
+        return false;
+      }
+
+      if (data === true) {
+        // Update user MFA state in context
+        setUser(prev => prev ? { ...prev, mfa_verified: true } : null);
+        console.log("✅ [Auth] MFA verified");
+      }
+
+      return data === true;
+    } catch (e) {
+      console.error("❌ [Auth] MFA verification error:", e);
+      return false;
+    }
+  };
+
   return (
     <AuthContext.Provider
-      value={{ user, loading, authState, login, logout, forceLogout, allProfiles, refreshProfiles }}
+      value={{
+        user,
+        loading,
+        authState,
+        login,
+        logout,
+        forceLogout,
+        allProfiles,
+        refreshProfiles,
+        isAdmin,
+        requireAdmin,
+        canAccessAuditLog,
+        canPerformHardDelete,
+        canModifyRoles,
+        canRotateKeys,
+        verifyAdminPassword,
+        verifyMFA,
+      }}
     >
       {children}
     </AuthContext.Provider>
