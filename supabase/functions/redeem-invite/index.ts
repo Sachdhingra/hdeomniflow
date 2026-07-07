@@ -101,7 +101,7 @@ Deno.serve(async (req) => {
     const { error: linkErr } = await admin
       .from("app_users")
       .upsert(
-        { user_id: userId, customer_id, phone: canonicalPhone, push_enabled: true },
+        { user_id: userId, customer_id, push_enabled: true },
         { onConflict: "user_id" },
       );
 
