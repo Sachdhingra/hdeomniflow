@@ -7,6 +7,12 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
 
+const inviteErrorMessage = (code?: string) => {
+  if (code === "already_used") return "This invite link has already been used. Open the app directly or ask for a new one.";
+  if (code === "expired") return "This invite link has expired. Please ask for a new link.";
+  return "Invalid invite link. Please check the link and try again.";
+};
+
 export default function InviteAccept() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -24,13 +30,19 @@ export default function InviteAccept() {
         const { data, error } = await supabase.functions.invoke("redeem-invite", {
           body: { token },
         });
-        if (error || !data?.email || !data?.password) {
-          throw new Error(error?.message || data?.error || "Invite expired or invalid");
+
+        if (error || !data?.hashed_token) {
+          let code = data?.error;
+          const ctx = (error as { context?: Response } | null)?.context;
+          if (!code && ctx && typeof ctx.json === "function") {
+            try { code = (await ctx.json())?.error; } catch {}
+          }
+          throw new Error(inviteErrorMessage(code));
         }
 
-        const { error: signInErr } = await supabase.auth.signInWithPassword({
-          email: data.email,
-          password: data.password,
+        const { error: signInErr } = await supabase.auth.verifyOtp({
+          token_hash: data.hashed_token,
+          type: "email",
         });
         if (signInErr) throw signInErr;
 

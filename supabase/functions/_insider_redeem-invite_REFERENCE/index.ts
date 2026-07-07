@@ -2,71 +2,130 @@
 // The Insider project must be connected to the SAME backend as OmniFlow so it sees the
 // shared `invite_tokens` table.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function json(body: Record<string, unknown>, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...cors, "Content-Type": "application/json" },
+  });
+}
+
+function normalizePhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  const ten = digits.length > 10 ? digits.slice(-10) : digits;
+  return ten.length === 10 ? `+91${ten}` : raw.trim();
+}
+
+function virtualEmail(phone: string): string {
+  return `${normalizePhone(phone).replace(/\D/g, "")}@invite.hdi.local`;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
-  const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
+  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
+  let token: string;
   try {
-    const { token } = await req.json();
-    if (!token) throw new Error("Missing token");
+    ({ token } = await req.json());
+  } catch {
+    return json({ error: "invalid_json" }, 400);
+  }
 
-    // 1. Look up token
-    const { data: row, error } = await admin
-      .from("invite_tokens")
-      .select("*")
-      .eq("token", token)
-      .maybeSingle();
-    if (error || !row) throw new Error("Invite not found");
-    if (row.used_at) throw new Error("Invite already used");
-    if (new Date(row.expires_at) < new Date()) throw new Error("Invite expired");
+  token = String(token || "").trim();
+  if (!token) return json({ error: "missing_token" }, 400);
 
-    // 2. Synthesize a stable email from the customer's phone
-    const email = `c_${row.phone.replace(/\D/g, "")}@insider.local`;
-    const password = crypto.randomUUID();
+  const { data: invite, error: inviteErr } = await admin
+    .from("invite_tokens")
+    .select("customer_id, phone, used_at, expires_at")
+    .eq("token", token)
+    .maybeSingle();
 
-    // 3. Create-or-update the auth user
-    const { data: list } = await admin.auth.admin.listUsers();
-    const existing = list.users.find((u) => u.email === email);
-    let userId = existing?.id;
-    if (existing) {
-      await admin.auth.admin.updateUserById(existing.id, { password });
+  if (inviteErr || !invite) return json({ error: "invalid" }, 404);
+  if (invite.used_at) return json({ error: "already_used" }, 409);
+  if (new Date(invite.expires_at) < new Date()) return json({ error: "expired" }, 410);
+
+  const { customer_id, phone } = invite;
+  const canonicalPhone = normalizePhone(phone);
+  const email = virtualEmail(canonicalPhone);
+  let userId: string;
+
+  const { data: appUser } = await admin
+    .from("app_users")
+    .select("user_id")
+    .eq("customer_id", customer_id)
+    .maybeSingle();
+
+  if (appUser?.user_id) {
+    userId = appUser.user_id;
+    await admin.auth.admin.updateUserById(userId, { email, email_confirm: true });
+  } else {
+    const { data: created, error: createErr } = await admin.auth.admin.createUser({
+      email,
+      email_confirm: true,
+      user_metadata: { customer_id, phone: canonicalPhone },
+    });
+
+    if (createErr) {
+      const { data: list } = await admin.auth.admin.listUsers({ perPage: 1000 });
+      const existing = list?.users.find((u) => u.email === email);
+      if (!existing) return json({ error: "auth_create_failed", detail: createErr.message }, 500);
+      userId = existing.id;
     } else {
-      const { data: created, error: cErr } = await admin.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-        user_metadata: { customer_id: row.customer_id, phone: row.phone },
-      });
-      if (cErr) throw cErr;
-      userId = created.user.id;
+      userId = created!.user!.id;
     }
 
-    // 4. Mark token used
-    await admin
-      .from("invite_tokens")
-      .update({ used_at: new Date().toISOString(), redeemed_user_id: userId })
-      .eq("token", token);
+    const { error: linkErr } = await admin
+      .from("app_users")
+      .upsert({ user_id: userId, customer_id, push_enabled: true }, { onConflict: "user_id" });
 
-    return new Response(JSON.stringify({ email, password }), {
-      headers: { ...cors, "Content-Type": "application/json" },
-    });
-  } catch (e: any) {
-    return new Response(JSON.stringify({ error: e.message }), {
-      status: 400,
-      headers: { ...cors, "Content-Type": "application/json" },
-    });
+    if (linkErr) return json({ error: "app_user_link_failed", detail: linkErr.message }, 500);
+
+    const { data: cust } = await admin
+      .from("elite_customers")
+      .select("app_activated, referral_code")
+      .eq("id", customer_id)
+      .single();
+
+    const updates: Record<string, unknown> = {};
+    if (!cust?.app_activated) updates.app_activated = true;
+    if (!cust?.referral_code) {
+      const alpha = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      let suffix = "";
+      for (let i = 0; i < 4; i++) suffix += alpha[Math.floor(Math.random() * alpha.length)];
+      updates.referral_code = `EC${canonicalPhone.slice(-4)}${suffix}`;
+    }
+    if (Object.keys(updates).length > 0) {
+      await admin.from("elite_customers").update(updates).eq("id", customer_id);
+    }
   }
+
+  const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
+    type: "magiclink",
+    email,
+  });
+
+  if (linkErr || !linkData?.properties?.hashed_token) {
+    return json({ error: "link_gen_failed", detail: linkErr?.message }, 500);
+  }
+
+  const { error: usedErr } = await admin
+    .from("invite_tokens")
+    .update({ used_at: new Date().toISOString(), redeemed_user_id: userId })
+    .eq("token", token);
+
+  if (usedErr) return json({ error: "mark_used_failed", detail: usedErr.message }, 500);
+
+  return json({ hashed_token: linkData.properties.hashed_token, phone: canonicalPhone });
 });
