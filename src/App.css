@@ -3,6 +3,12 @@
   height: 100vh;
 }
 
+/* Ensure login banner is truly full viewport width */
+.login-banner-container {
+  width: 100vw;
+  margin-left: calc(-50vw + 50%);
+}
+
 .logo {
   height: 6em;
   padding: 1.5em;
