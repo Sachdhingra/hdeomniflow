@@ -3544,6 +3544,7 @@ export type Database = {
         Returns: boolean
       }
       is_loyalty_app_user: { Args: { _uid: string }; Returns: boolean }
+      link_loyalty_app_user: { Args: { _phone: string }; Returns: string }
       verify_daily_report_secret: { Args: { _token: string }; Returns: boolean }
     }
     Enums: {
