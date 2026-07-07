@@ -9,6 +9,8 @@ export interface User {
   name: string;
   role: UserRole;
   email: string;
+  last_login?: Date;
+  mfa_verified?: boolean;
 }
 
 type AuthState = "UNAUTHENTICATED" | "AUTHENTICATING" | "AUTHENTICATED" | "LOGGING_OUT";
@@ -22,6 +24,15 @@ interface AuthContextType {
   forceLogout: () => Promise<void>;
   allProfiles: User[];
   refreshProfiles: () => Promise<void>;
+  // Admin guard functions
+  isAdmin: () => boolean;
+  requireAdmin: () => void;
+  canAccessAuditLog: () => boolean;
+  canPerformHardDelete: () => boolean;
+  canModifyRoles: () => boolean;
+  canRotateKeys: () => boolean;
+  verifyAdminPassword: (password: string) => Promise<boolean>;
+  verifyMFA: (code: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -304,9 +315,111 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     window.location.href = "/";
   };
 
+  // Admin guard functions
+  const isAdmin = (): boolean => {
+    return user?.role === "admin" ?? false;
+  };
+
+  const requireAdmin = (): void => {
+    if (!isAdmin()) {
+      throw new Error("🚫 [Auth] Unauthorized: admin role required");
+    }
+  };
+
+  const canAccessAuditLog = (): boolean => {
+    return isAdmin();
+  };
+
+  const canPerformHardDelete = (): boolean => {
+    return isAdmin() && (user?.mfa_verified ?? false);
+  };
+
+  const canModifyRoles = (): boolean => {
+    return isAdmin() && (user?.mfa_verified ?? false);
+  };
+
+  const canRotateKeys = (): boolean => {
+    return isAdmin() && (user?.mfa_verified ?? false);
+  };
+
+  const verifyAdminPassword = async (password: string): Promise<boolean> => {
+    if (!isAdmin()) {
+      console.error("🚫 [Auth] Password verification requires admin role");
+      return false;
+    }
+
+    try {
+      // Verify against current session by attempting a sensitive operation
+      // This is a placeholder - actual implementation would call a backend function
+      // that verifies the password using Supabase's password hashing
+      const { data, error } = await supabase.rpc("verify_admin_password", {
+        _password: password,
+      });
+
+      if (error) {
+        console.error("❌ [Auth] Password verification failed:", error.message);
+        return false;
+      }
+
+      return data === true;
+    } catch (e) {
+      console.error("❌ [Auth] Password verification error:", e);
+      return false;
+    }
+  };
+
+  const verifyMFA = async (code: string): Promise<boolean> => {
+    if (!user) {
+      console.error("🚫 [Auth] MFA verification requires authenticated user");
+      return false;
+    }
+
+    try {
+      // This is a placeholder - actual implementation would validate TOTP code
+      // or integrate with a 2FA service (e.g., Authy, Google Authenticator)
+      const { data, error } = await supabase.rpc("verify_mfa_code", {
+        _user_id: user.id,
+        _code: code,
+      });
+
+      if (error) {
+        console.error("❌ [Auth] MFA verification failed:", error.message);
+        return false;
+      }
+
+      if (data === true) {
+        // Update user MFA state in context
+        setUser(prev => prev ? { ...prev, mfa_verified: true } : null);
+        console.log("✅ [Auth] MFA verified");
+      }
+
+      return data === true;
+    } catch (e) {
+      console.error("❌ [Auth] MFA verification error:", e);
+      return false;
+    }
+  };
+
   return (
     <AuthContext.Provider
-      value={{ user, loading, authState, login, logout, forceLogout, allProfiles, refreshProfiles }}
+      value={{
+        user,
+        loading,
+        authState,
+        login,
+        logout,
+        forceLogout,
+        allProfiles,
+        refreshProfiles,
+        isAdmin,
+        requireAdmin,
+        canAccessAuditLog,
+        canPerformHardDelete,
+        canModifyRoles,
+        canRotateKeys,
+        verifyAdminPassword,
+        verifyMFA,
+      }}
     >
       {children}
     </AuthContext.Provider>
