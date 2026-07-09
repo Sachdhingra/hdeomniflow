@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import EliteCardEnrollment, { EliteChoice } from "@/components/elite/EliteCardEnrollment";
+import { EliteTier } from "@/lib/eliteTiers";
 import EliteBadge from "@/components/elite/EliteBadge";
 import { formatDate } from "@/lib/dateFormat";
 
