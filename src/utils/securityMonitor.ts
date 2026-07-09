@@ -7,7 +7,8 @@
  * - Session fingerprint check (detects token reuse from a different device)
  */
 
-import { supabase } from "@/integrations/supabase/client";
+import { supabase as _supabase } from "@/integrations/supabase/client";
+const supabase: any = _supabase;
 
 // ============================================================
 // Brute-force login protection
