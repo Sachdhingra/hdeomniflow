@@ -68,6 +68,7 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
       else if (optedIn === false) setEliteChoice("opt_out");
       else setEliteChoice("undecided");
       setEliteIssueDate(l.elite_opted_date || new Date().toISOString().slice(0, 10));
+      setEliteTier((l.elite_card_tier as EliteTier) || "silver");
       setEliteDupWarning(null);
     }
   }, [lead]);
