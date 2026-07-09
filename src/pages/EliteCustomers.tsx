@@ -494,6 +494,7 @@ const MemberFormDialog = ({
           phone_1: canonicalP1,
           phone_2: p2 ? toCanonicalPhone(p2) : null,
           card_issue_date: issue,
+          card_tier: tier,
           notes: notes.trim() || null,
           created_by: userId,
         }).select("id").single() as any);
