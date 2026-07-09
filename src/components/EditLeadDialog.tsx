@@ -48,6 +48,7 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
   });
   const [eliteChoice, setEliteChoice] = useState<EliteChoice>("undecided");
   const [eliteIssueDate, setEliteIssueDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [eliteTier, setEliteTier] = useState<EliteTier>("silver");
   const [eliteDupWarning, setEliteDupWarning] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
