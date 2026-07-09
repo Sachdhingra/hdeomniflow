@@ -267,7 +267,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       console.log("📤 [Auth] Sending credentials…");
 
-      const { error } = await withTimeout(
+      const { error } = await withTimeout<any>(
         supabase.auth.signInWithPassword({ email, password }),
         AUTH_TIMEOUT_MS,
         "signInWithPassword"
