@@ -255,6 +255,9 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
               onChoiceChange={(c) => { setEliteChoice(c); setEliteDupWarning(null); }}
               issueDate={eliteIssueDate}
               onIssueDateChange={setEliteIssueDate}
+              tier={eliteTier}
+              onTierChange={setEliteTier}
+              purchaseValue={form.value_in_rupees}
               duplicateWarning={eliteDupWarning}
             />
           )}
