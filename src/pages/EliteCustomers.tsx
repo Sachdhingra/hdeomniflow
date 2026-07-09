@@ -444,6 +444,7 @@ const MemberFormDialog = ({
   const [issue, setIssue] = useState(todayISO());
   const [notes, setNotes] = useState("");
   const [status, setStatus] = useState<"active" | "opted_out">("active");
+  const [tier, setTier] = useState<EliteTier>("silver");
   const [referralCode, setReferralCode] = useState("");
   const [saving, setSaving] = useState(false);
   const [dupError, setDupError] = useState<string | null>(null);
