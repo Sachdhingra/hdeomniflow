@@ -168,6 +168,18 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
         ...elitePatch,
       } as any);
 
+      // Sync selected tier onto the linked elite_customers record (opt-in only)
+      if (showElite && eliteChoice === "opt_in") {
+        const targetCardId: string | null = elitePatch.elite_card_id ?? prevCardId;
+        if (targetCardId) {
+          await (supabase.from("elite_customers" as any).update({ card_tier: eliteTier }).eq("id", targetCardId) as any);
+        } else {
+          // Trigger just auto-created the card — patch by phone
+          await (supabase.from("elite_customers" as any).update({ card_tier: eliteTier }).eq("phone_1", lead.customer_phone) as any);
+        }
+      }
+
+
       if (toastMessage) {
         if (toastMessage.kind === "success") toast.success(toastMessage.text);
         else if (toastMessage.kind === "warn") toast(toastMessage.text, { className: "bg-amber-50 text-amber-900" });
