@@ -127,7 +127,7 @@ export async function decryptField(encrypted: EncryptedData, password: string): 
 
   try {
     const decrypted = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: nonce },
+      { name: 'AES-GCM', iv: nonce as BufferSource },
       key,
       ciphertext as BufferSource
     );
