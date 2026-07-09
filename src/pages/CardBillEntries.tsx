@@ -160,8 +160,8 @@ export default function CardBillEntries() {
   // ── Load settings ─────────────────────────────────────────────────────────
 
   useEffect(() => {
-    supabase
-      .from("card_settings" as any)
+    (supabase as any)
+      .from("card_settings")
       .select("value")
       .eq("key", "discount_ceiling_pct")
       .single()

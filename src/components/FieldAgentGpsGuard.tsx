@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { MapPin, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFieldAgentDuty } from "@/hooks/useFieldAgentDuty";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase as _supabase } from "@/integrations/supabase/client";
+const supabase: any = _supabase;
 
 const istToday = () => {
   const fmt = new Intl.DateTimeFormat("en-CA", {

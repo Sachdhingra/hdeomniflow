@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { distanceMeters, GeoPosition } from "./useGeolocation";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase as _supabase } from "@/integrations/supabase/client";
+const supabase: any = _supabase;
 
 interface Geofence {
   id: string;

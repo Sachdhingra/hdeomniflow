@@ -3,7 +3,8 @@
  * Validates critical data structures and detects anomalies
  */
 
-import { supabase } from "@/integrations/supabase/client";
+import { supabase as _supabase } from "@/integrations/supabase/client";
+const supabase: any = _supabase;
 
 export interface IntegrityCheckResult {
   valid: boolean;

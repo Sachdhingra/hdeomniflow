@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase as _supabase } from "@/integrations/supabase/client";
+const supabase: any = _supabase;
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 import {
   checkLoginAllowed,
@@ -266,7 +267,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       console.log("📤 [Auth] Sending credentials…");
 
-      const { error } = await withTimeout(
+      const { error } = await withTimeout<any>(
         supabase.auth.signInWithPassword({ email, password }),
         AUTH_TIMEOUT_MS,
         "signInWithPassword"
@@ -346,7 +347,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // Admin guard functions
   const isAdmin = (): boolean => {
-    return user?.role === "admin" ?? false;
+    return user?.role === "admin";
   };
 
   const requireAdmin = (): void => {
