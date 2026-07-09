@@ -4,7 +4,8 @@
  * Requires admin role for sensitive operations
  */
 
-import { supabase } from "@/integrations/supabase/client";
+import { supabase as _supabase } from "@/integrations/supabase/client";
+const supabase: any = _supabase;
 import type { User } from "@/contexts/AuthContext";
 import { isAllowedTable, isValidUUID } from "@/utils/inputValidation";
 import { reportSecurityEvent } from "@/utils/securityMonitor";
