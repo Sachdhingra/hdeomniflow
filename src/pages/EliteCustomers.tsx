@@ -18,6 +18,7 @@ import { extractTenDigits, isValidIndianMobile, toCanonicalPhone, formatPhoneDis
 import { formatDate } from "@/lib/dateFormat";
 import InsiderActivityDialog from "@/components/InsiderActivityDialog";
 import InviteQRDialog from "@/components/InviteQRDialog";
+import { ELITE_TIERS, EliteTier, TIER_META } from "@/lib/eliteTiers";
 
 interface EliteRow {
   id: string;
@@ -443,6 +444,7 @@ const MemberFormDialog = ({
   const [issue, setIssue] = useState(todayISO());
   const [notes, setNotes] = useState("");
   const [status, setStatus] = useState<"active" | "opted_out">("active");
+  const [tier, setTier] = useState<EliteTier>("silver");
   const [referralCode, setReferralCode] = useState("");
   const [saving, setSaving] = useState(false);
   const [dupError, setDupError] = useState<string | null>(null);
@@ -457,8 +459,9 @@ const MemberFormDialog = ({
       setIssue(row.card_issue_date);
       setNotes(row.notes || "");
       setStatus((row.status === "opted_out" ? "opted_out" : "active"));
+      setTier((((row as any).card_tier as EliteTier) || "silver"));
     } else {
-      setName(""); setP1(""); setP2(""); setIssue(todayISO()); setNotes(""); setStatus("active"); setReferralCode("");
+      setName(""); setP1(""); setP2(""); setIssue(todayISO()); setNotes(""); setStatus("active"); setReferralCode(""); setTier("silver");
     }
   }, [open, mode, row]);
 
@@ -491,6 +494,7 @@ const MemberFormDialog = ({
           phone_1: canonicalP1,
           phone_2: p2 ? toCanonicalPhone(p2) : null,
           card_issue_date: issue,
+          card_tier: tier,
           notes: notes.trim() || null,
           created_by: userId,
         }).select("id").single() as any);
@@ -530,6 +534,7 @@ const MemberFormDialog = ({
           phone_1: canonicalP1,
           phone_2: p2 ? toCanonicalPhone(p2) : null,
           // Issue date locked in edit mode — do not update it
+          card_tier: tier,
           notes: notes.trim() || null,
           status,
         }).eq("id", row.id) as any);
@@ -563,6 +568,33 @@ const MemberFormDialog = ({
           <div className="space-y-1.5">
             <Label>Phone 2 (optional)</Label>
             <PhoneInput value={p2} onChange={setP2} />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Card Tier *</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {ELITE_TIERS.map(t => {
+                const active = tier === t.value;
+                return (
+                  <button
+                    key={t.value}
+                    type="button"
+                    onClick={() => setTier(t.value)}
+                    className={`border-2 rounded-md p-2 text-xs font-medium flex flex-col items-start gap-0.5 transition-colors text-left ${
+                      active ? t.activeCls : "border-border bg-background text-muted-foreground hover:bg-muted/50"
+                    }`}
+                  >
+                    <span>{t.label}</span>
+                    <span className="text-[10px] opacity-80">{t.description}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {TIER_META[tier].fee > 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                Collect ₹{TIER_META[tier].fee.toLocaleString("en-IN")} joining fee before activating {TIER_META[tier].label}.
+              </p>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">

@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import EliteCardEnrollment, { EliteChoice } from "@/components/elite/EliteCardEnrollment";
+import { EliteTier } from "@/lib/eliteTiers";
 import EliteBadge from "@/components/elite/EliteBadge";
 import { formatDate } from "@/lib/dateFormat";
 
@@ -47,6 +48,7 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
   });
   const [eliteChoice, setEliteChoice] = useState<EliteChoice>("undecided");
   const [eliteIssueDate, setEliteIssueDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [eliteTier, setEliteTier] = useState<EliteTier>("silver");
   const [eliteDupWarning, setEliteDupWarning] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -66,6 +68,7 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
       else if (optedIn === false) setEliteChoice("opt_out");
       else setEliteChoice("undecided");
       setEliteIssueDate(l.elite_opted_date || new Date().toISOString().slice(0, 10));
+      setEliteTier((l.elite_card_tier as EliteTier) || "silver");
       setEliteDupWarning(null);
     }
   }, [lead]);
@@ -165,6 +168,18 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
         ...elitePatch,
       } as any);
 
+      // Sync selected tier onto the linked elite_customers record (opt-in only)
+      if (showElite && eliteChoice === "opt_in") {
+        const targetCardId: string | null = elitePatch.elite_card_id ?? prevCardId;
+        if (targetCardId) {
+          await (supabase.from("elite_customers" as any).update({ card_tier: eliteTier }).eq("id", targetCardId) as any);
+        } else {
+          // Trigger just auto-created the card — patch by phone
+          await (supabase.from("elite_customers" as any).update({ card_tier: eliteTier }).eq("phone_1", lead.customer_phone) as any);
+        }
+      }
+
+
       if (toastMessage) {
         if (toastMessage.kind === "success") toast.success(toastMessage.text);
         else if (toastMessage.kind === "warn") toast(toastMessage.text, { className: "bg-amber-50 text-amber-900" });
@@ -240,6 +255,9 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
               onChoiceChange={(c) => { setEliteChoice(c); setEliteDupWarning(null); }}
               issueDate={eliteIssueDate}
               onIssueDateChange={setEliteIssueDate}
+              tier={eliteTier}
+              onTierChange={setEliteTier}
+              purchaseValue={form.value_in_rupees}
               duplicateWarning={eliteDupWarning}
             />
           )}
