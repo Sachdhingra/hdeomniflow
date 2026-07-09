@@ -3,6 +3,7 @@ import { Label } from "@/components/ui/label";
 import { Star, Check, X, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDate } from "@/lib/dateFormat";
+import { ELITE_TIERS, EliteTier, TIER_META, checkTierEligibility } from "@/lib/eliteTiers";
 
 export type EliteChoice = "opt_in" | "opt_out" | "undecided";
 
@@ -11,6 +12,9 @@ interface Props {
   onChoiceChange: (c: EliteChoice) => void;
   issueDate: string;
   onIssueDateChange: (d: string) => void;
+  tier?: EliteTier;
+  onTierChange?: (t: EliteTier) => void;
+  purchaseValue?: number;
   duplicateWarning?: string | null;
 }
 
@@ -22,8 +26,13 @@ function addYears(iso: string, years: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-const EliteCardEnrollment = ({ choice, onChoiceChange, issueDate, onIssueDateChange, duplicateWarning }: Props) => {
+const EliteCardEnrollment = ({
+  choice, onChoiceChange, issueDate, onIssueDateChange,
+  tier = "silver", onTierChange, purchaseValue, duplicateWarning,
+}: Props) => {
   const expiry = addYears(issueDate, 3);
+  const eligibilityMsg = choice === "opt_in" ? checkTierEligibility(tier, { purchaseValue }) : null;
+  const tierMeta = TIER_META[tier];
 
   const options: { value: EliteChoice; label: string; icon: JSX.Element; activeCls: string }[] = [
     { value: "opt_in", label: "Opt In", icon: <Check className="w-4 h-4" />, activeCls: "border-success bg-success/10 text-success" },
@@ -67,7 +76,40 @@ const EliteCardEnrollment = ({ choice, onChoiceChange, issueDate, onIssueDateCha
       </div>
 
       {choice === "opt_in" && (
-        <div className="space-y-2">
+        <div className="space-y-3">
+          {onTierChange && (
+            <div className="space-y-1.5">
+              <Label className="text-xs">Card Tier</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {ELITE_TIERS.map(t => {
+                  const active = tier === t.value;
+                  return (
+                    <button
+                      key={t.value}
+                      type="button"
+                      onClick={() => onTierChange(t.value)}
+                      className={cn(
+                        "border-2 rounded-md p-2 text-xs font-medium flex flex-col items-start gap-0.5 transition-colors text-left",
+                        active ? t.activeCls : "border-border bg-background text-muted-foreground hover:bg-muted/50",
+                      )}
+                    >
+                      <span>{t.label}</span>
+                      <span className="text-[10px] opacity-80">{t.description}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {tierMeta.fee > 0 && (
+                <p className="text-[11px] text-muted-foreground">
+                  Collect ₹{tierMeta.fee.toLocaleString("en-IN")} joining fee for {tierMeta.label}.
+                </p>
+              )}
+              {eligibilityMsg && (
+                <p className="text-[11px] text-destructive">{eligibilityMsg}</p>
+              )}
+            </div>
+          )}
+
           <div className="space-y-1.5">
             <Label className="text-xs">Card Issue Date</Label>
             <Input type="date" value={issueDate} onChange={e => onIssueDateChange(e.target.value)} />
