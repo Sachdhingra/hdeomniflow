@@ -569,6 +569,33 @@ const MemberFormDialog = ({
             <Label>Phone 2 (optional)</Label>
             <PhoneInput value={p2} onChange={setP2} />
           </div>
+
+          <div className="space-y-1.5">
+            <Label>Card Tier *</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {ELITE_TIERS.map(t => {
+                const active = tier === t.value;
+                return (
+                  <button
+                    key={t.value}
+                    type="button"
+                    onClick={() => setTier(t.value)}
+                    className={`border-2 rounded-md p-2 text-xs font-medium flex flex-col items-start gap-0.5 transition-colors text-left ${
+                      active ? t.activeCls : "border-border bg-background text-muted-foreground hover:bg-muted/50"
+                    }`}
+                  >
+                    <span>{t.label}</span>
+                    <span className="text-[10px] opacity-80">{t.description}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {TIER_META[tier].fee > 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                Collect ₹{TIER_META[tier].fee.toLocaleString("en-IN")} joining fee before activating {TIER_META[tier].label}.
+              </p>
+            )}
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label className="flex items-center gap-1.5">
