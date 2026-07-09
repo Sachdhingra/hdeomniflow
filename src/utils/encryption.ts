@@ -53,7 +53,7 @@ export async function deriveKey(password: string, salt?: Uint8Array): Promise<{ 
 
   const passwordKey = await crypto.subtle.importKey(
     'raw',
-    stringToBytes(password),
+    stringToBytes(password) as BufferSource,
     'PBKDF2',
     false,
     ['deriveKey']
@@ -62,7 +62,7 @@ export async function deriveKey(password: string, salt?: Uint8Array): Promise<{ 
   const derivedKey = await crypto.subtle.deriveKey(
     {
       name: 'PBKDF2',
-      salt: salt,
+      salt: salt as BufferSource,
       iterations: 100000, // NIST recommendation for PBKDF2
       hash: 'SHA-256',
     },
@@ -91,7 +91,7 @@ export async function encryptField(plaintext: string, password: string): Promise
   const encrypted = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv: nonce },
     key,
-    stringToBytes(plaintext)
+    stringToBytes(plaintext) as BufferSource
   );
 
   return {
