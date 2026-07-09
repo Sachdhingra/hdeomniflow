@@ -459,8 +459,9 @@ const MemberFormDialog = ({
       setIssue(row.card_issue_date);
       setNotes(row.notes || "");
       setStatus((row.status === "opted_out" ? "opted_out" : "active"));
+      setTier((((row as any).card_tier as EliteTier) || "silver"));
     } else {
-      setName(""); setP1(""); setP2(""); setIssue(todayISO()); setNotes(""); setStatus("active"); setReferralCode("");
+      setName(""); setP1(""); setP2(""); setIssue(todayISO()); setNotes(""); setStatus("active"); setReferralCode(""); setTier("silver");
     }
   }, [open, mode, row]);
 
