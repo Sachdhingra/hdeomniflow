@@ -18,6 +18,7 @@ import { extractTenDigits, isValidIndianMobile, toCanonicalPhone, formatPhoneDis
 import { formatDate } from "@/lib/dateFormat";
 import InsiderActivityDialog from "@/components/InsiderActivityDialog";
 import InviteQRDialog from "@/components/InviteQRDialog";
+import { ELITE_TIERS, EliteTier, TIER_META } from "@/lib/eliteTiers";
 
 interface EliteRow {
   id: string;
