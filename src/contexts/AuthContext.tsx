@@ -346,7 +346,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // Admin guard functions
   const isAdmin = (): boolean => {
-    return user?.role === "admin" ?? false;
+    return user?.role === "admin";
   };
 
   const requireAdmin = (): void => {
