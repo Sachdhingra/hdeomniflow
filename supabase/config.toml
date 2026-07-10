@@ -25,3 +25,10 @@ verify_jwt = false
 # Called by Supabase Auth SMS hook (no user JWT)
 [functions.whatsapp-otp]
 verify_jwt = false
+
+# Insider PWA OTP login — called by unauthenticated customers
+[functions.insider-send-otp]
+verify_jwt = false
+
+[functions.insider-verify-otp]
+verify_jwt = false
