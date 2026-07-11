@@ -308,11 +308,14 @@ async function generateScript(name: string, role: string, ctx: ReminderContext):
 
 // ── Gemini TTS synthesis ─────────────────────────────────
 
-async function synthesizeSpeech(
-  script: string,
-  voice: string,
-): Promise<{ audio: string; mimeType: string } | null> {
-  if (!GEMINI_API_KEY) return null;
+type TtsResult =
+  | { audio: string; mimeType: string; error?: never }
+  | { audio?: never; mimeType?: never; error: string };
+
+async function synthesizeSpeech(script: string, voice: string): Promise<TtsResult> {
+  if (!GEMINI_API_KEY) {
+    return { error: "GEMINI_API_KEY is not configured in Supabase edge function secrets" };
+  }
 
   try {
     const resp = await fetch(
@@ -330,14 +333,21 @@ async function synthesizeSpeech(
       },
     );
     if (!resp.ok) {
-      console.error("Gemini TTS error", resp.status, await resp.text());
-      return null;
+      const bodyText = await resp.text();
+      console.error("Gemini TTS error", resp.status, bodyText);
+      if (resp.status === 429) {
+        return { error: "Gemini API quota or billing credits exhausted — top up in Google AI Studio" };
+      }
+      if (resp.status === 400 || resp.status === 401 || resp.status === 403) {
+        return { error: "Gemini API key is invalid, expired or restricted" };
+      }
+      return { error: `Gemini TTS request failed with status ${resp.status}` };
     }
     const data = await resp.json();
     const part = data?.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData?.data);
     if (!part) {
-      console.error("Gemini TTS returned no audio part");
-      return null;
+      console.error("Gemini TTS returned no audio part", JSON.stringify(data).slice(0, 500));
+      return { error: "Gemini TTS returned no audio" };
     }
     const pcm = base64ToBytes(part.inlineData.data);
     const rateMatch = /rate=(\d+)/.exec(part.inlineData.mimeType ?? "");
@@ -346,7 +356,7 @@ async function synthesizeSpeech(
     return { audio: bytesToBase64(wav), mimeType: "audio/wav" };
   } catch (e) {
     console.error("Gemini TTS request failed", e);
-    return null;
+    return { error: "Could not reach the Gemini TTS API" };
   }
 }
 
@@ -396,8 +406,9 @@ Deno.serve(async (req) => {
     return json({
       script,
       voice,
-      audio: speech?.audio ?? null,
-      mimeType: speech?.mimeType ?? null,
+      audio: speech.audio ?? null,
+      mimeType: speech.mimeType ?? null,
+      ttsError: speech.error ?? null,
       role,
     });
   } catch (e) {
