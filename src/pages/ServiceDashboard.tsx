@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import LoadingError from "@/components/LoadingError";
+import VoiceReminderCard from "@/components/VoiceReminderCard";
 import { DashboardSkeleton } from "@/components/DashboardSkeleton";
 import { supabase } from "@/integrations/supabase/client";
 import type { ServiceJob } from "@/contexts/DataContext";
@@ -395,6 +396,8 @@ const ServiceDashboard = () => {
           </DialogContent>
         </Dialog>
       </div>
+
+      <VoiceReminderCard />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard title="Today's Jobs" value={todayJobs.length} icon={<Clock className="w-5 h-5" />} />
