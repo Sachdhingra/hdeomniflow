@@ -114,6 +114,26 @@ export const JARVIS_SUGGESTIONS: Record<JarvisRole, Record<JarvisLanguage, strin
   },
 };
 
+export const JARVIS_FAB_POSITION_STORAGE_KEY = "omniflow-jarvis-fab-pos";
+export const JARVIS_FAB_TAGLINE = "Happy to assist";
+
+// Keeps the floating Jarvis button inside the visible viewport.
+export function clampJarvisFabPosition(
+  x: number,
+  y: number,
+  viewportWidth: number,
+  viewportHeight: number,
+  buttonSize: number,
+  margin = 8,
+): { x: number; y: number } {
+  const maxX = Math.max(margin, viewportWidth - buttonSize - margin);
+  const maxY = Math.max(margin, viewportHeight - buttonSize - margin);
+  return {
+    x: Math.min(Math.max(x, margin), maxX),
+    y: Math.min(Math.max(y, margin), maxY),
+  };
+}
+
 // Converts a markdown AI reply into plain text suitable for the browser's
 // speech synthesis fallback (Gemini TTS handles markdown poorly too, but the
 // server already asks for plain text in voice mode — this guards the fallback

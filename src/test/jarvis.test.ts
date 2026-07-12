@@ -4,6 +4,7 @@ import {
   JARVIS_LANGUAGES,
   JARVIS_ROLES,
   JARVIS_SUGGESTIONS,
+  clampJarvisFabPosition,
   jarvisSttLang,
   stripMarkdownForSpeech,
 } from "@/lib/jarvis";
@@ -44,6 +45,15 @@ describe("jarvis", () => {
     expect(out).not.toContain("|");
     expect(out).toContain("Anita");
     expect(out).toContain("2 lakh");
+  });
+
+  it("keeps the floating button inside the viewport", () => {
+    // dragged past the right/bottom edge → clamped to margin
+    expect(clampJarvisFabPosition(5000, 5000, 400, 800, 56)).toEqual({ x: 400 - 56 - 8, y: 800 - 56 - 8 });
+    // dragged past the top/left edge → clamped to margin
+    expect(clampJarvisFabPosition(-50, -50, 400, 800, 56)).toEqual({ x: 8, y: 8 });
+    // already inside → unchanged
+    expect(clampJarvisFabPosition(100, 200, 400, 800, 56)).toEqual({ x: 100, y: 200 });
   });
 
   it("removes code blocks and speaks rupee symbols", () => {

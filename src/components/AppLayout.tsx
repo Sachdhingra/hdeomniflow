@@ -21,6 +21,7 @@ import DiscountCalculator from "@/components/DiscountCalculator";
 import { useChatUnread } from "@/contexts/ChatUnreadContext";
 import { useFieldAgentDuty } from "@/hooks/useFieldAgentDuty";
 import FieldAgentGpsGuard from "@/components/FieldAgentGpsGuard";
+import JarvisFloatingButton from "@/components/JarvisFloatingButton";
 
 interface NavItem {
   to: string;
@@ -253,6 +254,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       </div>
       <DiscountCalculator />
       <FieldAgentGpsGuard />
+      <JarvisFloatingButton />
     </div>
   );
 };
