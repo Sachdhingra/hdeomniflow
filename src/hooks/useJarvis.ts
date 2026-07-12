@@ -9,6 +9,8 @@ import {
   JARVIS_LANGUAGE_STORAGE_KEY,
   JARVIS_LANGUAGES,
   JARVIS_VOICE_STORAGE_KEY,
+  JARVIS_WAKE_STORAGE_KEY,
+  extractWakeCommand,
   jarvisSttLang,
   stripMarkdownForSpeech,
   type JarvisLanguage,
@@ -77,10 +79,21 @@ export function useJarvis() {
       return DEFAULT_JARVIS_LANGUAGE;
     }
   });
+  // "Hey Jarvis" wake word — off by default; keeping the mic always open is
+  // an explicit opt-in.
+  const [wakeEnabled, setWakeEnabledState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(JARVIS_WAKE_STORAGE_KEY) === "on";
+    } catch {
+      return false;
+    }
+  });
+  const [wakeListening, setWakeListening] = useState(false);
 
   const sttSupported = typeof window !== "undefined" && getRecognitionCtor() !== null;
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const wakeRecRef = useRef<SpeechRecognitionLike | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const urlRef = useRef<string | null>(null);
   const finalTranscriptRef = useRef("");
@@ -125,6 +138,26 @@ export function useJarvis() {
     }
   }, []);
 
+  const setWakeEnabled = useCallback((on: boolean) => {
+    setWakeEnabledState(on);
+    try {
+      localStorage.setItem(JARVIS_WAKE_STORAGE_KEY, on ? "on" : "off");
+    } catch {
+      // storage unavailable — keep in-memory only
+    }
+  }, []);
+
+  const stopWakeListening = useCallback(() => {
+    if (wakeRecRef.current) {
+      wakeRecRef.current.onresult = null;
+      wakeRecRef.current.onend = null;
+      wakeRecRef.current.onerror = null;
+      wakeRecRef.current.abort();
+      wakeRecRef.current = null;
+    }
+    setWakeListening(false);
+  }, []);
+
   const stopAudio = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.onended = null;
@@ -150,11 +183,13 @@ export function useJarvis() {
   }, []);
 
   // Full stop: cancel listening, playback and hands-free continuation.
+  // (Wake-word listening restarts on idle while the toggle is on.)
   const stop = useCallback(() => {
     stopListening();
+    stopWakeListening();
     stopAudio();
     setStatus("idle");
-  }, [stopListening, stopAudio]);
+  }, [stopListening, stopWakeListening, stopAudio]);
 
   useEffect(() => stop, [stop]);
 
@@ -186,6 +221,7 @@ export function useJarvis() {
       const q = question.trim();
       if (!q) return;
       stopListening();
+      stopWakeListening();
       stopAudio();
       const next: JarvisMessage[] = [...messagesRef.current, { role: "user", content: q }];
       messagesRef.current = next;
@@ -248,7 +284,7 @@ export function useJarvis() {
         setStatus("idle");
       }
     },
-    [stopListening, stopAudio, speakWithBrowser, onSpeechDone],
+    [stopListening, stopWakeListening, stopAudio, speakWithBrowser, onSpeechDone],
   );
   askRef.current = ask;
 
@@ -260,6 +296,7 @@ export function useJarvis() {
     }
     stopAudio();
     stopListening();
+    stopWakeListening();
     finalTranscriptRef.current = "";
     const rec = new Ctor();
     rec.lang = jarvisSttLang(languageRef.current);
@@ -304,8 +341,73 @@ export function useJarvis() {
       setStatus("idle");
       toast.error("Could not start the microphone — try again.");
     }
-  }, [stopAudio, stopListening]);
+  }, [stopAudio, stopListening, stopWakeListening]);
   startListeningRef.current = startListening;
+
+  // "Hey Jarvis" wake word: while enabled and idle, keep a continuous
+  // background recognition running and watch final results for the wake
+  // phrase. "Hey Jarvis" alone opens the mic; "Hey Jarvis, <question>" asks
+  // the question directly. Browsers stop continuous recognition after a few
+  // seconds of silence, so it is restarted until the toggle turns off.
+  useEffect(() => {
+    if (!wakeEnabled || status !== "idle" || !sttSupported) {
+      stopWakeListening();
+      return;
+    }
+    let cancelled = false;
+
+    const startWake = () => {
+      if (cancelled || wakeRecRef.current) return;
+      const Ctor = getRecognitionCtor();
+      if (!Ctor) return;
+      const rec = new Ctor();
+      rec.lang = jarvisSttLang(languageRef.current);
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.maxAlternatives = 1;
+      rec.onresult = (e) => {
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const r = e.results[i];
+          if (!r.isFinal) continue;
+          const command = extractWakeCommand(r[0].transcript);
+          if (command === null) continue;
+          cancelled = true;
+          stopWakeListening();
+          if (command.length > 2) askRef.current(command);
+          else startListeningRef.current();
+          return;
+        }
+      };
+      rec.onerror = (e) => {
+        wakeRecRef.current = null;
+        setWakeListening(false);
+        if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+          cancelled = true;
+          setWakeEnabled(false);
+          toast.error("Microphone access was blocked — 'Hey Jarvis' has been turned off.");
+        }
+        // other errors (no-speech, network blips): onend restarts below
+      };
+      rec.onend = () => {
+        wakeRecRef.current = null;
+        setWakeListening(false);
+        if (!cancelled) setTimeout(startWake, 400);
+      };
+      wakeRecRef.current = rec;
+      try {
+        rec.start();
+        setWakeListening(true);
+      } catch {
+        wakeRecRef.current = null;
+      }
+    };
+
+    startWake();
+    return () => {
+      cancelled = true;
+      stopWakeListening();
+    };
+  }, [wakeEnabled, status, language, sttSupported, stopWakeListening, setWakeEnabled]);
 
   const reset = useCallback(() => {
     stop();
@@ -323,6 +425,9 @@ export function useJarvis() {
     setHandsFree,
     language,
     setLanguage,
+    wakeEnabled,
+    setWakeEnabled,
+    wakeListening,
     sttSupported,
     startListening,
     ask,
