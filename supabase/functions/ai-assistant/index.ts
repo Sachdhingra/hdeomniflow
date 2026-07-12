@@ -1,4 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import {
+  DEFAULT_TTS_VOICE,
+  GEMINI_TTS_VOICES,
+  synthesizeSpeech,
+} from "../_shared/gemini-tts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,6 +13,16 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+
+// Roles allowed to use Jarvis voice mode. Admin-only for the initial rollout;
+// add "sales", "service_head" (and "accounts", once it has a data context
+// below) when expanding. Must stay in sync with JARVIS_ROLES in src/lib/jarvis.ts.
+const JARVIS_VOICE_ROLES = ["admin"];
+
+const TEXT_MODEL = "google/gemini-2.5-pro";
+// Voice answers favour latency over depth — flash keeps Jarvis snappy.
+const VOICE_MODEL = "google/gemini-2.5-flash";
 
 const SYSTEM_PROMPT = `You are an AI business intelligence assistant for a furniture CRM called FurnCRM.
 
@@ -42,6 +57,16 @@ RULES:
 - For stale leads: days_in_stage > 7 with no upcoming follow-up = needs action now.
 - For at-risk leads: high value + overdue or stuck = highest priority.
 - Days left in month matters for pace calculation.`;
+
+// Appended to the system prompt when the request comes from Jarvis voice mode.
+const VOICE_SYSTEM_PROMPT = `
+
+VOICE MODE — you are "Jarvis", OmniFlow's spoken voice assistant. Your answer will be read aloud by text-to-speech, so:
+- Reply in plain conversational sentences. No markdown, no tables, no bullet symbols, no headings, no emoji.
+- Be brief: under 120 words unless the user explicitly asks for a full breakdown.
+- Say rupee amounts in words — "4.5 lakh rupees", never "₹450000" or digit strings.
+- Lead with the direct answer, then at most two or three key facts or actions with specific names.
+- If the data would normally need a table, speak only the top few items instead.`;
 
 function daysBetween(from: string | null, to: Date): number {
   if (!from) return 0;
@@ -87,7 +112,12 @@ Deno.serve(async (req) => {
       return json({ error: "AI Assistant not available for your role" }, 403);
     }
 
-    const { messages, question } = await req.json();
+    const { messages, question, voice, tts_voice } = await req.json();
+    const voiceMode = voice === true;
+    if (voiceMode && !JARVIS_VOICE_ROLES.includes(role)) {
+      return json({ error: "Jarvis voice mode is not available for your role yet" }, 403);
+    }
+    const ttsVoice = GEMINI_TTS_VOICES.includes(tts_voice) ? tts_voice : DEFAULT_TTS_VOICE;
     const userQuestion: string = question ?? messages?.[messages.length - 1]?.content ?? "";
 
     const { data: profile } = await admin.from("profiles").select("name").eq("id", user.id).maybeSingle();
@@ -466,7 +496,7 @@ Deno.serve(async (req) => {
       `Answer with specific names, lead values, and action items from the data above.`;
 
     const aiMessages = [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: voiceMode ? SYSTEM_PROMPT + VOICE_SYSTEM_PROMPT : SYSTEM_PROMPT },
       ...((messages ?? []).slice(0, -1) as { role: string; content: string }[]),
       { role: "user", content: userContent },
     ];
@@ -478,7 +508,7 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
+        model: voiceMode ? VOICE_MODEL : TEXT_MODEL,
         messages: aiMessages,
       }),
     });
@@ -493,6 +523,23 @@ Deno.serve(async (req) => {
 
     const aiJson = await aiResp.json();
     const reply = aiJson?.choices?.[0]?.message?.content ?? "";
+
+    if (voiceMode && reply) {
+      const speech = await synthesizeSpeech(
+        reply,
+        ttsVoice,
+        GEMINI_API_KEY,
+        "Speak this reply in a clear, confident assistant voice:",
+      );
+      return json({
+        reply,
+        role,
+        audio: speech.audio ?? null,
+        mimeType: speech.mimeType ?? null,
+        ttsError: speech.error ?? null,
+      });
+    }
+
     return json({ reply, role });
   } catch (e) {
     console.error("ai-assistant error", e);
