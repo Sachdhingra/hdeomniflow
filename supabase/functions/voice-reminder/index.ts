@@ -4,6 +4,11 @@
 // synthesizes it to audio with the Gemini TTS API. Returns base64 WAV; when
 // GEMINI_API_KEY is not configured the client falls back to browser speech.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import {
+  DEFAULT_TTS_VOICE as DEFAULT_VOICE,
+  GEMINI_TTS_VOICES as GEMINI_VOICES,
+  synthesizeSpeech,
+} from "../_shared/gemini-tts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,9 +21,6 @@ const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
 
 const ALLOWED_ROLES = ["admin", "sales", "service_head", "accounts"];
-const GEMINI_VOICES = ["Kore", "Puck", "Zephyr", "Charon", "Fenrir", "Aoede"];
-const DEFAULT_VOICE = "Kore";
-const TTS_MODEL = "gemini-2.5-flash-preview-tts";
 const SCRIPT_MODEL = "google/gemini-2.5-flash";
 
 // ── helpers ──────────────────────────────────────────────
@@ -43,47 +45,6 @@ function istGreeting(): string {
   if (istHour < 12) return "Good morning";
   if (istHour < 17) return "Good afternoon";
   return "Good evening";
-}
-
-function base64ToBytes(b64: string): Uint8Array {
-  const bin = atob(b64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return bytes;
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let bin = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  }
-  return btoa(bin);
-}
-
-// Gemini TTS returns raw 16-bit mono PCM; browsers need a WAV container.
-function pcmToWav(pcm: Uint8Array, sampleRate: number): Uint8Array {
-  const header = new ArrayBuffer(44);
-  const v = new DataView(header);
-  const writeStr = (off: number, s: string) => {
-    for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i));
-  };
-  const byteRate = sampleRate * 2; // mono, 16-bit
-  writeStr(0, "RIFF");
-  v.setUint32(4, 36 + pcm.length, true);
-  writeStr(8, "WAVE");
-  writeStr(12, "fmt ");
-  v.setUint32(16, 16, true);
-  v.setUint16(20, 1, true); // PCM
-  v.setUint16(22, 1, true); // mono
-  v.setUint32(24, sampleRate, true);
-  v.setUint32(28, byteRate, true);
-  v.setUint16(32, 2, true); // block align
-  v.setUint16(34, 16, true); // bits per sample
-  const wav = new Uint8Array(44 + pcm.length);
-  wav.set(new Uint8Array(header), 0);
-  wav.set(pcm, 44);
-  return wav;
 }
 
 // ── reminder gathering ───────────────────────────────────
@@ -306,60 +267,6 @@ async function generateScript(name: string, role: string, ctx: ReminderContext):
   }
 }
 
-// ── Gemini TTS synthesis ─────────────────────────────────
-
-type TtsResult =
-  | { audio: string; mimeType: string; error?: never }
-  | { audio?: never; mimeType?: never; error: string };
-
-async function synthesizeSpeech(script: string, voice: string): Promise<TtsResult> {
-  if (!GEMINI_API_KEY) {
-    return { error: "GEMINI_API_KEY is not configured in Supabase edge function secrets" };
-  }
-
-  try {
-    const resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${TTS_MODEL}:generateContent`,
-      {
-        method: "POST",
-        headers: { "x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: `Read this briefing in a clear, friendly voice: ${script}` }] }],
-          generationConfig: {
-            responseModalities: ["AUDIO"],
-            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
-          },
-        }),
-      },
-    );
-    if (!resp.ok) {
-      const bodyText = await resp.text();
-      console.error("Gemini TTS error", resp.status, bodyText);
-      if (resp.status === 429) {
-        return { error: "Gemini API quota or billing credits exhausted — top up in Google AI Studio" };
-      }
-      if (resp.status === 400 || resp.status === 401 || resp.status === 403) {
-        return { error: "Gemini API key is invalid, expired or restricted" };
-      }
-      return { error: `Gemini TTS request failed with status ${resp.status}` };
-    }
-    const data = await resp.json();
-    const part = data?.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData?.data);
-    if (!part) {
-      console.error("Gemini TTS returned no audio part", JSON.stringify(data).slice(0, 500));
-      return { error: "Gemini TTS returned no audio" };
-    }
-    const pcm = base64ToBytes(part.inlineData.data);
-    const rateMatch = /rate=(\d+)/.exec(part.inlineData.mimeType ?? "");
-    const sampleRate = rateMatch ? Number(rateMatch[1]) : 24000;
-    const wav = pcmToWav(pcm, sampleRate);
-    return { audio: bytesToBase64(wav), mimeType: "audio/wav" };
-  } catch (e) {
-    console.error("Gemini TTS request failed", e);
-    return { error: "Could not reach the Gemini TTS API" };
-  }
-}
-
 // ── handler ──────────────────────────────────────────────
 
 Deno.serve(async (req) => {
@@ -401,7 +308,7 @@ Deno.serve(async (req) => {
     else ctx = await gatherAdminReminders(admin);
 
     const script = await generateScript(name, role, ctx);
-    const speech = await synthesizeSpeech(script, voice);
+    const speech = await synthesizeSpeech(script, voice, GEMINI_API_KEY);
 
     return json({
       script,
