@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useJarvis } from "@/hooks/useJarvis";
 import {
@@ -33,10 +34,25 @@ const JarvisPage = () => {
   } = useJarvis();
   const [typed, setTyped] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const wakeHandledRef = useRef(false);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages.length, status]);
+
+  // Arrived here via an app-wide "Hey Jarvis": ask the question that came
+  // with the wake word, or open the mic if it was just the wake word.
+  useEffect(() => {
+    if (wakeHandledRef.current) return;
+    const state = location.state as { wakeCommand?: string } | null;
+    if (!state || state.wakeCommand === undefined) return;
+    wakeHandledRef.current = true;
+    navigate(location.pathname, { replace: true, state: null });
+    if (state.wakeCommand.length > 2) ask(state.wakeCommand);
+    else startListening();
+  }, [location, navigate, ask, startListening]);
 
   const allowed = user && JARVIS_ROLES.includes(user.role as JarvisRole);
   if (!allowed) {

@@ -4,12 +4,23 @@ import { useNavigate, useLocation } from "react-router-dom";
 
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  DEFAULT_JARVIS_LANGUAGE,
   JARVIS_FAB_POSITION_STORAGE_KEY,
   JARVIS_FAB_TAGLINE,
+  JARVIS_LANGUAGE_STORAGE_KEY,
   JARVIS_ROLES,
   clampJarvisFabPosition,
   type JarvisRole,
 } from "@/lib/jarvis";
+import { JARVIS_WAKE_EVENT, getWakeEnabledSetting, useWakeWord } from "@/hooks/useWakeWord";
+
+function storedLanguage(): string {
+  try {
+    return localStorage.getItem(JARVIS_LANGUAGE_STORAGE_KEY) || DEFAULT_JARVIS_LANGUAGE;
+  } catch {
+    return DEFAULT_JARVIS_LANGUAGE;
+  }
+}
 
 const BUTTON_SIZE = 56;
 const DRAG_THRESHOLD_PX = 6;
@@ -73,8 +84,30 @@ const JarvisFloatingButton = () => {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  if (!user || !JARVIS_ROLES.includes(user.role as JarvisRole)) return null;
-  if (location.pathname === "/jarvis") return null;
+  // App-wide "Hey Jarvis": while the wake setting is on and the user is
+  // anywhere except the Jarvis page (which runs its own listener), hearing
+  // the wake word jumps to /jarvis — carrying along any question spoken in
+  // the same breath.
+  const [wakeEnabled, setWakeEnabledLocal] = useState<boolean>(getWakeEnabledSetting);
+  useEffect(() => {
+    const onChange = () => setWakeEnabledLocal(getWakeEnabledSetting());
+    window.addEventListener(JARVIS_WAKE_EVENT, onChange);
+    window.addEventListener("storage", onChange);
+    return () => {
+      window.removeEventListener(JARVIS_WAKE_EVENT, onChange);
+      window.removeEventListener("storage", onChange);
+    };
+  }, []);
+  const allowed = !!user && JARVIS_ROLES.includes(user?.role as JarvisRole);
+  const onJarvisPage = location.pathname === "/jarvis";
+  const wake = useWakeWord(
+    wakeEnabled && allowed && !onJarvisPage,
+    storedLanguage(),
+    (command) => navigate("/jarvis", { state: { wakeCommand: command } }),
+  );
+
+  if (!allowed) return null;
+  if (onJarvisPage) return null;
 
   const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -127,12 +160,18 @@ const JarvisFloatingButton = () => {
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        className={`w-14 h-14 rounded-full gradient-primary shadow-xl flex items-center justify-center text-primary-foreground transition-transform ${
+        className={`relative w-14 h-14 rounded-full gradient-primary shadow-xl flex items-center justify-center text-primary-foreground transition-transform ${
           dragging ? "scale-110 cursor-grabbing" : "cursor-grab hover:scale-105 active:scale-95"
         }`}
         style={{ touchAction: "none" }}
       >
         <Bot className="w-7 h-7" />
+        {wake.listening && (
+          <span
+            className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-green-500 animate-pulse ring-2 ring-background"
+            title="Listening for 'Hey Jarvis'"
+          />
+        )}
       </button>
       {!dragging && (
         <button
