@@ -4,10 +4,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { DEFAULT_VOICE, audioBase64ToBlob } from "@/lib/voiceReminder";
 import {
+  DEFAULT_JARVIS_LANGUAGE,
   JARVIS_HANDSFREE_STORAGE_KEY,
-  JARVIS_STT_LANG,
+  JARVIS_LANGUAGE_STORAGE_KEY,
+  JARVIS_LANGUAGES,
   JARVIS_VOICE_STORAGE_KEY,
+  jarvisSttLang,
   stripMarkdownForSpeech,
+  type JarvisLanguage,
 } from "@/lib/jarvis";
 
 export type JarvisStatus = "idle" | "listening" | "thinking" | "speaking";
@@ -65,6 +69,14 @@ export function useJarvis() {
       return true;
     }
   });
+  const [language, setLanguageState] = useState<JarvisLanguage>(() => {
+    try {
+      const saved = localStorage.getItem(JARVIS_LANGUAGE_STORAGE_KEY);
+      return JARVIS_LANGUAGES.some(l => l.id === saved) ? (saved as JarvisLanguage) : DEFAULT_JARVIS_LANGUAGE;
+    } catch {
+      return DEFAULT_JARVIS_LANGUAGE;
+    }
+  });
 
   const sttSupported = typeof window !== "undefined" && getRecognitionCtor() !== null;
 
@@ -75,6 +87,7 @@ export function useJarvis() {
   const messagesRef = useRef<JarvisMessage[]>([]);
   const handsFreeRef = useRef(handsFree);
   const voiceRef = useRef(voice);
+  const languageRef = useRef(language);
   const askRef = useRef<(q: string) => void>(() => {});
   const startListeningRef = useRef<() => void>(() => {});
 
@@ -97,6 +110,16 @@ export function useJarvis() {
     handsFreeRef.current = on;
     try {
       localStorage.setItem(JARVIS_HANDSFREE_STORAGE_KEY, on ? "on" : "off");
+    } catch {
+      // storage unavailable — keep in-memory only
+    }
+  }, []);
+
+  const setLanguage = useCallback((lang: JarvisLanguage) => {
+    setLanguageState(lang);
+    languageRef.current = lang;
+    try {
+      localStorage.setItem(JARVIS_LANGUAGE_STORAGE_KEY, lang);
     } catch {
       // storage unavailable — keep in-memory only
     }
@@ -148,6 +171,7 @@ export function useJarvis() {
       if (!("speechSynthesis" in window)) return false;
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(stripMarkdownForSpeech(text));
+      utterance.lang = jarvisSttLang(languageRef.current);
       utterance.onend = onSpeechDone;
       utterance.onerror = onSpeechDone;
       window.speechSynthesis.speak(utterance);
@@ -169,7 +193,13 @@ export function useJarvis() {
       setStatus("thinking");
       try {
         const { data, error } = await supabase.functions.invoke<JarvisResponse>("ai-assistant", {
-          body: { messages: next, question: q, voice: true, tts_voice: voiceRef.current },
+          body: {
+            messages: next,
+            question: q,
+            voice: true,
+            tts_voice: voiceRef.current,
+            language: languageRef.current,
+          },
         });
         if (error) {
           if (error instanceof FunctionsHttpError) {
@@ -232,7 +262,7 @@ export function useJarvis() {
     stopListening();
     finalTranscriptRef.current = "";
     const rec = new Ctor();
-    rec.lang = JARVIS_STT_LANG;
+    rec.lang = jarvisSttLang(languageRef.current);
     rec.interimResults = true;
     rec.continuous = false;
     rec.maxAlternatives = 1;
@@ -291,6 +321,8 @@ export function useJarvis() {
     setVoice,
     handsFree,
     setHandsFree,
+    language,
+    setLanguage,
     sttSupported,
     startListening,
     ask,

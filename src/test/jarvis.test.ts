@@ -1,9 +1,30 @@
 import { describe, it, expect } from "vitest";
-import { JARVIS_ROLES, stripMarkdownForSpeech } from "@/lib/jarvis";
+import {
+  DEFAULT_JARVIS_LANGUAGE,
+  JARVIS_LANGUAGES,
+  JARVIS_ROLES,
+  JARVIS_SUGGESTIONS,
+  jarvisSttLang,
+  stripMarkdownForSpeech,
+} from "@/lib/jarvis";
 
 describe("jarvis", () => {
   it("is limited to admins for the initial rollout", () => {
     expect([...JARVIS_ROLES]).toEqual(["admin"]);
+  });
+
+  it("supports English, Hindi and Punjabi", () => {
+    expect(JARVIS_LANGUAGES.map(l => l.id)).toEqual(["en", "hi", "pa"]);
+    expect(JARVIS_LANGUAGES.map(l => l.stt)).toEqual(["en-IN", "hi-IN", "pa-IN"]);
+    expect(JARVIS_LANGUAGES.some(l => l.id === DEFAULT_JARVIS_LANGUAGE)).toBe(true);
+  });
+
+  it("has suggestions for every language and falls back to en-IN for unknown STT lookups", () => {
+    for (const l of JARVIS_LANGUAGES) {
+      expect(JARVIS_SUGGESTIONS[l.id].length).toBeGreaterThan(0);
+      expect(jarvisSttLang(l.id)).toBe(l.stt);
+    }
+    expect(jarvisSttLang("fr")).toBe("en-IN");
   });
 
   it("strips markdown formatting for speech", () => {
