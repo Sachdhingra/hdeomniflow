@@ -4,9 +4,11 @@ import {
   JARVIS_LANGUAGES,
   JARVIS_ROLES,
   JARVIS_SUGGESTIONS,
+  briefingPlayedKey,
   clampJarvisFabPosition,
   extractWakeCommand,
   jarvisSttLang,
+  shouldPlayBriefing,
   stripMarkdownForSpeech,
 } from "@/lib/jarvis";
 
@@ -61,6 +63,13 @@ describe("jarvis", () => {
     expect(extractWakeCommand("what's my target this month")).toBeNull();
     expect(extractWakeCommand("hey there, how are you")).toBeNull();
     expect(extractWakeCommand("")).toBeNull();
+  });
+
+  it("plays the daily briefing once per day per user", () => {
+    expect(shouldPlayBriefing(null, "2026-07-12")).toBe(true);
+    expect(shouldPlayBriefing("2026-07-11", "2026-07-12")).toBe(true);
+    expect(shouldPlayBriefing("2026-07-12", "2026-07-12")).toBe(false);
+    expect(briefingPlayedKey("user-1")).not.toBe(briefingPlayedKey("user-2"));
   });
 
   it("keeps the floating button inside the viewport", () => {

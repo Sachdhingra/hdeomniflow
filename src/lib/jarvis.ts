@@ -118,6 +118,18 @@ export const JARVIS_FAB_POSITION_STORAGE_KEY = "omniflow-jarvis-fab-pos";
 export const JARVIS_FAB_TAGLINE = "Happy to assist";
 export const JARVIS_WAKE_STORAGE_KEY = "omniflow-jarvis-wake";
 
+// Daily voice briefing, auto-played on the first app open of each day.
+export const JARVIS_BRIEFING_OPTOUT_KEY = "omniflow-jarvis-briefing-optout";
+
+export function briefingPlayedKey(userId: string): string {
+  return `omniflow-jarvis-briefing-played-${userId}`;
+}
+
+// True when the briefing hasn't been played yet on `today` (YYYY-MM-DD).
+export function shouldPlayBriefing(lastPlayed: string | null, today: string): boolean {
+  return lastPlayed !== today;
+}
+
 // "Hey Jarvis" in all supported scripts, plus common recognizer misspellings.
 // Optional greeting prefix ("hey"/"ok"/…) so a bare "Jarvis" also works.
 // \b only understands ASCII word characters, so leading boundaries are
