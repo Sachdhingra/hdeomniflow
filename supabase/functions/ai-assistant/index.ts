@@ -15,10 +15,11 @@ const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
 
-// Roles allowed to use Jarvis voice mode. Admin-only for the initial rollout;
-// add "sales", "service_head" (and "accounts", once it has a data context
-// below) when expanding. Must stay in sync with JARVIS_ROLES in src/lib/jarvis.ts.
-const JARVIS_VOICE_ROLES = ["admin"];
+// Roles allowed to use Jarvis voice mode. Each role only ever receives its
+// own scoped data context (see the per-role branches below) — admins see
+// everything, everyone else sees only their own domain.
+// Must stay in sync with JARVIS_ROLES in src/lib/jarvis.ts.
+const JARVIS_VOICE_ROLES = ["admin", "sales", "service_head", "accounts"];
 
 const TEXT_MODEL = "google/gemini-2.5-pro";
 // Voice answers favour latency over depth — flash keeps Jarvis snappy.
@@ -52,6 +53,7 @@ DISPATCH SCHEDULING: When asked to plan a dispatch schedule, use the calendar en
 - Output as a table: Time | Agent | Customer | Address | Job Type | Est. Duration
 
 RULES:
+- DATA PRIVACY: the context contains ONLY the data this user is entitled to see (described in data_scope). Sales users see only their own leads and targets; service heads see service jobs and field agents; accounts users see approvals, purchases and suppliers; only admins see everything. If the user asks about data outside their scope — for example a salesperson asking about a colleague's pipeline, targets or performance — do NOT guess, estimate or invent it. Politely say that information is only available to admins.
 - ALWAYS use numbers from the context. Never invent figures.
 - Always name specific leads and salespeople when analyzing problems.
 - Use markdown tables when listing multiple leads or jobs.
@@ -71,6 +73,16 @@ VOICE MODE — you are "Jarvis", OmniFlow's spoken voice assistant. Your answer 
 
 // Jarvis reply language. Customer and product names stay as-is; everything
 // else — including numbers spoken as words — follows the selected language.
+// Human-readable description of what each role's context contains, given to
+// the model so it can explain scope limits instead of guessing at data it
+// doesn't have.
+const DATA_SCOPES: Record<string, string> = {
+  admin: "Full business visibility: every salesperson's pipeline and targets, all service jobs and field agents, and all accounts data.",
+  sales: "Your own leads, follow-ups and target only. Other salespeople's pipelines, targets and performance are not available to you — only admins can see those.",
+  service_head: "All service jobs, the dispatch calendar and field agents. Sales pipelines and accounts data are not available to you — only admins can see those.",
+  accounts: "Accounts approvals, company purchases and suppliers. Sales pipelines and individual performance data are not available to you — only admins can see those.",
+};
+
 const LANGUAGE_INSTRUCTIONS: Record<string, string> = {
   en: "\n- Reply in English.",
   hi: "\n- Reply in Hindi using Devanagari script. Keep customer names, product names and place names as they appear in the data. If the user mixes Hindi and English (Hinglish), a natural Hindi-English mix is fine.",
@@ -248,7 +260,7 @@ Deno.serve(async (req) => {
       .eq("user_id", user.id)
       .maybeSingle();
     const role = roleRow?.role as string | undefined;
-    if (!role || !["admin", "sales", "service_head"].includes(role)) {
+    if (!role || !["admin", "sales", "service_head", "accounts"].includes(role)) {
       return json({ error: "AI Assistant not available for your role" }, 403);
     }
 
@@ -271,6 +283,7 @@ Deno.serve(async (req) => {
     const ctx: Record<string, unknown> = {
       name,
       role,
+      data_scope: DATA_SCOPES[role],
       asked_at: now.toISOString(),
       month: currentMonth,
       days_left_in_month: daysLeftInMonth(),
@@ -556,6 +569,12 @@ Deno.serve(async (req) => {
       const service = await buildServiceContext(admin, now, mStart);
       ctx.deliveries = service.deliveries;
       ctx.field_agents = service.fieldAgents;
+
+    // ─────────────────────────────────────────────
+    // ACCOUNTS: approvals, purchases, suppliers
+    // ─────────────────────────────────────────────
+    } else if (role === "accounts") {
+      ctx.accounts = await buildAccountsContext(admin, mStart);
     }
 
     // ─────────────────────────────────────────────

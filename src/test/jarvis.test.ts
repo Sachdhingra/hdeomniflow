@@ -9,8 +9,10 @@ import {
 } from "@/lib/jarvis";
 
 describe("jarvis", () => {
-  it("is limited to admins for the initial rollout", () => {
-    expect([...JARVIS_ROLES]).toEqual(["admin"]);
+  it("is available to admin, sales, service head and accounts only", () => {
+    expect([...JARVIS_ROLES].sort()).toEqual(
+      ["admin", "sales", "service_head", "accounts"].sort(),
+    );
   });
 
   it("supports English, Hindi and Punjabi", () => {
@@ -19,9 +21,13 @@ describe("jarvis", () => {
     expect(JARVIS_LANGUAGES.some(l => l.id === DEFAULT_JARVIS_LANGUAGE)).toBe(true);
   });
 
-  it("has suggestions for every language and falls back to en-IN for unknown STT lookups", () => {
+  it("has suggestions for every role and language, and falls back to en-IN for unknown STT lookups", () => {
+    for (const role of JARVIS_ROLES) {
+      for (const l of JARVIS_LANGUAGES) {
+        expect(JARVIS_SUGGESTIONS[role][l.id].length).toBeGreaterThan(0);
+      }
+    }
     for (const l of JARVIS_LANGUAGES) {
-      expect(JARVIS_SUGGESTIONS[l.id].length).toBeGreaterThan(0);
       expect(jarvisSttLang(l.id)).toBe(l.stt);
     }
     expect(jarvisSttLang("fr")).toBe("en-IN");

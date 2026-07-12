@@ -131,6 +131,7 @@ const AppRoutes = () => {
             <Route path="/accounts/suppliers" element={<AdminSuppliers />} />
             <Route path="/products" element={<ProductsView />} />
             <Route path="/chat" element={<ChatPage />} />
+            <Route path="/jarvis" element={<JarvisPage />} />
           </>
         );
       case "sales":
@@ -143,6 +144,7 @@ const AppRoutes = () => {
             <Route path="/products" element={<ProductsView />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/ai-assistant" element={<AIAssistantPage />} />
+            <Route path="/jarvis" element={<JarvisPage />} />
             <Route path="/calendar" element={<ServiceCalendar />} />
           </>
         );
@@ -157,7 +159,7 @@ const AppRoutes = () => {
             <Route path="/products" element={<ProductsView />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/ai-assistant" element={<AIAssistantPage />} />
-
+            <Route path="/jarvis" element={<JarvisPage />} />
           </>
         );
       case "field_agent":
