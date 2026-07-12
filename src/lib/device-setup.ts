@@ -1,6 +1,11 @@
 import { supabase as _supabase } from "@/integrations/supabase/client";
 const supabase: any = _supabase;
 
+// Setup links must open in the customer PWA, not the admin app
+const INSIDER_APP_URL =
+  (import.meta.env.VITE_INSIDER_APP_URL as string | undefined) ??
+  "https://homedecorinsider.lovable.app";
+
 export interface SetupTokenResponse {
   token: string;
   customerId: string;
@@ -25,8 +30,7 @@ export async function generateSetupToken(customerId: string): Promise<SetupToken
     }
 
     // Build the setup URLs
-    const baseUrl = window.location.origin;
-    const deepLink = `${baseUrl}/setup?setup=${encodeURIComponent(token)}`;
+    const deepLink = `${INSIDER_APP_URL}/setup?setup=${encodeURIComponent(token)}`;
 
     // Generate QR code using a public service
     const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(deepLink)}`;
@@ -48,16 +52,13 @@ export async function generateSetupToken(customerId: string): Promise<SetupToken
  * Format setup token for easy sharing (e.g., WhatsApp, SMS)
  */
 export function formatSetupMessage(setupResponse: SetupTokenResponse): string {
-  const baseUrl = window.location.origin;
-  const setupUrl = `${baseUrl}/setup?setup=${encodeURIComponent(setupResponse.token)}`;
-
   return `Welcome to Home Decor Insider! 🎉
 
 Click this link to set up your device and access your Elite Card instantly:
-${setupUrl}
+${setupResponse.deepLink}
 
 Setup expires in 24 hours.
-Questions? Visit ${baseUrl}`;
+Questions? Visit ${INSIDER_APP_URL}`;
 }
 
 /**
