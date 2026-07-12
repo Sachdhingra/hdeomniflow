@@ -110,13 +110,13 @@ const JarvisFloatingButton = () => {
     }
   };
 
-  // Show the tagline on whichever side has room.
-  const taglineOnLeft = pos.x > window.innerWidth / 2;
+  // Show the tagline on whichever side has room; hide it when we're mid-drag.
+  const taglineOnLeft = pos.x + BUTTON_SIZE / 2 > window.innerWidth / 2;
 
   return (
     <div
-      className="fixed z-50 flex items-center gap-2 select-none"
-      style={{ left: pos.x, top: pos.y, flexDirection: taglineOnLeft ? "row-reverse" : "row" }}
+      className="fixed z-50 select-none"
+      style={{ left: pos.x, top: pos.y, width: BUTTON_SIZE, height: BUTTON_SIZE }}
     >
       <button
         type="button"
@@ -125,18 +125,20 @@ const JarvisFloatingButton = () => {
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        className={`w-14 h-14 rounded-full gradient-primary shadow-lg flex items-center justify-center text-2xl transition-transform ${
+        className={`w-14 h-14 rounded-full gradient-primary shadow-xl flex items-center justify-center text-primary-foreground transition-transform ${
           dragging ? "scale-110 cursor-grabbing" : "cursor-grab hover:scale-105 active:scale-95"
         }`}
         style={{ touchAction: "none" }}
       >
-        <span role="img" aria-hidden="true">💡</span>
+        <Bot className="w-7 h-7" />
       </button>
       {!dragging && (
         <button
           type="button"
           onClick={() => navigate("/jarvis")}
-          className="bg-card border border-border shadow-md rounded-full px-3 py-1.5 text-xs font-medium text-foreground whitespace-nowrap"
+          className={`absolute top-1/2 -translate-y-1/2 bg-card border border-border shadow-md rounded-full px-3 py-1.5 text-xs font-medium text-foreground whitespace-nowrap ${
+            taglineOnLeft ? "right-full mr-2" : "left-full ml-2"
+          }`}
         >
           {JARVIS_FAB_TAGLINE}
         </button>
@@ -144,5 +146,6 @@ const JarvisFloatingButton = () => {
     </div>
   );
 };
+
 
 export default JarvisFloatingButton;
