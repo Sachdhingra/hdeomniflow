@@ -292,7 +292,7 @@ Deno.serve(async (req) => {
       ctx.sales_team = salesTeam;
       ctx.team_summary = {
         total_active_leads: (activeLeads ?? []).length,
-        total_overdue,
+        total_overdue: totalOverdue,
         total_stale_7d: totalStale,
         team_won_this_month: totalWonValue,
         team_target_this_month: totalTarget,
