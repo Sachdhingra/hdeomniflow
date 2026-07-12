@@ -5,6 +5,7 @@ import {
   JARVIS_ROLES,
   JARVIS_SUGGESTIONS,
   clampJarvisFabPosition,
+  extractWakeCommand,
   jarvisSttLang,
   stripMarkdownForSpeech,
 } from "@/lib/jarvis";
@@ -45,6 +46,21 @@ describe("jarvis", () => {
     expect(out).not.toContain("|");
     expect(out).toContain("Anita");
     expect(out).toContain("2 lakh");
+  });
+
+  it("detects the wake word in English, Hindi and Punjabi", () => {
+    expect(extractWakeCommand("Hey Jarvis")).toBe("");
+    expect(extractWakeCommand("hey jarvis, what's my target?")).toBe("what's my target?");
+    expect(extractWakeCommand("OK Jarvis how are sales")).toBe("how are sales");
+    expect(extractWakeCommand("jarvis show overdue leads")).toBe("show overdue leads");
+    expect(extractWakeCommand("हे जार्विस आज क्या ओवरड्यू है")).toBe("आज क्या ओवरड्यू है");
+    expect(extractWakeCommand("ਹੇ ਜਾਰਵਿਸ ਅੱਜ ਕੀ ਪੈਂਡਿੰਗ ਹੈ")).toBe("ਅੱਜ ਕੀ ਪੈਂਡਿੰਗ ਹੈ");
+  });
+
+  it("ignores speech without the wake word", () => {
+    expect(extractWakeCommand("what's my target this month")).toBeNull();
+    expect(extractWakeCommand("hey there, how are you")).toBeNull();
+    expect(extractWakeCommand("")).toBeNull();
   });
 
   it("keeps the floating button inside the viewport", () => {

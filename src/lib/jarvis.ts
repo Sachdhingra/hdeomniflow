@@ -116,6 +116,26 @@ export const JARVIS_SUGGESTIONS: Record<JarvisRole, Record<JarvisLanguage, strin
 
 export const JARVIS_FAB_POSITION_STORAGE_KEY = "omniflow-jarvis-fab-pos";
 export const JARVIS_FAB_TAGLINE = "Happy to assist";
+export const JARVIS_WAKE_STORAGE_KEY = "omniflow-jarvis-wake";
+
+// "Hey Jarvis" in all supported scripts, plus common recognizer misspellings.
+// Optional greeting prefix ("hey"/"ok"/…) so a bare "Jarvis" also works.
+// \b only understands ASCII word characters, so leading boundaries are
+// matched explicitly; recognizers space-separate words, so a Latin-only
+// trailing lookahead is sufficient.
+const WAKE_REGEX =
+  /(?:^|[\s,])(?:(?:hey|hay|ok|okay|हे|ओके|ਹੇ|ਓਕੇ)[,\s]+)?(?:jaarvis|jarvis|jarvi|जार्विस|जारविस|जार्वीस|ਜਾਰਵਿਸ|ਜਾਰਵੀਸ)(?![a-z])/i;
+
+// Returns null when the text does not contain the wake word; otherwise the
+// command spoken after it ("" when the user said only "Hey Jarvis").
+export function extractWakeCommand(text: string): string | null {
+  const m = WAKE_REGEX.exec(text);
+  if (!m) return null;
+  return text
+    .slice(m.index + m[0].length)
+    .replace(/^[,.!?\s]+/, "")
+    .trim();
+}
 
 // Keeps the floating Jarvis button inside the visible viewport.
 export function clampJarvisFabPosition(

@@ -27,7 +27,8 @@ const JarvisPage = () => {
   const { user } = useAuth();
   const {
     status, messages, transcript, voice, setVoice,
-    handsFree, setHandsFree, language, setLanguage, sttSupported,
+    handsFree, setHandsFree, language, setLanguage,
+    wakeEnabled, setWakeEnabled, wakeListening, sttSupported,
     startListening, ask, stop, reset,
   } = useJarvis();
   const [typed, setTyped] = useState("");
@@ -79,6 +80,12 @@ const JarvisPage = () => {
           <span>Hands-free</span>
           <Switch checked={handsFree} onCheckedChange={setHandsFree} />
         </div>
+        {sttSupported && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>"Hey Jarvis"</span>
+            <Switch checked={wakeEnabled} onCheckedChange={setWakeEnabled} />
+          </div>
+        )}
         <Select
           value={language}
           onValueChange={v => setLanguage(v as JarvisLanguage)}
@@ -198,7 +205,11 @@ const JarvisPage = () => {
               <Mic className="w-7 h-7" />
             )}
           </button>
-          <span className="text-xs text-muted-foreground">{STATUS_LABEL[status]}</span>
+          <span className="text-xs text-muted-foreground">
+            {status === "idle" && wakeEnabled && wakeListening
+              ? "Say “Hey Jarvis” — or tap the mic"
+              : STATUS_LABEL[status]}
+          </span>
         </div>
 
         <div className="flex gap-2">

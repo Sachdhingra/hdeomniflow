@@ -587,9 +587,9 @@ Deno.serve(async (req) => {
       `Question: ${userQuestion}\n\n` +
       `Answer with specific names, lead values, and action items from the data above.`;
 
-    const systemContent = voiceMode
-      ? SYSTEM_PROMPT + VOICE_SYSTEM_PROMPT + LANGUAGE_INSTRUCTIONS[replyLanguage]
-      : SYSTEM_PROMPT;
+    const systemContent =
+      (voiceMode ? SYSTEM_PROMPT + VOICE_SYSTEM_PROMPT : SYSTEM_PROMPT) +
+      LANGUAGE_INSTRUCTIONS[replyLanguage];
     const aiMessages = [
       { role: "system", content: systemContent },
       ...((messages ?? []).slice(0, -1) as { role: string; content: string }[]),
