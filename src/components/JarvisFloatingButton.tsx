@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { Bot } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
+
 import { useAuth } from "@/contexts/AuthContext";
 import {
   JARVIS_FAB_POSITION_STORAGE_KEY,
