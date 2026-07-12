@@ -1,7 +1,13 @@
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useJarvis } from "@/hooks/useJarvis";
-import { JARVIS_LANGUAGES, JARVIS_ROLES, JARVIS_SUGGESTIONS, type JarvisLanguage } from "@/lib/jarvis";
+import {
+  JARVIS_LANGUAGES,
+  JARVIS_ROLES,
+  JARVIS_SUGGESTIONS,
+  type JarvisLanguage,
+  type JarvisRole,
+} from "@/lib/jarvis";
 import { GEMINI_VOICES } from "@/lib/voiceReminder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,14 +37,13 @@ const JarvisPage = () => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages.length, status]);
 
-  const allowed = user && JARVIS_ROLES.includes(user.role as (typeof JARVIS_ROLES)[number]);
+  const allowed = user && JARVIS_ROLES.includes(user.role as JarvisRole);
   if (!allowed) {
     return (
       <div className="p-6">
         <h1 className="text-xl font-bold mb-2">Jarvis unavailable</h1>
         <p className="text-muted-foreground">
-          Jarvis voice assistant is currently limited to admins. It will roll out to sales,
-          accounts and service teams soon.
+          Jarvis voice assistant is available to admin, sales, accounts and service head roles.
         </p>
       </div>
     );
@@ -109,10 +114,10 @@ const JarvisPage = () => {
         {messages.length === 0 && (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Hi {user?.name?.split(" ")[0]} — ask me anything about sales, service jobs, accounts or the team. Try:
+              Hi {user?.name?.split(" ")[0]} — ask me anything about your work. Try:
             </p>
             <div className="flex flex-wrap gap-2">
-              {JARVIS_SUGGESTIONS[language].map(s => (
+              {JARVIS_SUGGESTIONS[user!.role as JarvisRole][language].map(s => (
                 <Button key={s} variant="outline" size="sm" onClick={() => ask(s)} disabled={busy}>
                   {s}
                 </Button>
