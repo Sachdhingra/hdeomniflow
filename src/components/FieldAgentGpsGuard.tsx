@@ -28,9 +28,12 @@ const SIGNAL_LOST_THRESHOLD_MS = 5 * 60_000;
  */
 const FieldAgentGpsGuard = () => {
   const { user } = useAuth();
-  const { isOnDuty, isFieldAgent } = useFieldAgentDuty();
+  const { isOnDuty, isTrackingActive, isFieldAgent } = useFieldAgentDuty();
 
-  const enforce = !!user && isFieldAgent && isOnDuty;
+  // Enforce GPS while clocked in OR while any job is active (accepted / on-route
+  // / on-site / in-progress). This closes the loophole where an agent switched
+  // GPS off mid-job: the app stays blocked until location is restored.
+  const enforce = !!user && isFieldAgent && (isOnDuty || isTrackingActive);
 
   const [gpsOk, setGpsOk] = useState<boolean>(true);
   const [gpsMessage, setGpsMessage] = useState<string>("");

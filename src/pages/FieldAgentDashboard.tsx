@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useData } from "@/contexts/DataContext";
-import { useGeolocation, distanceMeters } from "@/hooks/useGeolocation";
+import { useGeolocation, distanceMeters, getPositionWithRetry } from "@/hooks/useGeolocation";
 import StatCard from "@/components/StatCard";
 import ServiceJobPhotoUpload from "@/components/ServiceJobPhotoUpload";
 import LeadForm from "@/components/LeadForm";
@@ -16,8 +16,10 @@ import { toast } from "sonner";
 import LoadingError from "@/components/LoadingError";
 import { DashboardSkeleton } from "@/components/DashboardSkeleton";
 
-const AUTO_REACH_RADIUS_M = 120;
-const MAX_ACCURACY_M = 150;
+const AUTO_REACH_RADIUS_M = 150;
+// Extra slack granted for an imprecise fix, capped so a very coarse fix
+// can't teleport the geofence. Mirrors the server-side auto_mark_on_site trigger.
+const ACCURACY_SLACK_CAP_M = 120;
 
 async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
   try {
@@ -63,13 +65,36 @@ const FieldAgentDashboard = () => {
   const completedJobs = myJobs.filter(j => j.status === "completed");
   const activeJobs = myJobs.filter(j => ["in_progress", "on_route", "on_site"].includes(j.status));
 
-  const handleAccept = async (id: string) => {
-    await updateServiceJob(id, {
+  const [accepting, setAccepting] = useState<string | null>(null);
+
+  const handleAccept = async (job: { id: string; address: string; location_lat?: any; location_lng?: any }) => {
+    // Navigation is mandatory: a job cannot be accepted without a live GPS fix.
+    // This forces GPS on at the moment of acceptance and gives us a start point.
+    setAccepting(job.id);
+    const fix = await getPositionWithRetry(3);
+    setAccepting(null);
+
+    if (!fix) {
+      toast.error("Turn on GPS to accept this job. Navigation requires location.");
+      return;
+    }
+
+    await updateServiceJob(job.id, {
       status: "on_route" as any,
       accepted_at: new Date().toISOString(),
       travel_started_at: new Date().toISOString(),
     });
-    toast.success("Job accepted! On route. 🚗");
+
+    // Launch turn-by-turn navigation from the agent's current location to the site.
+    const dest =
+      job.location_lat != null && job.location_lng != null
+        ? `${job.location_lat},${job.location_lng}`
+        : encodeURIComponent(job.address);
+    window.open(
+      `https://www.google.com/maps/dir/?api=1&origin=${fix.lat},${fix.lng}&destination=${dest}&travelmode=driving`,
+      "_blank"
+    );
+    toast.success("Job accepted! Navigation started. 🚗");
   };
 
   // Geocode active jobs that are missing lat/lng so auto-reach works from address alone
@@ -109,9 +134,10 @@ const FieldAgentDashboard = () => {
 
       if (autoReachedRef.current.has(job.id)) continue;
       if (job.agent_reached_at || job.status === "completed" || job.status === "on_site") continue;
-      // Guard against poor GPS — only auto-mark when fix is reasonably accurate
-      if (gps.accuracy > MAX_ACCURACY_M) continue;
-      if (d <= AUTO_REACH_RADIUS_M) {
+      // Accuracy-aware geofence: widen the radius by the fix's own uncertainty
+      // (capped) so a genuine arrival with a coarse fix still trips.
+      const effectiveRadius = AUTO_REACH_RADIUS_M + Math.min(gps.accuracy, ACCURACY_SLACK_CAP_M);
+      if (d <= effectiveRadius) {
         autoReachedRef.current.add(job.id);
         updateServiceJob(job.id, {
           status: "on_site" as any,
@@ -266,8 +292,8 @@ const FieldAgentDashboard = () => {
 
                 <div className="flex gap-2 flex-wrap">
                   {job.status === "assigned" && (
-                    <Button size="lg" className="gradient-primary gap-2 flex-1 min-h-[48px] text-base" onClick={() => handleAccept(job.id)}>
-                      <Navigation className="w-5 h-5" />Accept & Start
+                    <Button size="lg" disabled={accepting === job.id} className="gradient-primary gap-2 flex-1 min-h-[48px] text-base" onClick={() => handleAccept(job as any)}>
+                      <Navigation className="w-5 h-5" />{accepting === job.id ? "Getting GPS…" : "Accept & Navigate"}
                     </Button>
                   )}
                   {["on_route", "in_progress"].includes(job.status) && !job.agent_reached_at && (

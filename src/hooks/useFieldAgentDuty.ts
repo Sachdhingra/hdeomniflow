@@ -139,5 +139,5 @@ export const useFieldAgentDuty = () => {
     };
   }, [user, isFieldAgent, isTrackingActive]);
 
-  return { isOnDuty, isFieldAgent, refreshDuty };
+  return { isOnDuty, isTrackingActive, isFieldAgent, refreshDuty };
 };
