@@ -217,7 +217,7 @@ export function useWakeWord(active: boolean, language: string, onWake: (command:
       analyser.fftSize = 512;
       source.connect(analyser);
       const samples = new Float32Array(analyser.fftSize);
-      let noiseFloor = 0.008;
+      let noiseFloor = 0.004;
 
       setListening(true);
       vadTimer = setInterval(() => {

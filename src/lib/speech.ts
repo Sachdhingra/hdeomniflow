@@ -23,8 +23,10 @@ export function getRecognitionCtor(): (new () => SpeechRecognitionLike) | null {
 // the current mic RMS level rises above the ambient noise floor. Thresholds
 // are deliberately sensitive — a false trigger only costs a short, silent
 // verification pass, while a missed trigger means "Hey Jarvis" is ignored.
+// Lower thresholds catch softer wake-word attempts across the room; a false
+// trigger only costs a short silent verification pass.
 export function voiceDetected(rms: number, noiseFloor: number): boolean {
-  return rms > Math.max(0.012, noiseFloor * 2.5);
+  return rms > Math.max(0.006, noiseFloor * 1.8);
 }
 
 // Exponential moving average keeps the noise floor tracking slow changes in
