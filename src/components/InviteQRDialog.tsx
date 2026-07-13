@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Loader2, Copy, RefreshCw, Check } from "lucide-react";
+import { Loader2, Copy, RefreshCw, Check, Share2 } from "lucide-react";
 import QRCode from "qrcode";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+
+// Public URL of the Insider PWA — the QR/link opens its setup page
+const INSIDER_APP_URL = "https://homedecorinsider.lovable.app";
 
 interface Props {
   open: boolean;
@@ -14,24 +17,26 @@ interface Props {
   phone?: string;
 }
 
-const InviteQRDialog = ({ open, onOpenChange, customerId, customerName, phone }: Props) => {
+const InviteQRDialog = ({ open, onOpenChange, customerId, customerName }: Props) => {
   const [loading, setLoading] = useState(false);
   const [link, setLink] = useState<string | null>(null);
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const generate = async () => {
-    if (!customerId || !phone) return;
+    if (!customerId) return;
     setLoading(true);
     setLink(null);
     setDataUrl(null);
     try {
-      const { data, error } = await supabase.functions.invoke("create-app-invite", {
-        body: { customerId, phone },
+      const { data: token, error } = await (supabase as any).rpc("generate_setup_token", {
+        _customer_id: customerId,
       });
-      if (error || !data?.link) throw new Error(error?.message || "Failed to create invite");
-      setLink(data.link);
-      const png = await QRCode.toDataURL(data.link, { width: 480, margin: 2 });
+      if (error || !token) throw new Error(error?.message || "Failed to create setup code");
+
+      const setupLink = `${INSIDER_APP_URL}/setup?setup=${encodeURIComponent(token)}`;
+      setLink(setupLink);
+      const png = await QRCode.toDataURL(setupLink, { width: 480, margin: 2 });
       setDataUrl(png);
     } catch (e: any) {
       toast.error(e?.message || "Could not generate QR");
@@ -51,15 +56,30 @@ const InviteQRDialog = ({ open, onOpenChange, customerId, customerName, phone }:
     if (!link) return;
     await navigator.clipboard.writeText(link);
     setCopied(true);
-    toast.success("Invite link copied");
+    toast.success("Setup link copied");
     setTimeout(() => setCopied(false), 1500);
+  };
+
+  const shareLink = async () => {
+    if (!link) return;
+    const message = `Welcome to Home Decor Insider! 🎉\n\nOpen this link on your phone to set up your Elite Card app:\n${link}\n\nThe link works once and expires in 24 hours.`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "Home Decor Insider Setup", text: message });
+      } catch {
+        /* user cancelled */
+      }
+    } else {
+      await navigator.clipboard.writeText(message);
+      toast.success("Message copied — paste it in WhatsApp/SMS");
+    }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Insider App Invite{customerName ? ` — ${customerName}` : ""}</DialogTitle>
+          <DialogTitle>Insider App Setup{customerName ? ` — ${customerName}` : ""}</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col items-center gap-4 py-2">
@@ -72,15 +92,21 @@ const InviteQRDialog = ({ open, onOpenChange, customerId, customerName, phone }:
           {!loading && dataUrl && (
             <>
               <div className="rounded-xl bg-white p-3 border">
-                <img src={dataUrl} alt="Insider invite QR" className="w-[260px] h-[260px]" />
+                <img src={dataUrl} alt="Insider setup QR" className="w-[260px] h-[260px]" />
               </div>
               <p className="text-sm text-center text-muted-foreground max-w-xs">
-                Ask the customer to scan with their phone camera. The Insider app opens and signs them in automatically. Valid for 30 days.
+                Ask the customer to scan with their phone camera. The Insider app opens,
+                shows their name, and asks for their password to finish setup.
+                One-time use, valid for 24 hours.
               </p>
               <div className="flex gap-2 w-full">
                 <Button variant="outline" size="sm" className="flex-1" onClick={copyLink}>
                   {copied ? <Check className="w-4 h-4 mr-1" /> : <Copy className="w-4 h-4 mr-1" />}
                   Copy link
+                </Button>
+                <Button variant="outline" size="sm" className="flex-1" onClick={shareLink}>
+                  <Share2 className="w-4 h-4 mr-1" />
+                  Share
                 </Button>
                 <Button variant="outline" size="sm" className="flex-1" onClick={generate}>
                   <RefreshCw className="w-4 h-4 mr-1" />
