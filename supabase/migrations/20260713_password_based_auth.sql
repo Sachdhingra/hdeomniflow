@@ -1,15 +1,49 @@
--- Password-based authentication with setup code validation
--- Replaces device-based auth with simple password login
--- Setup code is one-time, validates customer, then password login
+-- Password-based authentication with setup code validation (v2, self-healing)
+-- Flow: admin generates setup code -> customer opens PWA -> code validated ->
+--       customer enters password -> logged in. No OTP, no device credentials.
+--
+-- NOTE: functions use "SET search_path = public, extensions" because Supabase
+-- installs pgcrypto (crypt, gen_salt, gen_random_bytes) in the extensions schema.
 
 -- ============================================================
--- 1. setup_tokens table (unchanged) - validates setup code
+-- 0. Clean up old device-based auth objects
 -- ============================================================
-CREATE TABLE IF NOT EXISTS public.setup_tokens (
+DROP FUNCTION IF EXISTS public.complete_device_setup(text, text, text, text, text);
+DROP FUNCTION IF EXISTS public.verify_device_token(text);
+DROP FUNCTION IF EXISTS public.revoke_device_token(text);
+DROP FUNCTION IF EXISTS public.generate_setup_token(uuid);
+DROP FUNCTION IF EXISTS public.validate_setup_token(text);
+DROP FUNCTION IF EXISTS public.authenticate_customer_with_password(text, uuid, text);
+DROP TABLE IF EXISTS public.device_credentials CASCADE;
+DROP TABLE IF EXISTS public.setup_tokens CASCADE;
+
+-- ============================================================
+-- 1. elite_customers table (created if missing)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.elite_customers (
+  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_name     text NOT NULL,
+  customer_password text,
+  card_number       text UNIQUE,
+  card_tier         text DEFAULT 'standard',
+  phone_1           text UNIQUE,
+  status            text DEFAULT 'active',
+  app_activated     boolean DEFAULT false,
+  referral_code     text UNIQUE,
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  updated_at        timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.elite_customers ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.elite_customers TO service_role;
+
+-- ============================================================
+-- 2. setup_tokens table
+-- ============================================================
+CREATE TABLE public.setup_tokens (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   customer_id     uuid NOT NULL REFERENCES public.elite_customers(id) ON DELETE CASCADE,
   token           text NOT NULL UNIQUE,
-  setup_data      jsonb,
   used_at         timestamptz,
   expires_at      timestamptz NOT NULL DEFAULT now() + interval '24 hours',
   created_at      timestamptz NOT NULL DEFAULT now()
@@ -18,35 +52,29 @@ CREATE TABLE IF NOT EXISTS public.setup_tokens (
 ALTER TABLE public.setup_tokens ENABLE ROW LEVEL SECURITY;
 GRANT ALL ON public.setup_tokens TO service_role;
 
-CREATE INDEX IF NOT EXISTS idx_setup_tokens_customer ON public.setup_tokens(customer_id);
-CREATE INDEX IF NOT EXISTS idx_setup_tokens_token ON public.setup_tokens(token) WHERE used_at IS NULL;
+CREATE INDEX idx_setup_tokens_customer ON public.setup_tokens(customer_id);
+CREATE INDEX idx_setup_tokens_token ON public.setup_tokens(token) WHERE used_at IS NULL;
 
 -- ============================================================
--- 2. Generate setup token (admin/service role only)
--- Returns a setup token for QR code or link
+-- 3. generate_setup_token (service role / SQL editor)
 -- ============================================================
-CREATE OR REPLACE FUNCTION public.generate_setup_token(_customer_id uuid)
+CREATE FUNCTION public.generate_setup_token(_customer_id uuid)
 RETURNS text
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
 DECLARE
   v_token text;
-  v_customer public.elite_customers%ROWTYPE;
 BEGIN
-  -- Verify customer exists and is active
-  SELECT * INTO v_customer FROM public.elite_customers WHERE id = _customer_id AND status = 'active';
+  PERFORM 1 FROM public.elite_customers WHERE id = _customer_id AND status = 'active';
   IF NOT FOUND THEN
     RAISE EXCEPTION 'customer_not_found';
   END IF;
 
-  -- Generate secure random token
-  v_token := 'setup_' || encode(gen_random_bytes(32), 'hex');
+  v_token := 'setup_' || md5(random()::text || clock_timestamp()::text) || md5(random()::text || _customer_id::text);
 
-  INSERT INTO public.setup_tokens (customer_id, token)
-  VALUES (_customer_id, v_token);
-
+  INSERT INTO public.setup_tokens (customer_id, token) VALUES (_customer_id, v_token);
   RETURN v_token;
 END;
 $$;
@@ -55,45 +83,36 @@ REVOKE ALL ON FUNCTION public.generate_setup_token(uuid) FROM public;
 GRANT EXECUTE ON FUNCTION public.generate_setup_token(uuid) TO service_role;
 
 -- ============================================================
--- 3. Validate setup token and get customer info
--- Called by PWA during setup, returns customer name (PUBLIC)
+-- 4. validate_setup_token (PWA, public)
 -- ============================================================
-CREATE OR REPLACE FUNCTION public.validate_setup_token(_setup_token text)
+CREATE FUNCTION public.validate_setup_token(_setup_token text)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
 DECLARE
   v_setup_token public.setup_tokens%ROWTYPE;
   v_customer public.elite_customers%ROWTYPE;
-  v_result jsonb;
 BEGIN
-  -- Verify setup token exists, not expired, and not already used
   SELECT * INTO v_setup_token FROM public.setup_tokens
-  WHERE token = _setup_token
-    AND used_at IS NULL
-    AND expires_at > now();
+  WHERE token = _setup_token AND used_at IS NULL AND expires_at > now();
 
   IF NOT FOUND THEN
     RAISE EXCEPTION 'invalid_or_expired_token';
   END IF;
 
-  -- Get customer details
   SELECT * INTO v_customer FROM public.elite_customers WHERE id = v_setup_token.customer_id;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'customer_not_found';
   END IF;
 
-  -- Return customer info for setup page
-  v_result := jsonb_build_object(
+  RETURN jsonb_build_object(
     'customer_id', v_customer.id,
     'customer_name', v_customer.customer_name,
     'card_tier', v_customer.card_tier,
     'card_number', v_customer.card_number
   );
-
-  RETURN v_result;
 END;
 $$;
 
@@ -101,10 +120,9 @@ REVOKE ALL ON FUNCTION public.validate_setup_token(text) FROM public;
 GRANT EXECUTE ON FUNCTION public.validate_setup_token(text) TO anon, authenticated;
 
 -- ============================================================
--- 4. Authenticate customer with password and complete setup
--- Called after password validation, creates app_user link
+-- 5. authenticate_customer_with_password (PWA, public)
 -- ============================================================
-CREATE OR REPLACE FUNCTION public.authenticate_customer_with_password(
+CREATE FUNCTION public.authenticate_customer_with_password(
   _setup_token text,
   _customer_id uuid,
   _password text
@@ -112,80 +130,42 @@ CREATE OR REPLACE FUNCTION public.authenticate_customer_with_password(
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
 DECLARE
   v_setup_token public.setup_tokens%ROWTYPE;
   v_customer public.elite_customers%ROWTYPE;
-  v_existing_app_user public.app_users%ROWTYPE;
-  v_result jsonb;
 BEGIN
-  -- Verify setup token exists and is valid
   SELECT * INTO v_setup_token FROM public.setup_tokens
-  WHERE token = _setup_token
-    AND customer_id = _customer_id
-    AND used_at IS NULL
-    AND expires_at > now();
+  WHERE token = _setup_token AND customer_id = _customer_id
+    AND used_at IS NULL AND expires_at > now();
 
   IF NOT FOUND THEN
     RAISE EXCEPTION 'invalid_or_expired_token';
   END IF;
 
-  -- Get customer and verify password
   SELECT * INTO v_customer FROM public.elite_customers WHERE id = _customer_id;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'customer_not_found';
   END IF;
 
-  -- Verify password (assumes password is stored in customer_password column, hashed with bcrypt)
-  -- For security: password comparison should use constant-time comparison
   IF v_customer.customer_password IS NULL THEN
     RAISE EXCEPTION 'no_password_set';
   END IF;
 
-  -- Using crypt() for bcrypt verification if password was hashed with bcrypt
-  -- Otherwise, if password stored as plaintext for testing, use simple comparison
   IF crypt(_password, v_customer.customer_password) != v_customer.customer_password THEN
     RAISE EXCEPTION 'invalid_password';
   END IF;
 
-  -- Create or update app_user link (requires auth session to track who is using the app)
-  -- For PWA, we'll create a session-based user or use customer_id directly
-  SELECT * INTO v_existing_app_user FROM public.app_users WHERE customer_id = _customer_id;
-
-  IF v_existing_app_user IS NULL THEN
-    INSERT INTO public.app_users (customer_id, push_enabled)
-    VALUES (_customer_id, true);
-  ELSE
-    UPDATE public.app_users SET push_enabled = true WHERE customer_id = _customer_id;
-  END IF;
-
-  -- Mark setup token as used
   UPDATE public.setup_tokens SET used_at = now() WHERE id = v_setup_token.id;
+  UPDATE public.elite_customers SET app_activated = true WHERE id = _customer_id;
 
-  -- Activate customer if needed
-  UPDATE public.elite_customers
-  SET app_activated = true,
-      referral_code = COALESCE(
-        referral_code,
-        'EC' || right(phone_1, 4) ||
-        substr('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 1 + floor(random() * 32)::int, 1) ||
-        substr('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 1 + floor(random() * 32)::int, 1) ||
-        substr('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 1 + floor(random() * 32)::int, 1) ||
-        substr('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 1 + floor(random() * 32)::int, 1)
-      )
-  WHERE id = _customer_id;
-
-  -- Return success with customer info
-  v_result := jsonb_build_object(
+  RETURN jsonb_build_object(
     'success', true,
     'customer_id', _customer_id,
     'customer_name', v_customer.customer_name,
-    'card_tier', v_customer.card_tier,
-    'message', 'Login successful'
+    'card_tier', v_customer.card_tier
   );
-
-  RETURN v_result;
 END;
 $$;
 
