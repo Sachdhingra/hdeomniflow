@@ -1,6 +1,6 @@
 import { useAuth } from "@/contexts/AuthContext";
 import { useVoiceReminder } from "@/hooks/useVoiceReminder";
-import { GEMINI_VOICES, VOICE_REMINDER_ROLES } from "@/lib/voiceReminder";
+import { GEMINI_VOICES, VOICE_REMINDER_ROLES, BRIEFING_LANGUAGES, type BriefingLanguage } from "@/lib/voiceReminder";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
