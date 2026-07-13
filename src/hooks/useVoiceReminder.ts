@@ -6,6 +6,10 @@ import {
   DEFAULT_VOICE,
   VOICE_STORAGE_KEY,
   audioBase64ToBlob,
+  BRIEFING_LANGUAGES,
+  BRIEFING_LANGUAGE_STORAGE_KEY,
+  DEFAULT_BRIEFING_LANGUAGE,
+  type BriefingLanguage,
 } from "@/lib/voiceReminder";
 
 interface VoiceReminderResponse {
@@ -30,6 +34,15 @@ export function useVoiceReminder() {
     } catch {
       return DEFAULT_VOICE;
     }
+  });
+  const [language, setLanguageState] = useState<BriefingLanguage>(() => {
+    try {
+      const v = localStorage.getItem(BRIEFING_LANGUAGE_STORAGE_KEY);
+      if (v && BRIEFING_LANGUAGES.some(l => l.id === v)) return v as BriefingLanguage;
+    } catch {
+      /* ignore */
+    }
+    return DEFAULT_BRIEFING_LANGUAGE;
   });
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const urlRef = useRef<string | null>(null);
@@ -58,16 +71,29 @@ export function useVoiceReminder() {
     }
   }, []);
 
+  const setLanguage = useCallback((l: BriefingLanguage) => {
+    setLanguageState(l);
+    try {
+      localStorage.setItem(BRIEFING_LANGUAGE_STORAGE_KEY, l);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const speakWithBrowser = useCallback((text: string): boolean => {
     if (!("speechSynthesis" in window)) return false;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
+    const bcp = BRIEFING_LANGUAGES.find(l => l.id === language)?.bcp47 ?? "en-IN";
+    utterance.lang = bcp;
+    const match = window.speechSynthesis.getVoices().find(v => v.lang?.toLowerCase().startsWith(bcp.toLowerCase().split("-")[0]));
+    if (match) utterance.voice = match;
     utterance.onend = () => setPlaying(false);
     utterance.onerror = () => setPlaying(false);
     window.speechSynthesis.speak(utterance);
     setPlaying(true);
     return true;
-  }, []);
+  }, [language]);
 
   const play = useCallback(async () => {
     if (loading) return;
@@ -75,7 +101,7 @@ export function useVoiceReminder() {
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke<VoiceReminderResponse>("voice-reminder", {
-        body: { voice },
+        body: { voice, language },
       });
       if (error) {
         // Surface the real cause instead of the generic invoke message.
@@ -142,7 +168,7 @@ export function useVoiceReminder() {
     } finally {
       setLoading(false);
     }
-  }, [voice, loading, stop, speakWithBrowser]);
+  }, [voice, language, loading, stop, speakWithBrowser]);
 
-  return { play, stop, loading, playing, script, voice, setVoice };
+  return { play, stop, loading, playing, script, voice, setVoice, language, setLanguage };
 }

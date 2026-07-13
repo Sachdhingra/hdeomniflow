@@ -16,6 +16,14 @@ export const GEMINI_VOICES = [
 export const DEFAULT_VOICE = "Kore";
 export const VOICE_STORAGE_KEY = "omniflow-voice-reminder-voice";
 
+export const BRIEFING_LANGUAGES = [
+  { id: "en", label: "English", bcp47: "en-IN" },
+  { id: "hi", label: "हिन्दी (Hindi)", bcp47: "hi-IN" },
+] as const;
+export type BriefingLanguage = (typeof BRIEFING_LANGUAGES)[number]["id"];
+export const DEFAULT_BRIEFING_LANGUAGE: BriefingLanguage = "en";
+export const BRIEFING_LANGUAGE_STORAGE_KEY = "omniflow-voice-reminder-language";
+
 export function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);

@@ -22,6 +22,8 @@ const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
 
 const ALLOWED_ROLES = ["admin", "sales", "service_head", "accounts"];
 const SCRIPT_MODEL = "google/gemini-2.5-flash";
+const ALLOWED_LANGUAGES = ["en", "hi"] as const;
+type BriefingLanguage = (typeof ALLOWED_LANGUAGES)[number];
 
 // ── helpers ──────────────────────────────────────────────
 
@@ -40,8 +42,13 @@ function speakRupees(n: number): string {
   return `${Math.round(n)} rupees`;
 }
 
-function istGreeting(): string {
+function istGreeting(lang: BriefingLanguage = "en"): string {
   const istHour = new Date(Date.now() + 5.5 * 3600000).getUTCHours();
+  if (lang === "hi") {
+    if (istHour < 12) return "सुप्रभात";
+    if (istHour < 17) return "नमस्ते";
+    return "शुभ संध्या";
+  }
   if (istHour < 12) return "Good morning";
   if (istHour < 17) return "Good afternoon";
   return "Good evening";
@@ -227,9 +234,13 @@ function buildFallbackScript(name: string, role: string, ctx: ReminderContext): 
   return parts.join(" ");
 }
 
-async function generateScript(name: string, role: string, ctx: ReminderContext): Promise<string> {
+async function generateScript(name: string, role: string, ctx: ReminderContext, language: BriefingLanguage): Promise<string> {
   const fallback = buildFallbackScript(name, role, ctx);
   if (!LOVABLE_API_KEY) return fallback;
+
+  const langInstruction = language === "hi"
+    ? "Write the ENTIRE briefing in natural conversational Hindi (Devanagari script). Use Hindi numerals-in-words for rupee amounts (e.g. 'साढ़े चार लाख रुपये'), never symbols or digits like ₹450000. Keep English proper nouns (customer names, product names) as-is. Warm but direct tone. Under 120 words."
+    : "Write the briefing in English. Warm but direct, like a sharp assistant. Under 120 words. Say rupee amounts in words (e.g. '4.5 lakh rupees'), never symbols or digits like ₹450000.";
 
   try {
     const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -242,9 +253,10 @@ async function generateScript(name: string, role: string, ctx: ReminderContext):
             role: "system",
             content:
               "You write short spoken reminder briefings for a furniture CRM, to be read aloud by a text-to-speech voice. " +
-              "Rules: plain text only, no markdown, no emoji, no headings, no bullet points. Under 120 words. " +
-              "Warm but direct, like a sharp assistant. Greet the person by first name. " +
-              "Mention the most urgent items with specific customer names and rupee amounts written in words (say '4.5 lakh rupees', never symbols or digits like ₹450000). " +
+              "Rules: plain text only, no markdown, no emoji, no headings, no bullet points. " +
+              langInstruction + " " +
+              "Greet the person by first name. " +
+              "Mention the most urgent items with specific customer names and amounts. " +
               "Only use facts from the provided data — never invent anything. End with one short encouraging line.",
           },
           {
@@ -297,6 +309,7 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const voice = GEMINI_VOICES.includes(body?.voice) ? body.voice : DEFAULT_VOICE;
+    const language: BriefingLanguage = ALLOWED_LANGUAGES.includes(body?.language) ? body.language : "en";
 
     const { data: profile } = await admin.from("profiles").select("name").eq("id", user.id).maybeSingle();
     const name = (profile?.name ?? "there").split(" ")[0];
@@ -307,12 +320,13 @@ Deno.serve(async (req) => {
     else if (role === "accounts") ctx = await gatherAccountsReminders(admin);
     else ctx = await gatherAdminReminders(admin);
 
-    const script = await generateScript(name, role, ctx);
+    const script = await generateScript(name, role, ctx, language);
     const speech = await synthesizeSpeech(script, voice, GEMINI_API_KEY);
 
     return json({
       script,
       voice,
+      language,
       audio: speech.audio ?? null,
       mimeType: speech.mimeType ?? null,
       ttsError: speech.error ?? null,
