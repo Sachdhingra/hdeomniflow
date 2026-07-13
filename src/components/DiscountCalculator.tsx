@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { Calculator, X, Minus, Copy, Trash2, History, GripVertical } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Calculator, X, Minus, Copy, Trash2, History, GripVertical, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,7 +9,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
 
 type Mode = "percent" | "fixed" | "final";
-type TopMode = "basic" | "discount";
 
 interface HistoryItem {
   id: string;
@@ -25,7 +25,6 @@ const ALLOWED_ROLES = ["admin", "sales", "service_head"];
 const STORAGE_KEY = "omniflow_calc_history_v1";
 const POS_KEY = "omniflow_calc_pos_v1";
 const PANEL_W = 320; // 20rem
-const PANEL_H_EST = 480;
 const MIN_VISIBLE = 80;
 
 const clampPos = (x: number, y: number) => {
@@ -51,7 +50,6 @@ const DiscountCalculator = () => {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [minimized, setMinimized] = useState(true);
-  const [topMode, setTopMode] = useState<TopMode>("basic");
 
   // discount state
   const [mode, setMode] = useState<Mode>("percent");
@@ -133,9 +131,6 @@ const DiscountCalculator = () => {
     setDragging(false);
   }, []);
 
-  if (!user || !ALLOWED_ROLES.includes(user.role)) return null;
-
-
   const result = useMemo(() => {
     const m = parseFloat(mrp) || 0;
     const v = parseFloat(val) || 0;
@@ -159,6 +154,8 @@ const DiscountCalculator = () => {
     }
     return { finalPrice, discountAmt, discountPct };
   }, [mrp, val, mode]);
+
+  if (!user || !ALLOWED_ROLES.includes(user.role)) return null;
 
   const saveToHistory = () => {
     const m = parseFloat(mrp) || 0;
@@ -255,9 +252,16 @@ const DiscountCalculator = () => {
     }
   };
 
+  const useAsMrp = () => {
+    const n = parseFloat(display);
+    if (!isFinite(n) || n <= 0) return;
+    setMrp(String(+n.toFixed(2)));
+    setOverwrite(true);
+  };
+
   // Floating launcher (closed state)
   if (!open) {
-    return (
+    return createPortal(
       <button
         onClick={() => { setOpen(true); setMinimized(false); }}
         className="fixed bottom-20 right-4 z-50 h-12 w-12 rounded-full gradient-primary text-primary-foreground shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
@@ -265,14 +269,15 @@ const DiscountCalculator = () => {
         aria-label="Open calculator"
       >
         <Calculator className="w-5 h-5" />
-      </button>
+      </button>,
+      document.body
     );
   }
 
   // Minimized pill
   if (minimized) {
-    const pillText = topMode === "basic" ? display : formatINR(result.finalPrice);
-    return (
+    const pillText = parseFloat(mrp) > 0 ? formatINR(result.finalPrice) : display;
+    return createPortal(
       <button
         onClick={() => setMinimized(false)}
         className="fixed bottom-20 right-4 z-50 px-3 h-10 rounded-full bg-card border border-border shadow-lg flex items-center gap-2 text-sm font-medium hover:bg-accent"
@@ -283,17 +288,18 @@ const DiscountCalculator = () => {
           className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground"
           onClick={(e) => { e.stopPropagation(); setOpen(false); }}
         />
-      </button>
+      </button>,
+      document.body
     );
   }
 
   const KeyBtn = ({ label, onClick, variant = "outline", className = "" }: { label: React.ReactNode; onClick: () => void; variant?: "outline" | "default" | "secondary" | "destructive"; className?: string }) => (
-    <Button type="button" variant={variant} size="sm" onClick={onClick} className={`h-10 text-sm font-semibold ${className}`}>
+    <Button type="button" variant={variant} size="sm" onClick={onClick} className={`h-9 text-sm font-semibold ${className}`}>
       {label}
     </Button>
   );
 
-  return (
+  return createPortal(
     <div
       ref={panelRef}
       style={
@@ -301,7 +307,7 @@ const DiscountCalculator = () => {
           ? { position: "fixed", left: pos.x, top: pos.y, right: "auto", bottom: "auto" }
           : undefined
       }
-      className={`fixed bottom-20 right-4 z-50 w-[20rem] max-w-[calc(100vw-2rem)] rounded-xl bg-card border border-border transition-shadow ${
+      className={`fixed bottom-20 right-4 z-50 w-[20rem] max-w-[calc(100vw-2rem)] rounded-xl bg-card border border-border transition-shadow flex flex-col max-h-[min(85vh,44rem)] ${
         dragging ? "shadow-[0_25px_60px_-10px_rgba(0,0,0,0.45)] opacity-95" : "shadow-2xl"
       }`}
     >
@@ -311,20 +317,18 @@ const DiscountCalculator = () => {
         onPointerUp={onHeaderPointerUp}
         onPointerCancel={onHeaderPointerUp}
         style={{ touchAction: "none", cursor: dragging ? "grabbing" : "grab" }}
-        className="flex items-center gap-2 px-3 py-2 border-b border-border select-none"
+        className="flex items-center gap-2 px-3 py-2 border-b border-border select-none shrink-0"
       >
         <GripVertical className="w-4 h-4 text-muted-foreground" />
         <Calculator className="w-4 h-4 text-primary" />
         <span className="text-sm font-semibold flex-1">Calculator</span>
-        {topMode === "discount" && (
-          <button
-            onClick={() => setShowHistory((s) => !s)}
-            className="text-muted-foreground hover:text-foreground p-1"
-            title="History"
-          >
-            <History className="w-4 h-4" />
-          </button>
-        )}
+        <button
+          onClick={() => setShowHistory((s) => !s)}
+          className={`p-1 ${showHistory ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
+          title="History"
+        >
+          <History className="w-4 h-4" />
+        </button>
         <button onClick={() => setMinimized(true)} className="text-muted-foreground hover:text-foreground p-1" title="Minimize">
           <Minus className="w-4 h-4" />
         </button>
@@ -333,21 +337,55 @@ const DiscountCalculator = () => {
         </button>
       </div>
 
-      <div className="p-3">
-        <Tabs value={topMode} onValueChange={(v) => { setTopMode(v as TopMode); setShowHistory(false); }}>
-          <TabsList className="grid grid-cols-2 h-9 w-full">
-            <TabsTrigger value="basic" className="text-xs">🧮 Basic</TabsTrigger>
-            <TabsTrigger value="discount" className="text-xs">💰 Discount</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="basic" className="mt-3 space-y-3">
-            <div className="rounded-lg bg-muted/50 px-3 py-3 text-right">
+      <div className="p-3 overflow-y-auto">
+        {showHistory ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Recent calculations</span>
+              {history.length > 0 && (
+                <button
+                  onClick={() => setHistory([])}
+                  className="text-xs text-destructive flex items-center gap-1"
+                >
+                  <Trash2 className="w-3 h-3" /> Clear
+                </button>
+              )}
+            </div>
+            {history.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-6">No calculations yet</p>
+            ) : (
+              history.map((h) => (
+                <button
+                  key={h.id}
+                  onClick={() => {
+                    setMode(h.mode);
+                    setMrp(String(h.mrp));
+                    setVal(String(h.input));
+                    setShowHistory(false);
+                  }}
+                  className="w-full text-left p-2 rounded-md border border-border hover:bg-accent text-xs space-y-0.5"
+                >
+                  <div className="flex justify-between font-medium">
+                    <span>{formatINR(h.mrp)} → {formatINR(h.finalPrice)}</span>
+                    <span className="text-primary">-{h.discountPct.toFixed(1)}%</span>
+                  </div>
+                  <div className="text-muted-foreground">
+                    Saved {formatINR(h.discountAmt)} · {new Date(h.at).toLocaleTimeString()}
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {/* ---- Basic calculator ---- */}
+            <div className="rounded-lg bg-muted/50 px-3 py-2 text-right">
               <div className="text-[11px] text-muted-foreground h-4">
                 {prev !== null ? `${prev} ${op ?? ""}` : ""}
               </div>
               <div className="text-2xl font-bold tabular-nums truncate">{display}</div>
             </div>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-4 gap-1.5">
               <KeyBtn label="C" variant="destructive" onClick={clearAll} />
               <KeyBtn label="⌫" variant="secondary" onClick={backspace} />
               <KeyBtn label="/" variant="secondary" onClick={() => setOperator("/")} />
@@ -371,109 +409,78 @@ const DiscountCalculator = () => {
               <KeyBtn label="0" onClick={() => inputDigit("0")} className="col-span-2" />
               <KeyBtn label="." onClick={inputDot} />
             </div>
-            <Button size="sm" variant="outline" className="w-full" onClick={copyBasic}>
-              <Copy className="w-3.5 h-3.5" /> Copy result
-            </Button>
-          </TabsContent>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" className="flex-1" onClick={copyBasic}>
+                <Copy className="w-3.5 h-3.5" /> Copy
+              </Button>
+              <Button size="sm" variant="secondary" className="flex-1" onClick={useAsMrp} title="Use result as MRP below">
+                <ArrowDown className="w-3.5 h-3.5" /> Use as MRP
+              </Button>
+            </div>
 
-          <TabsContent value="discount" className="mt-3">
-            {showHistory ? (
-              <div className="space-y-2 max-h-80 overflow-y-auto">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">Recent calculations</span>
-                  {history.length > 0 && (
-                    <button
-                      onClick={() => setHistory([])}
-                      className="text-xs text-destructive flex items-center gap-1"
-                    >
-                      <Trash2 className="w-3 h-3" /> Clear
-                    </button>
-                  )}
-                </div>
-                {history.length === 0 ? (
-                  <p className="text-xs text-muted-foreground text-center py-6">No calculations yet</p>
-                ) : (
-                  history.map((h) => (
-                    <button
-                      key={h.id}
-                      onClick={() => {
-                        setMode(h.mode);
-                        setMrp(String(h.mrp));
-                        setVal(String(h.input));
-                        setShowHistory(false);
-                      }}
-                      className="w-full text-left p-2 rounded-md border border-border hover:bg-accent text-xs space-y-0.5"
-                    >
-                      <div className="flex justify-between font-medium">
-                        <span>{formatINR(h.mrp)} → {formatINR(h.finalPrice)}</span>
-                        <span className="text-primary">-{h.discountPct.toFixed(1)}%</span>
-                      </div>
-                      <div className="text-muted-foreground">
-                        Saved {formatINR(h.discountAmt)} · {new Date(h.at).toLocaleTimeString()}
-                      </div>
-                    </button>
-                  ))
-                )}
+            {/* ---- Discount section (same window) ---- */}
+            <div className="flex items-center gap-2 pt-1">
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">💰 Discount</span>
+              <div className="h-px flex-1 bg-border" />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">MRP / Original Price (₹)</Label>
+              <Input
+                type="number"
+                inputMode="decimal"
+                placeholder="0.00"
+                value={mrp}
+                onChange={(e) => setMrp(e.target.value)}
+                className="h-9"
+              />
+            </div>
+
+            <Tabs value={mode} onValueChange={(v) => { setVal(""); setMode(v as Mode); }}>
+              <TabsList className="grid grid-cols-3 h-8 w-full">
+                <TabsTrigger value="percent" className="text-xs">%</TabsTrigger>
+                <TabsTrigger value="fixed" className="text-xs">₹ Off</TabsTrigger>
+                <TabsTrigger value="final" className="text-xs">Final</TabsTrigger>
+              </TabsList>
+              <TabsContent value="percent" className="mt-2 space-y-1">
+                <Label className="text-xs">Discount %</Label>
+                <Input type="number" inputMode="decimal" placeholder="0" value={val} onChange={(e) => setVal(e.target.value)} className="h-9" />
+              </TabsContent>
+              <TabsContent value="fixed" className="mt-2 space-y-1">
+                <Label className="text-xs">Discount Amount (₹)</Label>
+                <Input type="number" inputMode="decimal" placeholder="0.00" value={val} onChange={(e) => setVal(e.target.value)} className="h-9" />
+              </TabsContent>
+              <TabsContent value="final" className="mt-2 space-y-1">
+                <Label className="text-xs">Final Price (₹)</Label>
+                <Input type="number" inputMode="decimal" placeholder="0.00" value={val} onChange={(e) => setVal(e.target.value)} className="h-9" />
+              </TabsContent>
+            </Tabs>
+
+            <div className="rounded-lg bg-muted/50 p-3 space-y-1">
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Discount</span>
+                <span>{formatINR(result.discountAmt)} ({result.discountPct.toFixed(2)}%)</span>
               </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">MRP / Original Price (₹)</Label>
-                  <Input
-                    type="number"
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    value={mrp}
-                    onChange={(e) => setMrp(e.target.value)}
-                    className="h-9"
-                  />
-                </div>
-
-                <Tabs value={mode} onValueChange={(v) => { setVal(""); setMode(v as Mode); }}>
-                  <TabsList className="grid grid-cols-3 h-8">
-                    <TabsTrigger value="percent" className="text-xs">%</TabsTrigger>
-                    <TabsTrigger value="fixed" className="text-xs">₹ Off</TabsTrigger>
-                    <TabsTrigger value="final" className="text-xs">Final</TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="percent" className="mt-2 space-y-1">
-                    <Label className="text-xs">Discount %</Label>
-                    <Input type="number" inputMode="decimal" placeholder="0" value={val} onChange={(e) => setVal(e.target.value)} className="h-9" />
-                  </TabsContent>
-                  <TabsContent value="fixed" className="mt-2 space-y-1">
-                    <Label className="text-xs">Discount Amount (₹)</Label>
-                    <Input type="number" inputMode="decimal" placeholder="0.00" value={val} onChange={(e) => setVal(e.target.value)} className="h-9" />
-                  </TabsContent>
-                  <TabsContent value="final" className="mt-2 space-y-1">
-                    <Label className="text-xs">Final Price (₹)</Label>
-                    <Input type="number" inputMode="decimal" placeholder="0.00" value={val} onChange={(e) => setVal(e.target.value)} className="h-9" />
-                  </TabsContent>
-                </Tabs>
-
-                <div className="rounded-lg bg-muted/50 p-3 space-y-1">
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Discount</span>
-                    <span>{formatINR(result.discountAmt)} ({result.discountPct.toFixed(2)}%)</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-muted-foreground">Final Price</span>
-                    <span className="text-lg font-bold text-primary">{formatINR(result.finalPrice)}</span>
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline" className="flex-1" onClick={() => { setMrp(""); setVal(""); }}>
-                    Reset
-                  </Button>
-                  <Button size="sm" className="flex-1" onClick={copyPrice} disabled={!mrp}>
-                    <Copy className="w-3.5 h-3.5" /> Copy
-                  </Button>
-                </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-muted-foreground">Final Price</span>
+                <span className="text-lg font-bold text-primary">{formatINR(result.finalPrice)}</span>
               </div>
-            )}
-          </TabsContent>
-        </Tabs>
+            </div>
+
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" className="flex-1" onClick={() => { setMrp(""); setVal(""); }}>
+                Reset
+              </Button>
+              <Button size="sm" className="flex-1" onClick={copyPrice} disabled={!mrp}>
+                <Copy className="w-3.5 h-3.5" /> Copy
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
