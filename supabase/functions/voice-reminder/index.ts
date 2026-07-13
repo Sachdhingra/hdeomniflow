@@ -22,6 +22,8 @@ const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
 
 const ALLOWED_ROLES = ["admin", "sales", "service_head", "accounts"];
 const SCRIPT_MODEL = "google/gemini-2.5-flash";
+const ALLOWED_LANGUAGES = ["en", "hi"] as const;
+type BriefingLanguage = (typeof ALLOWED_LANGUAGES)[number];
 
 // ── helpers ──────────────────────────────────────────────
 
