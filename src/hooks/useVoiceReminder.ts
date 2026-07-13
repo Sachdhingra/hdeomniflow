@@ -71,16 +71,29 @@ export function useVoiceReminder() {
     }
   }, []);
 
+  const setLanguage = useCallback((l: BriefingLanguage) => {
+    setLanguageState(l);
+    try {
+      localStorage.setItem(BRIEFING_LANGUAGE_STORAGE_KEY, l);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const speakWithBrowser = useCallback((text: string): boolean => {
     if (!("speechSynthesis" in window)) return false;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
+    const bcp = BRIEFING_LANGUAGES.find(l => l.id === language)?.bcp47 ?? "en-IN";
+    utterance.lang = bcp;
+    const match = window.speechSynthesis.getVoices().find(v => v.lang?.toLowerCase().startsWith(bcp.toLowerCase().split("-")[0]));
+    if (match) utterance.voice = match;
     utterance.onend = () => setPlaying(false);
     utterance.onerror = () => setPlaying(false);
     window.speechSynthesis.speak(utterance);
     setPlaying(true);
     return true;
-  }, []);
+  }, [language]);
 
   const play = useCallback(async () => {
     if (loading) return;
