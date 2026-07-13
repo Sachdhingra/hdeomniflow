@@ -35,6 +35,15 @@ export function useVoiceReminder() {
       return DEFAULT_VOICE;
     }
   });
+  const [language, setLanguageState] = useState<BriefingLanguage>(() => {
+    try {
+      const v = localStorage.getItem(BRIEFING_LANGUAGE_STORAGE_KEY);
+      if (v && BRIEFING_LANGUAGES.some(l => l.id === v)) return v as BriefingLanguage;
+    } catch {
+      /* ignore */
+    }
+    return DEFAULT_BRIEFING_LANGUAGE;
+  });
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const urlRef = useRef<string | null>(null);
 
