@@ -309,6 +309,7 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const voice = GEMINI_VOICES.includes(body?.voice) ? body.voice : DEFAULT_VOICE;
+    const language: BriefingLanguage = ALLOWED_LANGUAGES.includes(body?.language) ? body.language : "en";
 
     const { data: profile } = await admin.from("profiles").select("name").eq("id", user.id).maybeSingle();
     const name = (profile?.name ?? "there").split(" ")[0];
@@ -319,12 +320,13 @@ Deno.serve(async (req) => {
     else if (role === "accounts") ctx = await gatherAccountsReminders(admin);
     else ctx = await gatherAdminReminders(admin);
 
-    const script = await generateScript(name, role, ctx);
+    const script = await generateScript(name, role, ctx, language);
     const speech = await synthesizeSpeech(script, voice, GEMINI_API_KEY);
 
     return json({
       script,
       voice,
+      language,
       audio: speech.audio ?? null,
       mimeType: speech.mimeType ?? null,
       ttsError: speech.error ?? null,
