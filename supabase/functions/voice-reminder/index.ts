@@ -42,8 +42,13 @@ function speakRupees(n: number): string {
   return `${Math.round(n)} rupees`;
 }
 
-function istGreeting(): string {
+function istGreeting(lang: BriefingLanguage = "en"): string {
   const istHour = new Date(Date.now() + 5.5 * 3600000).getUTCHours();
+  if (lang === "hi") {
+    if (istHour < 12) return "सुप्रभात";
+    if (istHour < 17) return "नमस्ते";
+    return "शुभ संध्या";
+  }
   if (istHour < 12) return "Good morning";
   if (istHour < 17) return "Good afternoon";
   return "Good evening";
