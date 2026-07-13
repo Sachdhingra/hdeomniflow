@@ -20,9 +20,11 @@ export function getRecognitionCtor(): (new () => SpeechRecognitionLike) | null {
 }
 
 // Voice-activity detection used by the silent wake-word standby: true when
-// the current mic RMS level clearly rises above the ambient noise floor.
+// the current mic RMS level rises above the ambient noise floor. Thresholds
+// are deliberately sensitive — a false trigger only costs a short, silent
+// verification pass, while a missed trigger means "Hey Jarvis" is ignored.
 export function voiceDetected(rms: number, noiseFloor: number): boolean {
-  return rms > Math.max(0.025, noiseFloor * 3);
+  return rms > Math.max(0.012, noiseFloor * 2.5);
 }
 
 // Exponential moving average keeps the noise floor tracking slow changes in

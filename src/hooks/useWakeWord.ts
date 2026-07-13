@@ -29,24 +29,26 @@ export function setWakeEnabledSetting(on: boolean) {
   window.dispatchEvent(new CustomEvent(JARVIS_WAKE_EVENT, { detail: on }));
 }
 
-const VAD_POLL_MS = 100; // mic level check cadence in standby
-const VAD_HITS_REQUIRED = 2; // consecutive loud samples before verifying
-const VERIFY_WINDOW_MS = 8000; // how long recognition runs per verification
-const VERIFY_COOLDOWN_MS = 800; // silence gap before standby resumes
+const VAD_POLL_MS = 60; // mic level check cadence in standby
+const VERIFY_WINDOW_MS = 10000; // how long recognition listens per verification
+const STANDBY_RESTART_DELAY_MS = 300; // gap between verify end and standby
 
-// Background "Hey Jarvis" listener. Runs in two stages so speech recognition
-// (which plays an audible chime on some platforms, notably Android) is NOT
-// kept running in a restart loop:
+// Background "Hey Jarvis" listener. Runs in two alternating stages so speech
+// recognition (which plays an audible chime on some platforms, notably
+// Android) is NOT kept in a constant restart loop:
 //
-//   1. SILENT STANDBY — the mic is monitored through Web Audio voice-activity
-//      detection only. No recognition service, no beeps.
-//   2. VERIFY — the moment someone starts talking, speech recognition runs
-//      briefly to check for the wake phrase, then standby resumes.
+//   1. SILENT STANDBY — the mic level is monitored through a Web Audio
+//      analyser. No recognition service, no beeps.
+//   2. VERIFY — the moment sound rises above the room's noise floor, the
+//      standby mic is fully released (recognition can't share the mic on
+//      some phones) and speech recognition listens for up to 10s for the
+//      wake phrase, then standby resumes.
 //
 // On wake, onWake receives the command spoken after the phrase ("" when the
-// user said only "Hey Jarvis"). If mic permission is denied the setting is
-// turned off globally so it doesn't retry forever. Browsers without Web Audio
-// fall back to a slow recognition loop.
+// user said only "Hey Jarvis"). A lone "Hey Jarvis" is acted on from interim
+// results so the mic opens without waiting for end-of-speech silence. If mic
+// permission is denied the setting turns off globally so it doesn't retry
+// forever. Browsers without Web Audio fall back to a recognition loop.
 export function useWakeWord(active: boolean, language: string, onWake: (command: string) => void) {
   const [listening, setListening] = useState(false);
   const onWakeRef = useRef(onWake);
@@ -64,12 +66,25 @@ export function useWakeWord(active: boolean, language: string, onWake: (command:
     let stream: MediaStream | null = null;
     let audioCtx: AudioContext | null = null;
     let vadTimer: ReturnType<typeof setInterval> | undefined;
-    let vadPaused = false;
-    let resumeTimer: ReturnType<typeof setTimeout> | undefined;
     let rec: SpeechRecognitionLike | null = null;
     let verifyTimer: ReturnType<typeof setTimeout> | undefined;
+    let restartTimer: ReturnType<typeof setTimeout> | undefined;
+    let useVad = true;
 
-    const stopRecognition = () => {
+    const teardownStandby = () => {
+      clearInterval(vadTimer);
+      vadTimer = undefined;
+      if (audioCtx) {
+        audioCtx.close().catch(() => {});
+        audioCtx = null;
+      }
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        stream = null;
+      }
+    };
+
+    const teardownVerify = () => {
       clearTimeout(verifyTimer);
       if (rec) {
         rec.onresult = null;
@@ -82,17 +97,9 @@ export function useWakeWord(active: boolean, language: string, onWake: (command:
 
     const stopNow = () => {
       cancelled = true;
-      clearInterval(vadTimer);
-      clearTimeout(resumeTimer);
-      stopRecognition();
-      if (audioCtx) {
-        audioCtx.close().catch(() => {});
-        audioCtx = null;
-      }
-      if (stream) {
-        stream.getTracks().forEach(t => t.stop());
-        stream = null;
-      }
+      clearTimeout(restartTimer);
+      teardownVerify();
+      teardownStandby();
       setListening(false);
     };
     stopNowRef.current = stopNow;
@@ -103,15 +110,21 @@ export function useWakeWord(active: boolean, language: string, onWake: (command:
       toast.error(message);
     };
 
-    const resumeStandby = (delay: number) => {
-      clearTimeout(resumeTimer);
-      resumeTimer = setTimeout(() => {
-        vadPaused = false;
+    const fire = (command: string) => {
+      stopNow();
+      onWakeRef.current(command);
+    };
+
+    const scheduleStandby = (delay: number) => {
+      clearTimeout(restartTimer);
+      restartTimer = setTimeout(() => {
+        if (!cancelled) startStandby();
       }, delay);
     };
 
-    // Stage 2: someone is talking — run recognition briefly to check for the
-    // wake phrase. This is the only point a recognition chime can occur.
+    // Stage 2: someone is talking — the standby mic is already released, so
+    // recognition has the microphone to itself while it checks for the wake
+    // phrase.
     const startVerify = () => {
       if (cancelled || rec) return;
       const Ctor = getRecognitionCtor();
@@ -124,12 +137,18 @@ export function useWakeWord(active: boolean, language: string, onWake: (command:
       rec.onresult = (e) => {
         for (let i = e.resultIndex; i < e.results.length; i++) {
           const r = e.results[i];
-          if (!r.isFinal) continue;
           const command = extractWakeCommand(r[0].transcript);
           if (command === null) continue;
-          stopNow();
-          onWakeRef.current(command);
-          return;
+          if (r.isFinal) {
+            fire(command);
+            return;
+          }
+          // Lone "Hey Jarvis" heard mid-stream: open the mic right away
+          // instead of waiting ~1s for the recognizer's end-of-speech.
+          if (command === "") {
+            fire("");
+            return;
+          }
         }
       };
       rec.onerror = (e) => {
@@ -137,46 +156,37 @@ export function useWakeWord(active: boolean, language: string, onWake: (command:
         if (e.error === "not-allowed" || e.error === "service-not-allowed") {
           disableWake("Microphone access was blocked — 'Hey Jarvis' has been turned off.");
         }
+        // other errors (no-speech, audio-capture blips): onend recovers below
       };
       rec.onend = () => {
         rec = null;
         clearTimeout(verifyTimer);
-        if (!cancelled) resumeStandby(VERIFY_COOLDOWN_MS);
+        if (!cancelled) scheduleStandby(STANDBY_RESTART_DELAY_MS);
       };
       try {
         rec.start();
         verifyTimer = setTimeout(() => rec?.stop(), VERIFY_WINDOW_MS);
       } catch {
         rec = null;
-        if (!cancelled) resumeStandby(VERIFY_COOLDOWN_MS);
+        if (!cancelled) scheduleStandby(STANDBY_RESTART_DELAY_MS);
       }
     };
 
-    // Fallback for browsers without Web Audio: the old recognition loop, with
-    // a long gap between restarts to keep any chime infrequent.
-    const startRecognitionLoop = () => {
-      if (cancelled) return;
-      const loop = () => {
-        if (cancelled || rec) return;
-        startVerify();
-        const prevOnEnd = rec?.onend ?? null;
-        if (rec) {
-          rec.onend = () => {
-            prevOnEnd?.();
-            if (!cancelled) resumeTimer = setTimeout(loop, 2500);
-          };
-        }
-      };
-      loop();
-      setListening(true);
-    };
-
-    // Stage 1: silent standby via voice-activity detection.
+    // Stage 1: silent standby via voice-activity detection. Falls back to a
+    // plain recognition loop when Web Audio can't run.
     const startStandby = async () => {
+      if (cancelled) return;
+      if (!useVad) {
+        startVerify();
+        setListening(true);
+        return;
+      }
       const w = window as unknown as Record<string, unknown>;
       const AudioCtxCtor = (w.AudioContext ?? w.webkitAudioContext) as (new () => AudioContext) | undefined;
       if (!navigator.mediaDevices?.getUserMedia || !AudioCtxCtor) {
-        startRecognitionLoop();
+        useVad = false;
+        startVerify();
+        setListening(true);
         return;
       }
       try {
@@ -186,8 +196,7 @@ export function useWakeWord(active: boolean, language: string, onWake: (command:
         return;
       }
       if (cancelled) {
-        stream?.getTracks().forEach(t => t.stop());
-        stream = null;
+        teardownStandby();
         return;
       }
       audioCtx = new AudioCtxCtor();
@@ -195,12 +204,12 @@ export function useWakeWord(active: boolean, language: string, onWake: (command:
         await audioCtx.resume().catch(() => {});
       }
       if (audioCtx.state !== "running") {
-        // Autoplay policy kept the context suspended — VAD would hear nothing.
-        audioCtx.close().catch(() => {});
-        audioCtx = null;
-        stream.getTracks().forEach(t => t.stop());
-        stream = null;
-        startRecognitionLoop();
+        // Autoplay policy kept the context suspended — VAD would hear
+        // nothing. Fall back to the recognition loop permanently.
+        teardownStandby();
+        useVad = false;
+        startVerify();
+        setListening(true);
         return;
       }
       const source = audioCtx.createMediaStreamSource(stream);
@@ -208,26 +217,21 @@ export function useWakeWord(active: boolean, language: string, onWake: (command:
       analyser.fftSize = 512;
       source.connect(analyser);
       const samples = new Float32Array(analyser.fftSize);
-      let noiseFloor = 0.01;
-      let hits = 0;
+      let noiseFloor = 0.008;
 
       setListening(true);
       vadTimer = setInterval(() => {
-        if (cancelled || vadPaused || rec) return;
+        if (cancelled || !audioCtx) return;
         analyser.getFloatTimeDomainData(samples);
         let sum = 0;
         for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
         const rms = Math.sqrt(sum / samples.length);
         if (voiceDetected(rms, noiseFloor)) {
-          hits++;
-          if (hits >= VAD_HITS_REQUIRED) {
-            hits = 0;
-            vadPaused = true;
-            startVerify();
-            resumeStandby(VERIFY_WINDOW_MS + VERIFY_COOLDOWN_MS);
-          }
+          // Release the mic first — recognition can't share it on some
+          // phones — then listen for the wake phrase.
+          teardownStandby();
+          startVerify();
         } else {
-          hits = 0;
           noiseFloor = updateNoiseFloor(noiseFloor, rms);
         }
       }, VAD_POLL_MS);
