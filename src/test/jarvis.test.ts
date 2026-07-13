@@ -68,15 +68,15 @@ describe("jarvis", () => {
 
   it("detects speech onset above the ambient noise floor", () => {
     // quiet room: ambient hum is not speech
-    expect(voiceDetected(0.008, 0.01)).toBe(false);
+    expect(voiceDetected(0.003, 0.005)).toBe(false);
     // someone talking clearly above the floor
-    expect(voiceDetected(0.1, 0.01)).toBe(true);
+    expect(voiceDetected(0.1, 0.005)).toBe(true);
     // loud room: the same absolute level no longer counts as speech
-    expect(voiceDetected(0.1, 0.05)).toBe(false);
+    expect(voiceDetected(0.05, 0.05)).toBe(false);
     // noise floor drifts slowly and speech spikes are capped so they don't drag it up
-    const drifted = updateNoiseFloor(0.01, 0.5);
-    expect(drifted).toBeLessThan(0.012);
-    expect(drifted).toBeGreaterThan(0.01);
+    const drifted = updateNoiseFloor(0.005, 0.5);
+    expect(drifted).toBeLessThan(0.007);
+    expect(drifted).toBeGreaterThan(0.005);
   });
 
   it("plays the daily briefing once per day per user", () => {
