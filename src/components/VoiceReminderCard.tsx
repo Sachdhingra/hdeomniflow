@@ -29,6 +29,16 @@ const VoiceReminderCard = () => {
               Gemini reads out your overdue leads, follow-ups & today's work
             </div>
           </div>
+          <Select value={language} onValueChange={(v) => setLanguage(v as BriefingLanguage)} disabled={loading || playing}>
+            <SelectTrigger className="w-[140px] h-9">
+              <SelectValue placeholder="Language" />
+            </SelectTrigger>
+            <SelectContent>
+              {BRIEFING_LANGUAGES.map(l => (
+                <SelectItem key={l.id} value={l.id}>{l.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select value={voice} onValueChange={setVoice} disabled={loading || playing}>
             <SelectTrigger className="w-[170px] h-9">
               <SelectValue placeholder="Voice" />
