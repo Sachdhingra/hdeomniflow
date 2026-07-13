@@ -101,7 +101,7 @@ export function useVoiceReminder() {
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke<VoiceReminderResponse>("voice-reminder", {
-        body: { voice },
+        body: { voice, language },
       });
       if (error) {
         // Surface the real cause instead of the generic invoke message.
