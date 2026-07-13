@@ -168,7 +168,7 @@ export function useVoiceReminder() {
     } finally {
       setLoading(false);
     }
-  }, [voice, loading, stop, speakWithBrowser]);
+  }, [voice, language, loading, stop, speakWithBrowser]);
 
-  return { play, stop, loading, playing, script, voice, setVoice };
+  return { play, stop, loading, playing, script, voice, setVoice, language, setLanguage };
 }
