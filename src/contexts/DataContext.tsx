@@ -487,8 +487,26 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   }, [user, fetchLeads, fetchServiceJobs, fetchNotifications, fetchSiteVisits, fetchSummary]);
 
   const addLead = async (lead: TablesInsert<"leads">): Promise<Lead | null> => {
+    // Duplicate protection: one active lead per phone number.
+    if (lead.customer_phone) {
+      const { data: existing } = await supabase
+        .from("leads")
+        .select("id")
+        .eq("customer_phone", lead.customer_phone)
+        .is("deleted_at", null)
+        .limit(1);
+      if (existing && existing.length > 0) {
+        throw new Error("A lead already exists for this phone number — duplicate entry blocked.");
+      }
+    }
     const { data, error } = await supabase.from("leads").insert(lead).select().single();
-    if (error) throw error;
+    if (error) {
+      // Unique index violation (concurrent duplicate submission)
+      if ((error as any).code === "23505") {
+        throw new Error("A lead already exists for this phone number — duplicate entry blocked.");
+      }
+      throw error;
+    }
     if (data) setLeads(prev => [data, ...prev]);
     return data as Lead | null;
   };
@@ -522,6 +540,19 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const assignDelivery = async (leadId: string, deliveryDate: string, deliveryNotes: string, assignedTo: string) => {
+    // Duplicate protection: block a second dispatch while one from this lead is still awaiting accounts approval.
+    const { data: existingJob } = await supabase
+      .from("service_jobs")
+      .select("id")
+      .eq("source_lead_id", leadId)
+      .eq("type", "delivery")
+      .eq("accounts_approval_status", "pending")
+      .is("deleted_at", null)
+      .limit(1);
+    if (existingJob && existingJob.length > 0) {
+      throw new Error("A delivery for this lead is already awaiting accounts approval — duplicate entry blocked.");
+    }
+
     await supabase.from("leads").update({
       delivery_date: deliveryDate,
       delivery_notes: deliveryNotes,
@@ -531,7 +562,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
 
     const lead = leads.find(l => l.id === leadId);
     if (lead) {
-      await supabase.from("service_jobs").insert({
+      const { error: jobError } = await supabase.from("service_jobs").insert({
         customer_name: lead.customer_name,
         customer_phone: lead.customer_phone,
         address: deliveryNotes,
@@ -544,6 +575,13 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
         type: "delivery",
         source_lead_id: leadId,
       });
+      if (jobError) {
+        // Unique index violation (concurrent duplicate submission)
+        if ((jobError as any).code === "23505") {
+          throw new Error("A delivery for this lead is already awaiting accounts approval — duplicate entry blocked.");
+        }
+        throw jobError;
+      }
 
       const serviceHeads = allRoles.filter(r => r.role === "service_head");
       for (const sh of serviceHeads) {

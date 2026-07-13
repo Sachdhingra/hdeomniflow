@@ -22,6 +22,7 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
   const { user } = useAuth();
   const { addLead } = useData();
   const [open, setOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [assignFor, setAssignFor] = useState<{ id: string; name: string } | null>(null);
   const [form, setForm] = useState({
     customerName: "", customerPhone: "", category: "" as LeadCategory | "",
@@ -82,6 +83,7 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return; // guard against double-click duplicate submissions
     if (!form.customerName || !form.customerPhone || !form.category || !form.valueInRupees || !form.nextFollowUpDate || !form.nextFollowUpTime) {
       toast.error("Please fill all required fields including follow-up date & time");
       return;
@@ -104,6 +106,7 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
         gps = { lat: pos.coords.latitude, lng: pos.coords.longitude };
       } catch { /* ignore */ }
     }
+    setSubmitting(true);
     try {
       const finalNeighborhood = form.neighborhood === "__other__"
         ? form.neighborhoodOther.trim() || null
@@ -152,6 +155,8 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
       } else {
         toast.error(msg);
       }
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -294,8 +299,8 @@ const LeadForm = ({ source = "sales" }: { source?: string }) => {
           </div>
           <div className="space-y-1.5"><Label>Custom Notes — what did they specifically ask?</Label><Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Specific questions, concerns, requests..." rows={2} /></div>
 
-          <Button type="submit" className="w-full gradient-primary" disabled={duplicateCheck.exists || duplicateCheck.checking}>
-            {duplicateCheck.exists ? "Duplicate — Cannot Save" : "Save Lead"}
+          <Button type="submit" className="w-full gradient-primary" disabled={submitting || duplicateCheck.exists || duplicateCheck.checking}>
+            {duplicateCheck.exists ? "Duplicate — Cannot Save" : submitting ? "Saving..." : "Save Lead"}
           </Button>
         </form>
       </DialogContent>

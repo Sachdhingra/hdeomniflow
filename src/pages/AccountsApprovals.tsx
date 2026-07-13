@@ -16,6 +16,7 @@ import {
 import { toast } from "sonner";
 import StatCard from "@/components/StatCard";
 import VoiceReminderCard from "@/components/VoiceReminderCard";
+import DeleteButton from "@/components/DeleteButton";
 
 type Job = {
   id: string;
@@ -57,6 +58,26 @@ const AccountsApprovals = () => {
   const [auditLog, setAuditLog] = useState<any[]>([]);
   const [dues, setDues] = useState<any[]>([]);
   const [newDue, setNewDue] = useState({ customer_name: "", customer_phone: "", amount: "", description: "" });
+  const [addingDue, setAddingDue] = useState(false);
+
+  const isAdmin = user?.role === "admin";
+
+  // Admin-only: soft delete a dispatch (recoverable from Admin > Deleted Records)
+  const deleteJob = async (jobId: string) => {
+    const { error } = await supabase.from("service_jobs").update({
+      deleted_at: new Date().toISOString(),
+      deleted_by: user?.id || null,
+    } as any).eq("id", jobId);
+    if (error) throw error;
+    load();
+  };
+
+  // Admin-only: remove a customer due entry
+  const deleteDue = async (dueId: string) => {
+    const { error } = await supabase.from("customer_dues" as any).delete().eq("id", dueId);
+    if (error) throw error;
+    loadDues();
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -285,10 +306,15 @@ const AccountsApprovals = () => {
                         </p>
                       )}
                     </div>
-                    <div className="text-right">
+                    <div className="text-right space-y-1">
                       <p className="font-bold flex items-center gap-1 justify-end">
                         <IndianRupee className="w-4 h-4" />{Number(job.value).toLocaleString("en-IN")}
                       </p>
+                      {isAdmin && (
+                        <div className="flex justify-end">
+                          <DeleteButton onDelete={() => deleteJob(job.id)} itemName="Dispatch" />
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -377,22 +403,28 @@ const AccountsApprovals = () => {
                   placeholder="Description" value={newDue.description}
                   onChange={e => setNewDue({ ...newDue, description: e.target.value })} />
               </div>
-              <Button size="sm" onClick={async () => {
+              <Button size="sm" disabled={addingDue} onClick={async () => {
+                if (addingDue) return; // guard against double-click duplicate entries
                 if (!newDue.customer_name || !newDue.customer_phone || !newDue.amount) {
                   toast.error("Name, phone & amount are required"); return;
                 }
-                const { error } = await supabase.from("customer_dues" as any).insert({
-                  customer_name: newDue.customer_name,
-                  customer_phone: newDue.customer_phone,
-                  amount: Number(newDue.amount),
-                  description: newDue.description || null,
-                  due_type: "manual",
-                });
-                if (error) { toast.error(error.message); return; }
-                toast.success("Due added");
-                setNewDue({ customer_name: "", customer_phone: "", amount: "", description: "" });
-                loadDues();
-              }}>Add Due</Button>
+                setAddingDue(true);
+                try {
+                  const { error } = await supabase.from("customer_dues" as any).insert({
+                    customer_name: newDue.customer_name,
+                    customer_phone: newDue.customer_phone,
+                    amount: Number(newDue.amount),
+                    description: newDue.description || null,
+                    due_type: "manual",
+                  });
+                  if (error) { toast.error(error.message); return; }
+                  toast.success("Due added");
+                  setNewDue({ customer_name: "", customer_phone: "", amount: "", description: "" });
+                  loadDues();
+                } finally {
+                  setAddingDue(false);
+                }
+              }}>{addingDue ? "Adding..." : "Add Due"}</Button>
             </CardContent>
           </Card>
 
@@ -407,7 +439,9 @@ const AccountsApprovals = () => {
                     <p className="font-medium truncate">{d.customer_name} <span className="text-muted-foreground">· {d.customer_phone}</span></p>
                     {d.description && <p className="text-xs text-muted-foreground">{d.description}</p>}
                   </div>
-                  <div className="text-right shrink-0">
+                  <div className="text-right shrink-0 flex items-center gap-2 justify-end">
+                    {isAdmin && <DeleteButton onDelete={() => deleteDue(d.id)} itemName="Customer Due" />}
+                    <div>
                     <p className="font-bold">₹{Number(d.amount).toLocaleString("en-IN")}</p>
                     {d.is_cleared ? (
                       <Badge variant="outline" className={STATUS_BADGE.approved}>Cleared</Badge>
@@ -422,6 +456,7 @@ const AccountsApprovals = () => {
                           loadDues();
                         }}>Mark cleared</Button>
                     )}
+                    </div>
                   </div>
                 </div>
               ))}

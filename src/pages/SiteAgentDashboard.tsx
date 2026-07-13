@@ -44,6 +44,7 @@ const SiteAgentDashboard = () => {
   };
 
   const handleConvertToLead = async (visitId: string) => {
+    if (convertingId) return; // guard against double-click duplicate conversions
     const visit = myVisits.find(v => v.id === visitId);
     if (!visit) return;
     if (!visit.customer_name || !visit.customer_phone) {

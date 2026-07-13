@@ -76,7 +76,13 @@ const SelfDeliveryDialog = ({ lead, open, onOpenChange }: Props) => {
         invoice_number: invoiceNumber.trim(),
         invoice_date: invoiceDate,
       } as any);
-      if (jobError) throw jobError;
+      if (jobError) {
+        // Unique index violation (duplicate submission)
+        if ((jobError as any).code === "23505") {
+          throw new Error("A self-delivery for this lead is already awaiting accounts approval — duplicate entry blocked.");
+        }
+        throw jobError;
+      }
 
       toast.success("Self-delivery submitted for accounts approval ✅");
       onOpenChange(false);

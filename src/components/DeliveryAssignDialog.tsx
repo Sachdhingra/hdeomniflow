@@ -20,10 +20,13 @@ const DeliveryAssignDialog = ({ lead, open, onOpenChange }: Props) => {
   const { assignDelivery } = useData();
   const [deliveryDate, setDeliveryDate] = useState("");
   const [deliveryNotes, setDeliveryNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return; // guard against double-click duplicate submissions
     if (!deliveryDate) { toast.error("Delivery date is required"); return; }
+    setSubmitting(true);
     try {
       await assignDelivery(lead.id, deliveryDate, deliveryNotes, user?.id || "");
       toast.success("Delivery assigned to Service Head!");
@@ -32,6 +35,8 @@ const DeliveryAssignDialog = ({ lead, open, onOpenChange }: Props) => {
       setDeliveryNotes("");
     } catch (err: any) {
       toast.error(err.message || "Failed to assign delivery");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -51,7 +56,9 @@ const DeliveryAssignDialog = ({ lead, open, onOpenChange }: Props) => {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5"><Label>Delivery Date *</Label><Input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} /></div>
           <div className="space-y-1.5"><Label>Delivery Address & Notes</Label><Textarea value={deliveryNotes} onChange={e => setDeliveryNotes(e.target.value)} placeholder="Delivery address, special instructions..." rows={3} /></div>
-          <Button type="submit" className="w-full gradient-primary gap-2"><Truck className="w-4 h-4" /> Send to Service Head</Button>
+          <Button type="submit" className="w-full gradient-primary gap-2" disabled={submitting}>
+            <Truck className="w-4 h-4" /> {submitting ? "Sending..." : "Send to Service Head"}
+          </Button>
         </form>
       </DialogContent>
     </Dialog>

@@ -65,6 +65,8 @@ const ServiceDashboard = () => {
   const [tab, setTab] = useState("all");
   const [addOpen, setAddOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState<string | null>(null);
+  const [savingJob, setSavingJob] = useState(false);
+  const [assigning, setAssigning] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState("");
   const [assignDate, setAssignDate] = useState("");
   const [rescheduleOpen, setRescheduleOpen] = useState<string | null>(null);
@@ -107,6 +109,7 @@ const ServiceDashboard = () => {
   }, [tab, fetchAppRequests]);
 
   const handleConvertToJob = async (req: AppServiceRequest) => {
+    if (convertingId) return; // guard against double-click duplicate conversions
     setConvertingId(req.id);
     try {
       await addServiceJob({
@@ -242,9 +245,11 @@ const ServiceDashboard = () => {
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (savingJob) return; // guard against double-click duplicate submissions
     if (!form.customerName || !form.customerPhone || !form.category) { toast.error("Fill required fields"); return; }
     // Validate phone: must be exactly 10 digits
     if (!/^\d{10}$/.test(form.customerPhone)) { toast.error("Phone must be exactly 10 digits"); return; }
+    setSavingJob(true);
     try {
       await addServiceJob({
         customer_name: form.customerName, customer_phone: form.customerPhone,
@@ -262,20 +267,30 @@ const ServiceDashboard = () => {
       setAddOpen(false);
     } catch (err: any) {
       toast.error(err.message || "Failed to add job");
+    } finally {
+      setSavingJob(false);
     }
   };
 
   const handleAssignAgent = async (jobId: string) => {
+    if (assigning) return; // guard against double-click duplicate notifications
     if (!selectedAgent) { toast.error("Select a field agent"); return; }
-    await updateServiceJob(jobId, {
-      assigned_agent: selectedAgent,
-      status: "assigned",
-      date_to_attend: assignDate || undefined,
-    });
-    toast.success("Job assigned to field agent!");
-    setAssignOpen(null);
-    setSelectedAgent("");
-    setAssignDate("");
+    setAssigning(true);
+    try {
+      await updateServiceJob(jobId, {
+        assigned_agent: selectedAgent,
+        status: "assigned",
+        date_to_attend: assignDate || undefined,
+      });
+      toast.success("Job assigned to field agent!");
+      setAssignOpen(null);
+      setSelectedAgent("");
+      setAssignDate("");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to assign job");
+    } finally {
+      setAssigning(false);
+    }
   };
 
   const handleReschedule = async () => {
@@ -391,7 +406,7 @@ const ServiceDashboard = () => {
                 </div>
                 <div className="space-y-1.5"><Label>Reason for Part</Label><Input value={form.claimReason} onChange={e => setForm(f => ({ ...f, claimReason: e.target.value }))} /></div>
               </div>
-              <Button type="submit" className="w-full gradient-primary">Save Service Job</Button>
+              <Button type="submit" className="w-full gradient-primary" disabled={savingJob}>{savingJob ? "Saving..." : "Save Service Job"}</Button>
             </form>
           </DialogContent>
         </Dialog>
@@ -651,7 +666,7 @@ const ServiceDashboard = () => {
               <Label>Date/Time to Attend</Label>
               <Input type="date" value={assignDate} onChange={e => setAssignDate(e.target.value)} />
             </div>
-            <Button className="w-full gradient-primary" onClick={() => assignOpen && handleAssignAgent(assignOpen)}>Assign Job</Button>
+            <Button className="w-full gradient-primary" disabled={assigning} onClick={() => assignOpen && handleAssignAgent(assignOpen)}>{assigning ? "Assigning..." : "Assign Job"}</Button>
           </div>
         </DialogContent>
       </Dialog>
