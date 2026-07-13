@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { Calculator, X, Minus, Copy, Trash2, History, GripVertical, ArrowDown } from "lucide-react";
+import { Calculator, X, Minus, Copy, Trash2, History, GripVertical, ArrowDown, ArrowUp, ClipboardPaste } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -259,6 +259,36 @@ const DiscountCalculator = () => {
     setOverwrite(true);
   };
 
+  const setCalcValue = (n: number) => {
+    if (!isFinite(n)) return;
+    setDisplay(String(+n.toFixed(10)));
+    setPrev(null);
+    setOp(null);
+    setOverwrite(true);
+  };
+
+  // Bring the discount Final Price up into the main calculator so the
+  // user can keep adding/operating on it.
+  const finalToCalc = () => {
+    if (!(parseFloat(mrp) > 0)) return;
+    setCalcValue(result.finalPrice);
+    toast({ title: "Sent to calculator", description: `${formatINR(result.finalPrice)} loaded — continue with + − × /` });
+  };
+
+  const pasteToCalc = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      const n = parseFloat(text.replace(/[₹,\s]/g, ""));
+      if (!isFinite(n)) {
+        toast({ title: "Nothing to paste", description: "Clipboard doesn't contain a number", variant: "destructive" });
+        return;
+      }
+      setCalcValue(n);
+    } catch {
+      toast({ title: "Paste failed", description: "Allow clipboard access and try again", variant: "destructive" });
+    }
+  };
+
   // Floating launcher (closed state)
   if (!open) {
     return createPortal(
@@ -413,8 +443,11 @@ const DiscountCalculator = () => {
               <Button size="sm" variant="outline" className="flex-1" onClick={copyBasic}>
                 <Copy className="w-3.5 h-3.5" /> Copy
               </Button>
+              <Button size="sm" variant="outline" className="flex-1" onClick={pasteToCalc} title="Paste a copied number into the calculator">
+                <ClipboardPaste className="w-3.5 h-3.5" /> Paste
+              </Button>
               <Button size="sm" variant="secondary" className="flex-1" onClick={useAsMrp} title="Use result as MRP below">
-                <ArrowDown className="w-3.5 h-3.5" /> Use as MRP
+                <ArrowDown className="w-3.5 h-3.5" /> MRP
               </Button>
             </div>
 
@@ -471,6 +504,9 @@ const DiscountCalculator = () => {
             <div className="flex gap-2">
               <Button size="sm" variant="outline" className="flex-1" onClick={() => { setMrp(""); setVal(""); }}>
                 Reset
+              </Button>
+              <Button size="sm" variant="secondary" className="flex-1" onClick={finalToCalc} disabled={!mrp} title="Send final price to the calculator above">
+                <ArrowUp className="w-3.5 h-3.5" /> To Calc
               </Button>
               <Button size="sm" className="flex-1" onClick={copyPrice} disabled={!mrp}>
                 <Copy className="w-3.5 h-3.5" /> Copy
