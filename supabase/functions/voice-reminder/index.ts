@@ -234,9 +234,13 @@ function buildFallbackScript(name: string, role: string, ctx: ReminderContext): 
   return parts.join(" ");
 }
 
-async function generateScript(name: string, role: string, ctx: ReminderContext): Promise<string> {
+async function generateScript(name: string, role: string, ctx: ReminderContext, language: BriefingLanguage): Promise<string> {
   const fallback = buildFallbackScript(name, role, ctx);
   if (!LOVABLE_API_KEY) return fallback;
+
+  const langInstruction = language === "hi"
+    ? "Write the ENTIRE briefing in natural conversational Hindi (Devanagari script). Use Hindi numerals-in-words for rupee amounts (e.g. 'साढ़े चार लाख रुपये'), never symbols or digits like ₹450000. Keep English proper nouns (customer names, product names) as-is. Warm but direct tone. Under 120 words."
+    : "Write the briefing in English. Warm but direct, like a sharp assistant. Under 120 words. Say rupee amounts in words (e.g. '4.5 lakh rupees'), never symbols or digits like ₹450000.";
 
   try {
     const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -249,9 +253,10 @@ async function generateScript(name: string, role: string, ctx: ReminderContext):
             role: "system",
             content:
               "You write short spoken reminder briefings for a furniture CRM, to be read aloud by a text-to-speech voice. " +
-              "Rules: plain text only, no markdown, no emoji, no headings, no bullet points. Under 120 words. " +
-              "Warm but direct, like a sharp assistant. Greet the person by first name. " +
-              "Mention the most urgent items with specific customer names and rupee amounts written in words (say '4.5 lakh rupees', never symbols or digits like ₹450000). " +
+              "Rules: plain text only, no markdown, no emoji, no headings, no bullet points. " +
+              langInstruction + " " +
+              "Greet the person by first name. " +
+              "Mention the most urgent items with specific customer names and amounts. " +
               "Only use facts from the provided data — never invent anything. End with one short encouraging line.",
           },
           {
