@@ -17,7 +17,7 @@ interface Props {
   phone?: string;
 }
 
-const InviteQRDialog = ({ open, onOpenChange, customerId, customerName }: Props) => {
+const InviteQRDialog = ({ open, onOpenChange, customerId, customerName, phone }: Props) => {
   const [loading, setLoading] = useState(false);
   const [link, setLink] = useState<string | null>(null);
   const [dataUrl, setDataUrl] = useState<string | null>(null);
@@ -29,14 +29,14 @@ const InviteQRDialog = ({ open, onOpenChange, customerId, customerName }: Props)
     setLink(null);
     setDataUrl(null);
     try {
-      const { data: token, error } = await (supabase as any).rpc("generate_setup_token", {
-        _customer_id: customerId,
+      const { data, error } = await supabase.functions.invoke("create-app-invite", {
+        body: { customerId, phone: phone ?? "" },
       });
-      if (error || !token) throw new Error(error?.message || "Failed to create setup code");
-
-      const setupLink = `${INSIDER_APP_URL}/setup?setup=${encodeURIComponent(token)}`;
-      setLink(setupLink);
-      const png = await QRCode.toDataURL(setupLink, { width: 480, margin: 2 });
+      if (error) throw new Error(error.message || "Failed to create invite");
+      const inviteLink = (data as any)?.link as string | undefined;
+      if (!inviteLink) throw new Error("Invite link missing in response");
+      setLink(inviteLink);
+      const png = await QRCode.toDataURL(inviteLink, { width: 480, margin: 2 });
       setDataUrl(png);
     } catch (e: any) {
       toast.error(e?.message || "Could not generate QR");
@@ -45,6 +45,7 @@ const InviteQRDialog = ({ open, onOpenChange, customerId, customerName }: Props)
       setLoading(false);
     }
   };
+
 
   useEffect(() => {
     if (open) generate();
