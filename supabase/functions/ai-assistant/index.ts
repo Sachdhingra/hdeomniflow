@@ -1,4 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import {
+  DEFAULT_TTS_VOICE,
+  GEMINI_TTS_VOICES,
+  synthesizeSpeech,
+} from "../_shared/gemini-tts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,6 +13,17 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+
+// Roles allowed to use Jarvis voice mode. Each role only ever receives its
+// own scoped data context (see the per-role branches below) — admins see
+// everything, everyone else sees only their own domain.
+// Must stay in sync with JARVIS_ROLES in src/lib/jarvis.ts.
+const JARVIS_VOICE_ROLES = ["admin", "sales", "service_head", "accounts"];
+
+const TEXT_MODEL = "google/gemini-2.5-pro";
+// Voice answers favour latency over depth — flash keeps Jarvis snappy.
+const VOICE_MODEL = "google/gemini-2.5-flash";
 
 const SYSTEM_PROMPT = `You are an AI business intelligence assistant for a furniture CRM called FurnCRM.
 
@@ -19,6 +35,7 @@ CAPABILITIES:
 - You can compare reps against each other and against benchmarks
 - You can calculate pace-to-target and forecast month-end achievement
 - You can give specific corrections: "Saurabh has 3 leads in negotiation for 10+ days with no follow-up — these need action today"
+- For admins the context also covers service (deliveries, field agents) and accounts (pending approvals, company purchases, suppliers) — answer questions across all departments
 
 ANALYSIS STRUCTURE (adapt length to the question):
 1. **Status** — where they are right now with actual numbers
@@ -36,12 +53,42 @@ DISPATCH SCHEDULING: When asked to plan a dispatch schedule, use the calendar en
 - Output as a table: Time | Agent | Customer | Address | Job Type | Est. Duration
 
 RULES:
+- DATA PRIVACY: the context contains ONLY the data this user is entitled to see (described in data_scope). Sales users see only their own leads and targets; service heads see service jobs and field agents; accounts users see approvals, purchases and suppliers; only admins see everything. If the user asks about data outside their scope — for example a salesperson asking about a colleague's pipeline, targets or performance — do NOT guess, estimate or invent it. Politely say that information is only available to admins.
 - ALWAYS use numbers from the context. Never invent figures.
 - Always name specific leads and salespeople when analyzing problems.
 - Use markdown tables when listing multiple leads or jobs.
 - For stale leads: days_in_stage > 7 with no upcoming follow-up = needs action now.
 - For at-risk leads: high value + overdue or stuck = highest priority.
 - Days left in month matters for pace calculation.`;
+
+// Appended to the system prompt when the request comes from Jarvis voice mode.
+const VOICE_SYSTEM_PROMPT = `
+
+VOICE MODE — you are "Jarvis", OmniFlow's spoken voice assistant. Your answer will be read aloud by text-to-speech, so:
+- Reply in plain conversational sentences. No markdown, no tables, no bullet symbols, no headings, no emoji.
+- Be brief: under 120 words unless the user explicitly asks for a full breakdown.
+- Say rupee amounts in words in the reply language ("4.5 lakh rupees" / "साढ़े चार लाख रुपये"), never "₹450000" or digit strings.
+- Lead with the direct answer, then at most two or three key facts or actions with specific names.
+- If the data would normally need a table, speak only the top few items instead.`;
+
+// Jarvis reply language. Customer and product names stay as-is; everything
+// else — including numbers spoken as words — follows the selected language.
+// Human-readable description of what each role's context contains, given to
+// the model so it can explain scope limits instead of guessing at data it
+// doesn't have.
+const DATA_SCOPES: Record<string, string> = {
+  admin: "Full business visibility: every salesperson's pipeline and targets, all service jobs and field agents, and all accounts data.",
+  sales: "Your own leads, follow-ups and target only. Other salespeople's pipelines, targets and performance are not available to you — only admins can see those.",
+  service_head: "All service jobs, the dispatch calendar and field agents. Sales pipelines and accounts data are not available to you — only admins can see those.",
+  accounts: "Accounts approvals, company purchases and suppliers. Sales pipelines and individual performance data are not available to you — only admins can see those.",
+};
+
+const LANGUAGE_INSTRUCTIONS: Record<string, string> = {
+  en: "\n- Reply in English.",
+  hi: "\n- Reply in Hindi using Devanagari script. Keep customer names, product names and place names as they appear in the data. If the user mixes Hindi and English (Hinglish), a natural Hindi-English mix is fine.",
+  pa: "\n- Reply in Punjabi using Gurmukhi script. Keep customer names, product names and place names as they appear in the data. If the user mixes Punjabi and English, a natural mix is fine.",
+};
+const SUPPORTED_LANGUAGES = Object.keys(LANGUAGE_INSTRUCTIONS);
 
 function daysBetween(from: string | null, to: Date): number {
   if (!from) return 0;
@@ -59,6 +106,136 @@ function daysLeftInMonth(): number {
   const now = new Date();
   const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
   return end.getDate() - now.getDate();
+}
+
+// Service jobs + field agent picture. Used for the service_head role and,
+// since admins oversee every department, merged into the admin context too.
+async function buildServiceContext(admin: any, now: Date, mStart: string) {
+  const today = now.toISOString().slice(0, 10);
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+
+  const { data: jobs } = await admin
+    .from("service_jobs")
+    .select("id,type,status,date_to_attend,assigned_agent,customer_name,address,description,category,value,is_foc,accounts_approval_status,created_at,completed_at")
+    .is("deleted_at", null);
+
+  const { data: agentProfiles } = await admin
+    .from("profiles")
+    .select("id,name,phone_number");
+  const { data: agentRoles } = await admin
+    .from("user_roles")
+    .select("user_id")
+    .eq("role", "field_agent");
+  const agentIds = new Set((agentRoles ?? []).map((r: any) => r.user_id));
+  const agents = (agentProfiles ?? []).filter((p: any) => agentIds.has(p.id));
+
+  const activeJobs = (jobs ?? []).filter((j: any) => !["completed", "cancelled"].includes(j.status));
+  const agentLoad: Record<string, number> = {};
+  activeJobs.forEach((j: any) => {
+    if (j.assigned_agent) agentLoad[j.assigned_agent] = (agentLoad[j.assigned_agent] || 0) + 1;
+  });
+
+  const { data: completedLast30 } = await admin
+    .from("service_jobs")
+    .select("assigned_agent,completed_at")
+    .eq("status", "completed")
+    .gte("completed_at", new Date(Date.now() - 30 * 86400000).toISOString())
+    .is("deleted_at", null);
+  const agentCompletions: Record<string, number> = {};
+  (completedLast30 ?? []).forEach((j: any) => {
+    if (j.assigned_agent) agentCompletions[j.assigned_agent] = (agentCompletions[j.assigned_agent] || 0) + 1;
+  });
+
+  const todayJobs = (jobs ?? []).filter((j: any) => j.date_to_attend === today);
+  const tomorrowJobs = (jobs ?? []).filter((j: any) => j.date_to_attend === tomorrow);
+  const upcomingUnassigned = (jobs ?? []).filter(
+    (j: any) => !j.assigned_agent && j.date_to_attend >= today && !["completed", "cancelled"].includes(j.status),
+  );
+  const overdue = (jobs ?? []).filter(
+    (j: any) => j.date_to_attend && j.date_to_attend < today && !["completed", "cancelled"].includes(j.status),
+  );
+  const completedThisMonth = (jobs ?? []).filter(
+    (j: any) => j.completed_at && j.completed_at >= mStart,
+  );
+
+  const jobDetail = (j: any) => ({
+    id: j.id, customer: j.customer_name, address: j.address,
+    status: j.status, type: j.type, category: j.category,
+    description: j.description, agent_id: j.assigned_agent,
+    agent_name: agents.find((a: any) => a.id === j.assigned_agent)?.name ?? null,
+  });
+
+  const deliveries = {
+    today_count: todayJobs.length,
+    today: todayJobs.map(jobDetail),
+    tomorrow_count: tomorrowJobs.length,
+    tomorrow: tomorrowJobs.map(jobDetail),
+    unassigned_upcoming: upcomingUnassigned.map((j: any) => ({
+      id: j.id, customer: j.customer_name, address: j.address,
+      date: j.date_to_attend, type: j.type, category: j.category, description: j.description,
+    })),
+    overdue_count: overdue.length,
+    overdue: overdue.map((j: any) => ({
+      id: j.id, customer: j.customer_name, address: j.address,
+      date: j.date_to_attend, agent_name: agents.find((a: any) => a.id === j.assigned_agent)?.name ?? null,
+    })),
+    completed_this_month: completedThisMonth.length,
+    total_active: activeJobs.length,
+  };
+
+  const fieldAgents = agents.map((a: any) => ({
+    id: a.id, name: a.name,
+    current_load: agentLoad[a.id] || 0,
+    completions_last_30d: agentCompletions[a.id] || 0,
+  }));
+
+  return { deliveries, fieldAgents };
+}
+
+// Accounts picture for admins: dispatches waiting on accounts approval plus
+// this month's company purchases and supplier activity.
+async function buildAccountsContext(admin: any, mStart: string) {
+  const [{ data: pendingApprovals }, { data: purchases }, { data: suppliers }] = await Promise.all([
+    admin
+      .from("service_jobs")
+      .select("customer_name,type,category,value,date_received")
+      .eq("accounts_approval_status", "pending")
+      .is("deleted_at", null)
+      .order("date_received", { ascending: true })
+      .limit(100),
+    admin
+      .from("company_purchases")
+      .select("purchase_number,supplier_name,purchase_date,status,tally_import_status,grand_total")
+      .gte("purchase_date", mStart.slice(0, 10))
+      .order("purchase_date", { ascending: false })
+      .limit(100),
+    admin
+      .from("suppliers")
+      .select("name,is_active"),
+  ]);
+
+  const pending = pendingApprovals ?? [];
+  const allPurchases = purchases ?? [];
+  const draftPurchases = allPurchases.filter((p: any) => p.status === "Draft");
+  const notInTally = allPurchases.filter((p: any) => p.tally_import_status !== "Exported");
+
+  return {
+    pending_approvals_count: pending.length,
+    pending_approvals_value: pending.reduce((s: number, j: any) => s + Number(j.value || 0), 0),
+    pending_approvals: pending.slice(0, 20).map((j: any) => ({
+      customer: j.customer_name, type: j.type, category: j.category,
+      value: Number(j.value || 0), received: j.date_received,
+    })),
+    purchases_this_month_count: allPurchases.length,
+    purchases_this_month_value: allPurchases.reduce((s: number, p: any) => s + Number(p.grand_total || 0), 0),
+    draft_purchases_count: draftPurchases.length,
+    purchases_not_exported_to_tally: notInTally.length,
+    recent_purchases: allPurchases.slice(0, 15).map((p: any) => ({
+      number: p.purchase_number, supplier: p.supplier_name, date: p.purchase_date,
+      status: p.status, tally: p.tally_import_status, total: Number(p.grand_total || 0),
+    })),
+    active_suppliers: (suppliers ?? []).filter((s: any) => s.is_active).length,
+  };
 }
 
 Deno.serve(async (req) => {
@@ -83,11 +260,17 @@ Deno.serve(async (req) => {
       .eq("user_id", user.id)
       .maybeSingle();
     const role = roleRow?.role as string | undefined;
-    if (!role || !["admin", "sales", "service_head"].includes(role)) {
+    if (!role || !["admin", "sales", "service_head", "accounts"].includes(role)) {
       return json({ error: "AI Assistant not available for your role" }, 403);
     }
 
-    const { messages, question } = await req.json();
+    const { messages, question, voice, tts_voice, language } = await req.json();
+    const voiceMode = voice === true;
+    if (voiceMode && !JARVIS_VOICE_ROLES.includes(role)) {
+      return json({ error: "Jarvis voice mode is not available for your role yet" }, 403);
+    }
+    const ttsVoice = GEMINI_TTS_VOICES.includes(tts_voice) ? tts_voice : DEFAULT_TTS_VOICE;
+    const replyLanguage = SUPPORTED_LANGUAGES.includes(language) ? language : "en";
     const userQuestion: string = question ?? messages?.[messages.length - 1]?.content ?? "";
 
     const { data: profile } = await admin.from("profiles").select("name").eq("id", user.id).maybeSingle();
@@ -100,6 +283,7 @@ Deno.serve(async (req) => {
     const ctx: Record<string, unknown> = {
       name,
       role,
+      data_scope: DATA_SCOPES[role],
       asked_at: now.toISOString(),
       month: currentMonth,
       days_left_in_month: daysLeftInMonth(),
@@ -262,7 +446,7 @@ Deno.serve(async (req) => {
       ctx.sales_team = salesTeam;
       ctx.team_summary = {
         total_active_leads: (activeLeads ?? []).length,
-        total_overdue,
+        total_overdue: totalOverdue,
         total_stale_7d: totalStale,
         team_won_this_month: totalWonValue,
         team_target_this_month: totalTarget,
@@ -271,6 +455,14 @@ Deno.serve(async (req) => {
         most_behind_on_target: mostBehind,
         days_left_in_month: daysLeftInMonth(),
       };
+
+      // Admins oversee every department — include service and accounts too.
+      const [service, accounts] = await Promise.all([
+        buildServiceContext(admin, now, mStart),
+        buildAccountsContext(admin, mStart),
+      ]);
+      ctx.service = { deliveries: service.deliveries, field_agents: service.fieldAgents };
+      ctx.accounts = accounts;
 
     // ─────────────────────────────────────────────
     // SALES: own pipeline with full lead detail
@@ -374,85 +566,15 @@ Deno.serve(async (req) => {
     // SERVICE HEAD
     // ─────────────────────────────────────────────
     } else if (role === "service_head") {
-      const today = now.toISOString().slice(0, 10);
-      const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+      const service = await buildServiceContext(admin, now, mStart);
+      ctx.deliveries = service.deliveries;
+      ctx.field_agents = service.fieldAgents;
 
-      const { data: jobs } = await admin
-        .from("service_jobs")
-        .select("id,type,status,date_to_attend,assigned_agent,customer_name,address,description,category,value,is_foc,accounts_approval_status,created_at,completed_at")
-        .is("deleted_at", null);
-
-      const { data: agentProfiles } = await admin
-        .from("profiles")
-        .select("id,name,phone_number");
-      const { data: agentRoles } = await admin
-        .from("user_roles")
-        .select("user_id")
-        .eq("role", "field_agent");
-      const agentIds = new Set((agentRoles ?? []).map((r: any) => r.user_id));
-      const agents = (agentProfiles ?? []).filter((p: any) => agentIds.has(p.id));
-
-      const activeJobs = (jobs ?? []).filter((j: any) => !["completed", "cancelled"].includes(j.status));
-      const agentLoad: Record<string, number> = {};
-      activeJobs.forEach((j: any) => {
-        if (j.assigned_agent) agentLoad[j.assigned_agent] = (agentLoad[j.assigned_agent] || 0) + 1;
-      });
-
-      const { data: completedLast30 } = await admin
-        .from("service_jobs")
-        .select("assigned_agent,completed_at")
-        .eq("status", "completed")
-        .gte("completed_at", new Date(Date.now() - 30 * 86400000).toISOString())
-        .is("deleted_at", null);
-      const agentCompletions: Record<string, number> = {};
-      (completedLast30 ?? []).forEach((j: any) => {
-        if (j.assigned_agent) agentCompletions[j.assigned_agent] = (agentCompletions[j.assigned_agent] || 0) + 1;
-      });
-
-      const todayJobs = (jobs ?? []).filter((j: any) => j.date_to_attend === today);
-      const tomorrowJobs = (jobs ?? []).filter((j: any) => j.date_to_attend === tomorrow);
-      const upcomingUnassigned = (jobs ?? []).filter(
-        (j: any) => !j.assigned_agent && j.date_to_attend >= today && !["completed", "cancelled"].includes(j.status),
-      );
-      const overdue = (jobs ?? []).filter(
-        (j: any) => j.date_to_attend && j.date_to_attend < today && !["completed", "cancelled"].includes(j.status),
-      );
-      const completedThisMonth = (jobs ?? []).filter(
-        (j: any) => j.completed_at && j.completed_at >= mStart,
-      );
-
-      ctx.deliveries = {
-        today_count: todayJobs.length,
-        today: todayJobs.map((j: any) => ({
-          id: j.id, customer: j.customer_name, address: j.address,
-          status: j.status, type: j.type, category: j.category,
-          description: j.description, agent_id: j.assigned_agent,
-          agent_name: agents.find((a: any) => a.id === j.assigned_agent)?.name ?? null,
-        })),
-        tomorrow_count: tomorrowJobs.length,
-        tomorrow: tomorrowJobs.map((j: any) => ({
-          id: j.id, customer: j.customer_name, address: j.address,
-          status: j.status, type: j.type, category: j.category,
-          description: j.description, agent_id: j.assigned_agent,
-          agent_name: agents.find((a: any) => a.id === j.assigned_agent)?.name ?? null,
-        })),
-        unassigned_upcoming: upcomingUnassigned.map((j: any) => ({
-          id: j.id, customer: j.customer_name, address: j.address,
-          date: j.date_to_attend, type: j.type, category: j.category, description: j.description,
-        })),
-        overdue_count: overdue.length,
-        overdue: overdue.map((j: any) => ({
-          id: j.id, customer: j.customer_name, address: j.address,
-          date: j.date_to_attend, agent_name: agents.find((a: any) => a.id === j.assigned_agent)?.name ?? null,
-        })),
-        completed_this_month: completedThisMonth.length,
-        total_active: activeJobs.length,
-      };
-      ctx.field_agents = agents.map((a: any) => ({
-        id: a.id, name: a.name,
-        current_load: agentLoad[a.id] || 0,
-        completions_last_30d: agentCompletions[a.id] || 0,
-      }));
+    // ─────────────────────────────────────────────
+    // ACCOUNTS: approvals, purchases, suppliers
+    // ─────────────────────────────────────────────
+    } else if (role === "accounts") {
+      ctx.accounts = await buildAccountsContext(admin, mStart);
     }
 
     // ─────────────────────────────────────────────
@@ -465,8 +587,11 @@ Deno.serve(async (req) => {
       `Question: ${userQuestion}\n\n` +
       `Answer with specific names, lead values, and action items from the data above.`;
 
+    const systemContent =
+      (voiceMode ? SYSTEM_PROMPT + VOICE_SYSTEM_PROMPT : SYSTEM_PROMPT) +
+      LANGUAGE_INSTRUCTIONS[replyLanguage];
     const aiMessages = [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: systemContent },
       ...((messages ?? []).slice(0, -1) as { role: string; content: string }[]),
       { role: "user", content: userContent },
     ];
@@ -478,7 +603,7 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
+        model: voiceMode ? VOICE_MODEL : TEXT_MODEL,
         messages: aiMessages,
       }),
     });
@@ -493,6 +618,28 @@ Deno.serve(async (req) => {
 
     const aiJson = await aiResp.json();
     const reply = aiJson?.choices?.[0]?.message?.content ?? "";
+
+    if (voiceMode && reply) {
+      const readingInstructions: Record<string, string> = {
+        en: "Speak this reply in a clear, confident assistant voice:",
+        hi: "Speak this reply in a clear, confident assistant voice, in Hindi:",
+        pa: "Speak this reply in a clear, confident assistant voice, in Punjabi:",
+      };
+      const speech = await synthesizeSpeech(
+        reply,
+        ttsVoice,
+        GEMINI_API_KEY,
+        readingInstructions[replyLanguage],
+      );
+      return json({
+        reply,
+        role,
+        audio: speech.audio ?? null,
+        mimeType: speech.mimeType ?? null,
+        ttsError: speech.error ?? null,
+      });
+    }
+
     return json({ reply, role });
   } catch (e) {
     console.error("ai-assistant error", e);
