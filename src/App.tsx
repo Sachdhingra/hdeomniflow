@@ -34,6 +34,7 @@ const ServiceHeadPendingApprovals = lazy(() => import("@/pages/ServiceHeadPendin
 const AdminOrdersDashboard = lazy(() => import("@/pages/AdminOrdersDashboard"));
 const ChatPage = lazy(() => import("@/pages/ChatPage"));
 const AIAssistantPage = lazy(() => import("@/pages/AIAssistantPage"));
+const JarvisPage = lazy(() => import("@/pages/JarvisPage"));
 const AttendancePage = lazy(() => import("@/pages/AttendancePage"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 const FeedbackKiosk = lazy(() => import("@/pages/FeedbackKiosk"));
@@ -110,6 +111,7 @@ const AppRoutes = () => {
             <Route path="/admin/orders" element={<AdminOrdersDashboard />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/ai-assistant" element={<AIAssistantPage />} />
+            <Route path="/jarvis" element={<JarvisPage />} />
             <Route path="/admin/feedback" element={<FeedbackAnalyticsDashboard />} />
             <Route path="/dashboard/feedback-analytics" element={<FeedbackAnalyticsDashboard />} />
             <Route path="/admin/kiosk-banners" element={<AdminSchemeBanners />} />
@@ -129,6 +131,7 @@ const AppRoutes = () => {
             <Route path="/accounts/suppliers" element={<AdminSuppliers />} />
             <Route path="/products" element={<ProductsView />} />
             <Route path="/chat" element={<ChatPage />} />
+            <Route path="/jarvis" element={<JarvisPage />} />
           </>
         );
       case "sales":
@@ -141,6 +144,7 @@ const AppRoutes = () => {
             <Route path="/products" element={<ProductsView />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/ai-assistant" element={<AIAssistantPage />} />
+            <Route path="/jarvis" element={<JarvisPage />} />
             <Route path="/calendar" element={<ServiceCalendar />} />
           </>
         );
@@ -155,7 +159,7 @@ const AppRoutes = () => {
             <Route path="/products" element={<ProductsView />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/ai-assistant" element={<AIAssistantPage />} />
-
+            <Route path="/jarvis" element={<JarvisPage />} />
           </>
         );
       case "field_agent":

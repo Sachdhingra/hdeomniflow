@@ -3,9 +3,16 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Bot, Send, Loader2, User as UserIcon } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
+import {
+  DEFAULT_JARVIS_LANGUAGE,
+  JARVIS_LANGUAGE_STORAGE_KEY,
+  JARVIS_LANGUAGES,
+  type JarvisLanguage,
+} from "@/lib/jarvis";
 
 interface Msg {
   role: "user" | "assistant";
@@ -39,7 +46,25 @@ const AIAssistantPage = () => {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  // Shares the Jarvis language preference so voice and text answer alike.
+  const [language, setLanguage] = useState<JarvisLanguage>(() => {
+    try {
+      const saved = localStorage.getItem(JARVIS_LANGUAGE_STORAGE_KEY);
+      return JARVIS_LANGUAGES.some(l => l.id === saved) ? (saved as JarvisLanguage) : DEFAULT_JARVIS_LANGUAGE;
+    } catch {
+      return DEFAULT_JARVIS_LANGUAGE;
+    }
+  });
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const changeLanguage = (lang: JarvisLanguage) => {
+    setLanguage(lang);
+    try {
+      localStorage.setItem(JARVIS_LANGUAGE_STORAGE_KEY, lang);
+    } catch {
+      // storage unavailable — keep in-memory only
+    }
+  };
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -53,16 +78,17 @@ const AIAssistantPage = () => {
     setInput("");
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("ai-assistant", {
-        body: { messages: next, question: q },
+      const { data, error } = await supabase.functions.invoke<{ reply?: string; error?: string }>("ai-assistant", {
+        body: { messages: next, question: q, language },
       });
       if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
-      const reply = (data as any)?.reply ?? "(no response)";
+      if (data?.error) throw new Error(data.error);
+      const reply = data?.reply ?? "(no response)";
       setMessages(prev => [...prev, { role: "assistant", content: reply }]);
-    } catch (e: any) {
-      toast.error(e?.message ?? "AI request failed");
-      setMessages(prev => [...prev, { role: "assistant", content: `⚠️ ${e?.message ?? "Failed"}` }]);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "AI request failed";
+      toast.error(msg);
+      setMessages(prev => [...prev, { role: "assistant", content: `⚠️ ${msg}` }]);
     } finally {
       setLoading(false);
     }
@@ -85,10 +111,20 @@ const AIAssistantPage = () => {
         <div className="w-9 h-9 rounded-full gradient-primary flex items-center justify-center text-primary-foreground">
           <Bot className="w-5 h-5" />
         </div>
-        <div>
+        <div className="flex-1">
           <div className="font-semibold">AI Assistant</div>
           <div className="text-xs text-muted-foreground">Hi {user?.name}! Ask me about your numbers.</div>
         </div>
+        <Select value={language} onValueChange={v => changeLanguage(v as JarvisLanguage)} disabled={loading}>
+          <SelectTrigger className="w-[140px] h-9">
+            <SelectValue placeholder="Language" />
+          </SelectTrigger>
+          <SelectContent>
+            {JARVIS_LANGUAGES.map(l => (
+              <SelectItem key={l.id} value={l.id}>{l.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </header>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">

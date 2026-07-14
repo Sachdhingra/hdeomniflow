@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import StatCard from "@/components/StatCard";
+import VoiceReminderCard from "@/components/VoiceReminderCard";
 
 type Job = {
   id: string;
@@ -220,6 +221,8 @@ const AccountsApprovals = () => {
           Verify customer dues & approve dispatches. Self-delivery cases close immediately on approval — no service dispatch needed.
         </p>
       </div>
+
+      <VoiceReminderCard />
 
       <div className="grid grid-cols-3 gap-3">
         <StatCard title="Pending" value={counts.pending} icon={<AlertTriangle className="w-5 h-5" />} />
