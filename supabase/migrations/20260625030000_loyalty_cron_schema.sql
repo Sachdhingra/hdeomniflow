@@ -52,22 +52,22 @@ CREATE TRIGGER trg_update_last_purchase_date
 --      https://<project-ref>.supabase.co/functions/v1/loyalty-cron
 -- ============================================================
 
--- Remove old job if it exists
-SELECT cron.unschedule('loyalty-daily-cron')
-  WHERE EXISTS (
-    SELECT 1 FROM cron.job WHERE jobname = 'loyalty-daily-cron'
-  );
-
 -- Schedule: 02:30 UTC every day
 -- The edge function validates the x-internal-secret header.
 -- Set LOYALTY_CRON_SECRET in Supabase Dashboard → Edge Functions → Secrets.
 -- We store it in pg_cron via net.http_post so it never appears in app code.
-DO $$
+-- NOTE: distinct dollar-quote tags ($do$ / $cron$) — a nested bare $$ would
+-- terminate the outer DO body and break the whole file.
+DO $do$
 BEGIN
+  -- Remove old job if it exists (errors if pg_cron absent — caught below)
+  PERFORM cron.unschedule('loyalty-daily-cron')
+    WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'loyalty-daily-cron');
+
   PERFORM cron.schedule(
     'loyalty-daily-cron',
     '30 2 * * *',
-    $$
+    $cron$
       SELECT net.http_post(
         url     := current_setting('app.supabase_functions_url') || '/loyalty-cron',
         headers := jsonb_build_object(
@@ -76,10 +76,10 @@ BEGIN
         ),
         body    := '{}'::jsonb
       );
-    $$
+    $cron$
   );
 EXCEPTION WHEN OTHERS THEN
   -- pg_cron / pg_net may not be available in local dev; skip silently.
   RAISE NOTICE 'pg_cron schedule skipped: %', SQLERRM;
 END;
-$$;
+$do$;
