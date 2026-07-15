@@ -41,6 +41,7 @@ const FeedbackKiosk = lazy(() => import("@/pages/FeedbackKiosk"));
 const FeedbackAnalyticsDashboard = lazy(() => import("@/pages/FeedbackAnalyticsDashboard"));
 const AdminSchemeBanners = lazy(() => import("@/pages/AdminSchemeBanners"));
 const AdminLoginBanners = lazy(() => import("@/pages/AdminLoginBanners"));
+const AdminPushNotifications = lazy(() => import("@/pages/AdminPushNotifications"));
 const AdminCompanyPurchases = lazy(() => import("@/pages/AdminCompanyPurchases"));
 const AdminSuppliers = lazy(() => import("@/pages/AdminSuppliers"));
 const ProfileViewScreen = lazy(() => import("@/pages/ProfileViewScreen"));
@@ -116,6 +117,7 @@ const AppRoutes = () => {
             <Route path="/dashboard/feedback-analytics" element={<FeedbackAnalyticsDashboard />} />
             <Route path="/admin/kiosk-banners" element={<AdminSchemeBanners />} />
             <Route path="/admin/login-banners" element={<AdminLoginBanners />} />
+            <Route path="/admin/push-notifications" element={<AdminPushNotifications />} />
             <Route path="/accounts/purchases" element={<AdminCompanyPurchases />} />
             <Route path="/accounts/suppliers" element={<AdminSuppliers />} />
             <Route path="/calendar" element={<ServiceCalendar />} />

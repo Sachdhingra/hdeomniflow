@@ -11,6 +11,10 @@
  *   4. Push: card expiring in 60 / 30 days
  *   5. Push: dormant customers (last_purchase_date > 180 days ago)
  *   6. Push: today's birthdays
+ *   7. Push: redemption reminder for customers with unredeemed points
+ *
+ * Each push step can be switched on/off by admin via the
+ * push_automation_settings table (Admin → Push Notifications page).
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
@@ -64,6 +68,34 @@ function isoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+/**
+ * Admin on/off switches for each automated reminder.
+ * Missing table or missing rows default to enabled so the cron keeps
+ * working even before the settings migration has run.
+ */
+async function loadAutomationSettings(): Promise<Record<string, boolean>> {
+  const settings: Record<string, boolean> = {};
+  try {
+    const { data, error } = await supabase
+      .from("push_automation_settings")
+      .select("key, enabled");
+    if (error) {
+      console.warn("push_automation_settings load failed (defaulting to enabled):", error.message);
+      return settings;
+    }
+    for (const row of data ?? []) {
+      settings[row.key as string] = row.enabled as boolean;
+    }
+  } catch (e) {
+    console.warn("push_automation_settings load error:", e);
+  }
+  return settings;
+}
+
+function isEnabled(settings: Record<string, boolean>, key: string): boolean {
+  return settings[key] !== false;
+}
+
 // ---------------------------------------------------------------------------
 // Step 1: Expire overdue points
 // ---------------------------------------------------------------------------
@@ -79,13 +111,16 @@ async function expirePoints(): Promise<number> {
 // ---------------------------------------------------------------------------
 // Step 2: Award anniversary bonuses + push for each winner
 // ---------------------------------------------------------------------------
-async function awardAnniversaryBonuses(): Promise<number> {
-  // Run the DB function first (idempotent)
+async function awardAnniversaryBonuses(pushEnabled: boolean): Promise<number> {
+  // Run the DB function first (idempotent) — points are always credited;
+  // only the push notification is subject to the admin toggle.
   const { data, error } = await supabase.rpc("fn_award_anniversary_bonus");
   if (error) {
     console.error("fn_award_anniversary_bonus error:", error.message);
     return 0;
   }
+
+  if (!pushEnabled) return (data as number) ?? 0;
 
   // Identify who received it today and push them
   const today = isoDate(new Date());
@@ -282,6 +317,46 @@ async function notifyBirthdays(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Step 7: Redemption reminder — customers holding unredeemed points
+// ---------------------------------------------------------------------------
+async function notifyPointsBalance(): Promise<void> {
+  const { data: rows, error } = await supabase
+    .from("elite_customers")
+    .select("id, customer_name, current_points")
+    .eq("status", "active")
+    .eq("app_activated", true)
+    .gt("current_points", 0);
+
+  if (error) {
+    console.error("Points balance query error:", error.message);
+    return;
+  }
+
+  // Only remind once per 30 days per customer
+  const thirtyDaysAgo = isoDate(addDays(new Date(), -30));
+
+  for (const row of rows ?? []) {
+    const { count } = await supabase
+      .from("push_notifications_log")
+      .select("id", { count: "exact", head: true })
+      .eq("customer_id", row.id)
+      .eq("notification_type", "points_balance")
+      .gte("sent_at", `${thirtyDaysAgo}T00:00:00Z`);
+
+    if ((count ?? 0) > 0) continue;
+
+    const points = row.current_points as number;
+    await sendPush(
+      row.id as string,
+      "points_balance",
+      "You have points waiting! 💰",
+      `Hi ${row.customer_name}, you have ${points} loyalty point${points !== 1 ? "s" : ""} ready to redeem. Visit the store and turn them into savings on your next purchase!`,
+      { current_points: points },
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main handler
 // ---------------------------------------------------------------------------
 Deno.serve(async (req: Request) => {
@@ -309,19 +384,25 @@ Deno.serve(async (req: Request) => {
 
   const results: Record<string, unknown> = {};
 
+  // Admin toggles from Admin → Push Notifications (default: all enabled)
+  const settings = await loadAutomationSettings();
+
   // 1. Expire points
   results.expired_rows = await expirePoints();
   console.log("[loyalty-cron] Expired rows:", results.expired_rows);
 
-  // 2. Anniversary bonuses
-  results.anniversary_bonuses = await awardAnniversaryBonuses();
+  // 2. Anniversary bonuses (points always credited; push obeys toggle)
+  results.anniversary_bonuses = await awardAnniversaryBonuses(
+    isEnabled(settings, "anniversary_bonus"),
+  );
   console.log("[loyalty-cron] Anniversary bonuses:", results.anniversary_bonuses);
 
-  // 3–6. Push notifications (failures are logged but don't abort the run)
-  await notifyExpiringPoints();
-  await notifyCardExpiry();
-  await notifyDormantCustomers();
-  await notifyBirthdays();
+  // 3–7. Push notifications (failures are logged but don't abort the run)
+  if (isEnabled(settings, "points_expiring")) await notifyExpiringPoints();
+  if (isEnabled(settings, "card_expiring"))   await notifyCardExpiry();
+  if (isEnabled(settings, "dormant"))         await notifyDormantCustomers();
+  if (isEnabled(settings, "birthday"))        await notifyBirthdays();
+  if (isEnabled(settings, "points_balance"))  await notifyPointsBalance();
 
   console.log("[loyalty-cron] Completed:", new Date().toISOString(), results);
 
