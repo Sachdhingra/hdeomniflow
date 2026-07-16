@@ -7,6 +7,8 @@ export interface TierMeta {
   cls: string;
   activeCls: string;
   description: string;
+  /** Minimum first-purchase value required to offer this tier */
+  minPurchase?: number;
 }
 
 export const ELITE_TIERS: TierMeta[] = [
@@ -40,7 +42,8 @@ export const ELITE_TIERS: TierMeta[] = [
     fee: 4100,
     cls: "text-purple-700",
     activeCls: "border-purple-500 bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200",
-    description: "₹4,100 joining fee",
+    description: "₹4,100 fee · min ₹2L purchase",
+    minPurchase: 200000,
   },
 ];
 
@@ -70,9 +73,20 @@ export function checkTierEligibility(
   const meta = TIER_META[tier];
   if (!meta || meta.fee === 0) return null;
   const purchase = ctx.purchaseValue ?? 0;
+  // Tiers with a purchase floor (Prestige Elite: first purchase ≥ ₹2,00,000)
+  if (meta.minPurchase && purchase < meta.minPurchase) {
+    return `${meta.label} requires a purchase of at least ₹${meta.minPurchase.toLocaleString("en-IN")} — this lead is ₹${purchase.toLocaleString("en-IN")}.`;
+  }
   // Salesperson must confirm the joining fee is collected: purchase value ≥ fee.
   if (purchase > 0 && purchase < meta.fee) {
     return `Lead value (₹${purchase.toLocaleString("en-IN")}) is below the ${meta.label} joining fee (₹${meta.fee.toLocaleString("en-IN")}).`;
   }
   return null;
+}
+
+/** True when this tier's option should be disabled for the given purchase value. */
+export function tierOptionDisabled(tier: EliteTier, purchaseValue?: number): boolean {
+  const meta = TIER_META[tier];
+  if (!meta?.minPurchase) return false;
+  return (purchaseValue ?? 0) < meta.minPurchase;
 }

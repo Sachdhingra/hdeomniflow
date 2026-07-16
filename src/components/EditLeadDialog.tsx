@@ -76,6 +76,8 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
   if (!lead) return null;
   const showElite = SOLD_OR_CLOSED.includes(form.status);
   const isElite = !!(lead as any).elite_opted_in;
+  // Tier is chosen once by sales; changes after that need an admin
+  const tierLocked = isElite && !!(lead as any).elite_card_id && user?.role !== "admin";
 
   const handleSave = async () => {
     setSaving(true);
@@ -168,8 +170,9 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
         ...elitePatch,
       } as any);
 
-      // Sync selected tier onto the linked elite_customers record (opt-in only)
-      if (showElite && eliteChoice === "opt_in") {
+      // Sync selected tier onto the linked elite_customers record (opt-in only).
+      // Skipped when locked — the DB trigger rejects tier changes by non-admins anyway.
+      if (showElite && eliteChoice === "opt_in" && !tierLocked) {
         const targetCardId: string | null = elitePatch.elite_card_id ?? prevCardId;
         if (targetCardId) {
           await (supabase.from("elite_customers" as any).update({ card_tier: eliteTier }).eq("id", targetCardId) as any);
@@ -195,7 +198,11 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
       onOpenChange(false);
       requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: "instant" as ScrollBehavior }));
     } catch (err: any) {
-      toast.error(err.message || "Failed to update");
+      if (String(err?.message || "").includes("TIER_LOCKED")) {
+        toast.error("Card tier is locked after first selection. Ask an admin to change it.");
+      } else {
+        toast.error(err.message || "Failed to update");
+      }
     } finally {
       setSaving(false);
     }
@@ -259,6 +266,7 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
               onTierChange={setEliteTier}
               purchaseValue={form.value_in_rupees}
               duplicateWarning={eliteDupWarning}
+              tierLocked={tierLocked}
             />
           )}
 

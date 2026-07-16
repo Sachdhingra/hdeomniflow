@@ -3,7 +3,7 @@ import { Label } from "@/components/ui/label";
 import { Star, Check, X, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDate } from "@/lib/dateFormat";
-import { ELITE_TIERS, EliteTier, TIER_META, checkTierEligibility } from "@/lib/eliteTiers";
+import { ELITE_TIERS, EliteTier, TIER_META, checkTierEligibility, tierOptionDisabled } from "@/lib/eliteTiers";
 
 export type EliteChoice = "opt_in" | "opt_out" | "undecided";
 
@@ -16,6 +16,8 @@ interface Props {
   onTierChange?: (t: EliteTier) => void;
   purchaseValue?: number;
   duplicateWarning?: string | null;
+  /** Tier already chosen once — changes need admin approval */
+  tierLocked?: boolean;
 }
 
 function addYears(iso: string, years: number): string {
@@ -28,7 +30,7 @@ function addYears(iso: string, years: number): string {
 
 const EliteCardEnrollment = ({
   choice, onChoiceChange, issueDate, onIssueDateChange,
-  tier = "silver", onTierChange, purchaseValue, duplicateWarning,
+  tier = "silver", onTierChange, purchaseValue, duplicateWarning, tierLocked,
 }: Props) => {
   const expiry = addYears(issueDate, 3);
   const eligibilityMsg = choice === "opt_in" ? checkTierEligibility(tier, { purchaseValue }) : null;
@@ -83,14 +85,17 @@ const EliteCardEnrollment = ({
               <div className="grid grid-cols-2 gap-2">
                 {ELITE_TIERS.map(t => {
                   const active = tier === t.value;
+                  const disabled = (tierLocked && !active) || (!active && tierOptionDisabled(t.value, purchaseValue));
                   return (
                     <button
                       key={t.value}
                       type="button"
-                      onClick={() => onTierChange(t.value)}
+                      disabled={disabled}
+                      onClick={() => !disabled && onTierChange(t.value)}
                       className={cn(
                         "border-2 rounded-md p-2 text-xs font-medium flex flex-col items-start gap-0.5 transition-colors text-left",
                         active ? t.activeCls : "border-border bg-background text-muted-foreground hover:bg-muted/50",
+                        disabled && "opacity-40 cursor-not-allowed hover:bg-background",
                       )}
                     >
                       <span>{t.label}</span>
@@ -99,6 +104,11 @@ const EliteCardEnrollment = ({
                   );
                 })}
               </div>
+              {tierLocked && (
+                <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                  Card tier is locked after first selection — contact an admin to change it.
+                </p>
+              )}
               {tierMeta.fee > 0 && (
                 <p className="text-[11px] text-muted-foreground">
                   Collect ₹{tierMeta.fee.toLocaleString("en-IN")} joining fee for {tierMeta.label}.

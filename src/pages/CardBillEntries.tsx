@@ -123,10 +123,11 @@ export default function CardBillEntries() {
   const [actionEntry, setActionEntry] = useState<BillEntry | null>(null);
   const [actionType, setActionType] = useState<"approve" | "reject">("approve");
   const [actionNotes, setActionNotes] = useState("");
+  const [actionNetAmount, setActionNetAmount] = useState("");
   const [actionSaving, setActionSaving] = useState(false);
 
   // Tabs + filter
-  const [tab, setTab] = useState(isSales ? "new" : "pending");
+  const [tab, setTab] = useState(isSales ? "mine" : "pending");
   const [filterSearch, setFilterSearch] = useState("");
 
   // ── Computed discount values ──────────────────────────────────────────────
@@ -309,6 +310,7 @@ export default function CardBillEntries() {
     setActionEntry(entry);
     setActionType(type);
     setActionNotes("");
+    setActionNetAmount(String(entry.net_bill_amount));
   };
 
   const submitAction = async () => {
@@ -317,16 +319,28 @@ export default function CardBillEntries() {
       toast.error("Enter a rejection reason");
       return;
     }
+    // Accounts confirms the FINAL net value at approval — points credit off this
+    const finalNet = actionEntry.is_return
+      ? actionEntry.net_bill_amount
+      : parseFloat(actionNetAmount);
+    if (actionType === "approve" && !actionEntry.is_return && (isNaN(finalNet) || finalNet <= 0)) {
+      toast.error("Enter the final net bill amount");
+      return;
+    }
     setActionSaving(true);
     try {
+      const updatePayload: Record<string, any> = {
+        approval_status: actionType === "approve" ? "approved" : "rejected",
+        approved_by: user.id,
+        approved_at: new Date().toISOString(),
+        notes: actionNotes.trim() || actionEntry.notes || null,
+      };
+      if (actionType === "approve" && !actionEntry.is_return) {
+        updatePayload.net_bill_amount = finalNet;
+      }
       const { error } = await supabase
         .from("card_bill_entries" as any)
-        .update({
-          approval_status: actionType === "approve" ? "approved" : "rejected",
-          approved_by: user.id,
-          approved_at: new Date().toISOString(),
-          notes: actionNotes.trim() || actionEntry.notes || null,
-        })
+        .update(updatePayload)
         .eq("id", actionEntry.id);
       if (error) throw error;
 
@@ -355,7 +369,7 @@ export default function CardBillEntries() {
               customer_id: actionEntry.customer_id,
               type: "points_credited",
               title: "Points credited!",
-              message: `Your purchase of ₹${actionEntry.net_bill_amount.toLocaleString("en-IN")} has been approved. Loyalty points have been added to your wallet.`,
+              message: `Your purchase of ₹${finalNet.toLocaleString("en-IN")} has been approved. Loyalty points have been added to your wallet.`,
               data: { bill_id: actionEntry.id },
             },
           }).catch(() => {/* best-effort */});
@@ -526,7 +540,7 @@ export default function CardBillEntries() {
     <div className="p-4 md:p-6 space-y-4 max-w-2xl mx-auto">
       <h1 className="text-xl font-bold">Card Bill Entries</h1>
       <p className="text-sm text-muted-foreground -mt-2">
-        Enter sale figures after raising the actual bill. Accounts approves to credit points.
+        Entries are created automatically when a lead is marked Sold. Accounts confirms the final net value to credit points.
       </p>
 
       {/* Global search (accounts/admin only) */}
@@ -544,14 +558,12 @@ export default function CardBillEntries() {
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="flex-wrap h-auto gap-1">
-          {isSales && (
-            <>
-              <TabsTrigger value="new">
-                <Plus className="w-4 h-4 mr-1" />
-                New Entry
-              </TabsTrigger>
-              <TabsTrigger value="mine">My Entries</TabsTrigger>
-            </>
+          {isSales && <TabsTrigger value="mine">My Entries</TabsTrigger>}
+          {isAdmin && (
+            <TabsTrigger value="new">
+              <Plus className="w-4 h-4 mr-1" />
+              Manual Entry
+            </TabsTrigger>
           )}
           {(isAccounts || isAdmin) && (
             <>
@@ -565,9 +577,12 @@ export default function CardBillEntries() {
           {isAdmin && <TabsTrigger value="all">All</TabsTrigger>}
         </TabsList>
 
-        {/* ── NEW ENTRY FORM (sales only) ─────────────────────────────────── */}
-        {isSales && (
+        {/* ── MANUAL ENTRY FORM (admin only — returns / exceptions) ───────── */}
+        {isAdmin && (
           <TabsContent value="new" className="space-y-4 pt-2">
+            <p className="text-xs text-muted-foreground">
+              Admin-only: use for returns and exceptional corrections. Regular sales flow in automatically from won leads.
+            </p>
             <Card>
               <CardContent className="p-4 space-y-4">
 
@@ -921,6 +936,23 @@ export default function CardBillEntries() {
                   )}
                 </div>
               </div>
+
+              {/* Final net value confirmation (approve, non-return only) */}
+              {actionType === "approve" && !actionEntry.is_return && (
+                <div className="space-y-1">
+                  <Label>Final Net Bill Amount (₹) *</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={actionNetAmount}
+                    onChange={e => setActionNetAmount(e.target.value)}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Confirm the final net value from the actual bill — points are calculated on this amount.
+                  </p>
+                </div>
+              )}
 
               {/* Notes / reason */}
               <div className="space-y-1">
