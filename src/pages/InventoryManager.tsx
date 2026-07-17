@@ -648,6 +648,7 @@ function CreateOrderDialog({
   const [companyReason, setCompanyReason] = useState("");
   const [replacementProductIds, setReplacementProductIds] = useState<string[]>([]);
   const [replacementSearch, setReplacementSearch] = useState("");
+  const [noReplacement, setNoReplacement] = useState(false);
   const [extraItems, setExtraItems] = useState<Array<{article: TrackedArticle; qty: number}>>([]);
   const [extraItemSearch, setExtraItemSearch] = useState("");
   const [adminOverride, setAdminOverride] = useState(false);
@@ -658,6 +659,7 @@ function CreateOrderDialog({
     if (open) {
       setCustomerName(""); setCustomerPhone(""); setLocationId(""); setSoldQty(1); setNotes("");
       setCustomSpecs(""); setCompanyReason(""); setReplacementProductIds([]); setReplacementSearch("");
+      setNoReplacement(false);
       setExtraItems([]); setExtraItemSearch(""); setAdminOverride(false); setOverrideReason("");
     }
   }, [open]);
@@ -689,7 +691,8 @@ function CreateOrderDialog({
   const handleCreate = async () => {
     if (!article || !mode) return;
     if (mode === "company" && !companyReason) return toast.error("Select a reason");
-    if (mode === "showroom" && replacementProductIds.length === 0) return toast.error("Select at least one replacement product");
+    if (mode === "showroom" && replacementProductIds.length === 0 && !noReplacement)
+      return toast.error("Select a replacement product, or tick \"No replacement needed\"");
     if (!locationId) return toast.error("Select a location");
     if ((mode === "warehouse" || mode === "showroom") && soldQty < 1) return toast.error("Quantity must be at least 1");
 
@@ -771,9 +774,11 @@ function CreateOrderDialog({
       // order is later rejected, cancelled or deleted before fulfilment.
 
       const qtyNote = (mode === "warehouse" || mode === "showroom") ? ` — Qty: ${item.qty}` : "";
-      const replNote = (mode === "showroom" && replacementNames.length > 0)
-        ? ` — Replacement${replacementNames.length > 1 ? "s" : ""}: ${replacementNames.join(" + ")}`
-        : "";
+      const replNote = mode !== "showroom" ? ""
+        : noReplacement ? " — No replacement requested"
+        : replacementNames.length > 0
+          ? ` — Replacement${replacementNames.length > 1 ? "s" : ""}: ${replacementNames.join(" + ")}`
+          : "";
       const overrideNote = (adminOverride && mode === "showroom") ? " — ADMIN OVERRIDE" : "";
       await supabase.from("hde_order_timeline" as any).insert({
         order_id: orderId, action: "Order Created",
@@ -916,8 +921,19 @@ function CreateOrderDialog({
 
           {mode === "showroom" && (
             <div>
-              <Label>Replacement Product <span className="text-destructive">*</span></Label>
-              {replacementProductIds.length > 0 && (
+              <Label>Replacement Product {!noReplacement && <span className="text-destructive">*</span>}</Label>
+              <label className="flex items-center gap-2 text-sm mt-1 mb-2">
+                <input
+                  type="checkbox"
+                  checked={noReplacement}
+                  onChange={e => {
+                    setNoReplacement(e.target.checked);
+                    if (e.target.checked) { setReplacementProductIds([]); setReplacementSearch(""); }
+                  }}
+                />
+                <span>No replacement needed — stock goes out, nothing comes back to display</span>
+              </label>
+              {!noReplacement && replacementProductIds.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-2 mt-1">
                   {replacementProductIds.map(id => {
                     const p = allProducts.find(x => x.id === id);
@@ -931,8 +947,10 @@ function CreateOrderDialog({
                   })}
                 </div>
               )}
-              <Input placeholder="Search to add replacement…" value={replacementSearch} onChange={e => setReplacementSearch(e.target.value)} className="mb-2" />
-              {(replacementSearch || replacementProductIds.length === 0) && (
+              {!noReplacement && (
+                <Input placeholder="Search to add replacement…" value={replacementSearch} onChange={e => setReplacementSearch(e.target.value)} className="mb-2" />
+              )}
+              {!noReplacement && (replacementSearch || replacementProductIds.length === 0) && (
                 <div className="border rounded-lg max-h-40 overflow-y-auto">
                   {filteredReplacement.length === 0
                     ? <p className="px-3 py-2 text-sm text-muted-foreground">No products found</p>

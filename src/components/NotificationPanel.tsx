@@ -5,7 +5,7 @@ import { useData } from "@/contexts/DataContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Bell, Truck, AlertCircle, CheckCircle, Info, History, Target } from "lucide-react";
+import { Bell, Truck, AlertCircle, CheckCircle, Info, History, Target, Clock } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 const ICON_MAP: Record<string, React.ReactNode> = {
@@ -14,6 +14,7 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   success: <CheckCircle className="w-4 h-4 text-success" />,
   delivery: <Truck className="w-4 h-4 text-primary" />,
   lead_assigned: <Target className="w-4 h-4 text-primary" />,
+  order_reminder: <Clock className="w-4 h-4 text-warning" />,
 };
 
 const NotificationPanel = () => {
