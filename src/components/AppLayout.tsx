@@ -5,7 +5,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import {
   Building2, LayoutDashboard, Users, Wrench, Navigation, MapPin,
   LogOut, Menu, X, ChevronRight, CalendarDays, BarChart3,
-  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot, ShieldCheck, MessageSquare, TrendingUp, ShoppingBag, MessagesSquare, Sparkles, Clock, Star, Receipt, Trophy, UserCircle, BookUser, Boxes, Truck, Calculator, CreditCard, Coins, BarChart2, AudioLines
+  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot, ShieldCheck, MessageSquare, TrendingUp, ShoppingBag, MessagesSquare, Sparkles, Clock, Star, Receipt, Trophy, UserCircle, BookUser, Boxes, Truck, Calculator, CreditCard, Coins, BarChart2, AudioLines, BellRing
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useStaffProfile } from "@/hooks/useStaffProfile";
@@ -86,6 +86,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/categories", label: "Categories", icon: <FolderTree className="w-5 h-5" /> },
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
       { to: "/admin/automation", label: "Automation", icon: <Bot className="w-5 h-5" /> },
+      { to: "/admin/push-notifications", label: "Push Notifications", icon: <BellRing className="w-5 h-5" /> },
       { to: "/admin/templates", label: "WhatsApp Templates", icon: <MessageSquare className="w-5 h-5" /> },
       { to: "/admin/funnel-analytics", label: "Funnel Analytics", icon: <TrendingUp className="w-5 h-5" /> },
       { to: "/admin/orders", label: "Orders", icon: <ShoppingBag className="w-5 h-5" /> },
