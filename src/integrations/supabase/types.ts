@@ -3742,6 +3742,10 @@ export type Database = {
         Returns: number
       }
       fn_expire_points: { Args: never; Returns: number }
+      fn_points_window_start: {
+        Args: { _customer: string; _exclude_entry: string; _issue: string }
+        Returns: string
+      }
       generate_hde_order_number: { Args: never; Returns: string }
       get_chat_directory: {
         Args: never
