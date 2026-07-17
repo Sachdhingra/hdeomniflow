@@ -452,6 +452,148 @@ export type Database = {
           },
         ]
       }
+      card_bill_entries: {
+        Row: {
+          approval_status: string
+          approved_at: string | null
+          approved_by: string | null
+          base_scheme_discount_pct: number
+          bill_date: string
+          bill_reference: string | null
+          card_discount_pct: number
+          created_at: string
+          customer_id: string
+          entered_by: string | null
+          gross_bill_amount: number
+          id: string
+          is_card_sale: boolean
+          is_return: boolean
+          lead_id: string | null
+          net_bill_amount: number
+          notes: string | null
+          redemption_amount: number
+          redemption_request_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          approval_status?: string
+          approved_at?: string | null
+          approved_by?: string | null
+          base_scheme_discount_pct?: number
+          bill_date?: string
+          bill_reference?: string | null
+          card_discount_pct?: number
+          created_at?: string
+          customer_id: string
+          entered_by?: string | null
+          gross_bill_amount?: number
+          id?: string
+          is_card_sale?: boolean
+          is_return?: boolean
+          lead_id?: string | null
+          net_bill_amount?: number
+          notes?: string | null
+          redemption_amount?: number
+          redemption_request_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          approval_status?: string
+          approved_at?: string | null
+          approved_by?: string | null
+          base_scheme_discount_pct?: number
+          bill_date?: string
+          bill_reference?: string | null
+          card_discount_pct?: number
+          created_at?: string
+          customer_id?: string
+          entered_by?: string | null
+          gross_bill_amount?: number
+          id?: string
+          is_card_sale?: boolean
+          is_return?: boolean
+          lead_id?: string | null
+          net_bill_amount?: number
+          notes?: string | null
+          redemption_amount?: number
+          redemption_request_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "card_bill_entries_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "elite_customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "card_bill_entries_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "card_bill_entries_redemption_request_id_fkey"
+            columns: ["redemption_request_id"]
+            isOneToOne: false
+            referencedRelation: "redemption_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      card_commissions: {
+        Row: {
+          bill_entry_id: string | null
+          card_tier: string | null
+          commission_amount: number
+          created_at: string
+          customer_id: string | null
+          id: string
+          payment_status: string
+          payout_month: string | null
+          salesperson_id: string | null
+        }
+        Insert: {
+          bill_entry_id?: string | null
+          card_tier?: string | null
+          commission_amount: number
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          payment_status?: string
+          payout_month?: string | null
+          salesperson_id?: string | null
+        }
+        Update: {
+          bill_entry_id?: string | null
+          card_tier?: string | null
+          commission_amount?: number
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          payment_status?: string
+          payout_month?: string | null
+          salesperson_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "card_commissions_bill_entry_id_fkey"
+            columns: ["bill_entry_id"]
+            isOneToOne: false
+            referencedRelation: "card_bill_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "card_commissions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "elite_customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       card_points: {
         Row: {
           created_at: string
@@ -495,6 +637,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      card_settings: {
+        Row: {
+          key: string
+          updated_at: string
+          value: Json
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          value: Json
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          value?: Json
+        }
+        Relationships: []
       }
       categories: {
         Row: {
@@ -2820,6 +2980,44 @@ export type Database = {
           },
         ]
       }
+      push_notifications_log: {
+        Row: {
+          customer_id: string | null
+          id: string
+          message: string | null
+          notification_type: string | null
+          opened: boolean
+          sent_at: string
+          title: string | null
+        }
+        Insert: {
+          customer_id?: string | null
+          id?: string
+          message?: string | null
+          notification_type?: string | null
+          opened?: boolean
+          sent_at?: string
+          title?: string | null
+        }
+        Update: {
+          customer_id?: string | null
+          id?: string
+          message?: string | null
+          notification_type?: string | null
+          opened?: boolean
+          sent_at?: string
+          title?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_notifications_log_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "elite_customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       redemption_requests: {
         Row: {
           customer_id: string
@@ -2831,6 +3029,7 @@ export type Database = {
           requested_at: string
           rupee_value: number
           status: string
+          used_in_bill_id: string | null
         }
         Insert: {
           customer_id: string
@@ -2842,6 +3041,7 @@ export type Database = {
           requested_at?: string
           rupee_value?: number
           status?: string
+          used_in_bill_id?: string | null
         }
         Update: {
           customer_id?: string
@@ -2853,6 +3053,7 @@ export type Database = {
           requested_at?: string
           rupee_value?: number
           status?: string
+          used_in_bill_id?: string | null
         }
         Relationships: [
           {
@@ -3535,6 +3736,12 @@ export type Database = {
         Args: { _user: string }
         Returns: undefined
       }
+      fn_award_anniversary_bonus: { Args: never; Returns: number }
+      fn_calc_points: {
+        Args: { _amount: number; _tier: string }
+        Returns: number
+      }
+      fn_expire_points: { Args: never; Returns: number }
       generate_hde_order_number: { Args: never; Returns: string }
       get_chat_directory: {
         Args: never
