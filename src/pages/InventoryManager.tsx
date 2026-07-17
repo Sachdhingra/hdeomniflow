@@ -1050,6 +1050,7 @@ function RequestProductDialog({
   const handleCreate = async () => {
     if (pickedItems.length === 0) return toast.error("Pick at least one product");
     if (!reason) return toast.error("Select a reason");
+    if (!destinationLocationId) return toast.error("Select a delivery location — stock is booked there on completion");
     setSaving(true);
     try {
       const orderTag = ({ no_stock: "stock_out_order", fresh_piece: "fresh_piece_order", custom: "custom_order" } as any)[reason];
@@ -1161,7 +1162,7 @@ function RequestProductDialog({
                 )}
               </div>
               <div>
-                <Label>Deliver to Location <span className="text-xs text-muted-foreground">(optional — inventory auto-updates on completion)</span></Label>
+                <Label>Deliver to Location <span className="text-destructive">*</span> <span className="text-xs text-muted-foreground">(inventory auto-updates here on completion)</span></Label>
                 <Select value={destinationLocationId} onValueChange={setDestinationLocationId}>
                   <SelectTrigger><SelectValue placeholder="Select showroom / warehouse…" /></SelectTrigger>
                   <SelectContent>
@@ -1206,9 +1207,15 @@ function OrderDetailDialog({
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoType, setPhotoType] = useState<"before" | "after" | "other">("before");
+  const [completeLocationId, setCompleteLocationId] = useState("");
+
+  // Company orders created without a delivery location: the completion trigger
+  // can't book the received stock anywhere, so one must be chosen at completion.
+  const needsCompleteLocation = order?.order_type === "company" && !order?.location_id;
 
   useEffect(() => {
     if (!open || !order) return;
+    setCompleteLocationId("");
     setLoading(true);
     Promise.all([
       supabase.from("hde_order_timeline" as any).select("*").eq("order_id", order.id).order("performed_at"),
@@ -1261,8 +1268,13 @@ function OrderDetailDialog({
 
   const handleComplete = async () => {
     if (photos.length === 0) return toast.error("Upload at least one photo first");
+    if (needsCompleteLocation && !completeLocationId)
+      return toast.error("Select the delivery location so the received stock is booked correctly");
     setSaving(true);
-    await supabase.from("hde_orders" as any).update({ status: "completed", completed_at: new Date().toISOString(), completed_by: userId }).eq("id", order!.id);
+    const completion: any = { status: "completed", completed_at: new Date().toISOString(), completed_by: userId };
+    // Set in the same update so the completion trigger sees the location
+    if (needsCompleteLocation && completeLocationId) completion.location_id = completeLocationId;
+    await supabase.from("hde_orders" as any).update(completion).eq("id", order!.id);
 
     if (order!.order_type === "showroom") {
       await supabase.from("hde_display_items" as any).update({ display_status: "installed", updated_by: userId }).eq("order_id", order!.id);
@@ -1436,9 +1448,22 @@ function OrderDetailDialog({
               </div>
             )}
             {canComplete && order.status === "field_assigned" && (
-              <Button className="w-full bg-green-600 hover:bg-green-700" onClick={handleComplete} disabled={saving}>
-                <CheckSquare className="w-4 h-4 mr-1" />Mark Complete
-              </Button>
+              <div className="space-y-2">
+                {needsCompleteLocation && (
+                  <div>
+                    <Label className="text-xs">Deliver to Location <span className="text-destructive">*</span> <span className="text-muted-foreground">(received stock is booked here)</span></Label>
+                    <Select value={completeLocationId} onValueChange={setCompleteLocationId}>
+                      <SelectTrigger><SelectValue placeholder="Select showroom / warehouse…" /></SelectTrigger>
+                      <SelectContent>
+                        {locations.map(l => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <Button className="w-full bg-green-600 hover:bg-green-700" onClick={handleComplete} disabled={saving}>
+                  <CheckSquare className="w-4 h-4 mr-1" />Mark Complete
+                </Button>
+              </div>
             )}
           </div>
         </div>
