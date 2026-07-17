@@ -49,6 +49,7 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
   const [eliteChoice, setEliteChoice] = useState<EliteChoice>("undecided");
   const [eliteIssueDate, setEliteIssueDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [eliteTier, setEliteTier] = useState<EliteTier>("silver");
+  const [tierTouched, setTierTouched] = useState(false);
   const [eliteDupWarning, setEliteDupWarning] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -68,8 +69,25 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
       else if (optedIn === false) setEliteChoice("opt_out");
       else setEliteChoice("undecided");
       setEliteIssueDate(l.elite_opted_date || new Date().toISOString().slice(0, 10));
-      setEliteTier((l.elite_card_tier as EliteTier) || "silver");
+      // Tier lives on elite_customers (leads has no tier column) — fetch the
+      // linked card's current tier so the dialog reflects admin-side changes.
+      setEliteTier("silver");
+      setTierTouched(false);
       setEliteDupWarning(null);
+      const cardId: string | null = l.elite_card_id ?? null;
+      if (cardId) {
+        let cancelled = false;
+        supabase
+          .from("elite_customers" as any)
+          .select("card_tier")
+          .eq("id", cardId)
+          .maybeSingle()
+          .then(({ data }) => {
+            const t = (data as any)?.card_tier as EliteTier | null;
+            if (!cancelled && t) setEliteTier(t);
+          });
+        return () => { cancelled = true; };
+      }
     }
   }, [lead]);
 
@@ -175,10 +193,17 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
       if (showElite && eliteChoice === "opt_in" && !tierLocked) {
         const targetCardId: string | null = elitePatch.elite_card_id ?? prevCardId;
         if (targetCardId) {
-          await (supabase.from("elite_customers" as any).update({ card_tier: eliteTier }).eq("id", targetCardId) as any);
+          // Only push a tier the user explicitly picked in this dialog —
+          // otherwise leave the card's tier alone (it may have been changed
+          // by an admin elsewhere and would get silently reverted here).
+          if (tierTouched) {
+            const { error: tierErr } = await (supabase.from("elite_customers" as any).update({ card_tier: eliteTier }).eq("id", targetCardId) as any);
+            if (tierErr) throw tierErr;
+          }
         } else {
           // Trigger just auto-created the card — patch by phone
-          await (supabase.from("elite_customers" as any).update({ card_tier: eliteTier }).eq("phone_1", lead.customer_phone) as any);
+          const { error: tierErr } = await (supabase.from("elite_customers" as any).update({ card_tier: eliteTier }).eq("phone_1", lead.customer_phone) as any);
+          if (tierErr) throw tierErr;
         }
       }
 
@@ -263,7 +288,7 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
               issueDate={eliteIssueDate}
               onIssueDateChange={setEliteIssueDate}
               tier={eliteTier}
-              onTierChange={setEliteTier}
+              onTierChange={(t) => { setEliteTier(t); setTierTouched(true); }}
               purchaseValue={form.value_in_rupees}
               duplicateWarning={eliteDupWarning}
               tierLocked={tierLocked}
