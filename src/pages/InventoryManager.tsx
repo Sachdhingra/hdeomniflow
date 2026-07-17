@@ -557,14 +557,12 @@ function ReceiveStockDialog({
     if (qty <= 0) return toast.error("Quantity must be at least 1");
     setSaving(true);
     try {
-      const current = effectiveLocs.find(l => l.location_id === locationId)?.qty ?? 0;
-      const locType = locations.find(l => l.id === locationId)?.type;
-      const { error } = await supabase.from("hde_inventory" as any).upsert({
-        product_id: effectiveProductId, location_id: locationId,
-        quantity: current + qty,
-        inventory_type: locType === "warehouse" ? "warehouse" : "display",
-        updated_by: userId,
-      }, { onConflict: "product_id,location_id" });
+      // Atomic increment + audit entry in the DB — immune to stale page state
+      const { error } = await supabase.rpc("hde_receive_stock" as any, {
+        p_product_id: effectiveProductId,
+        p_location_id: locationId,
+        p_qty: qty,
+      });
       if (error) throw new Error(error.message);
       toast.success(`+${qty} units added to stock`);
       onDone();
@@ -768,14 +766,9 @@ function CreateOrderDialog({
 
       const orderId = (data as any).id;
 
-      // Auto-deduct inventory
-      if (mode === "warehouse" || mode === "showroom") {
-        const currentQty = item.article.locs.find(l => l.location_id === locationId)?.qty ?? 0;
-        await supabase.from("hde_inventory" as any)
-          .update({ quantity: Math.max(0, currentQty - item.qty), updated_by: userId })
-          .eq("product_id", item.article.product_id)
-          .eq("location_id", locationId);
-      }
+      // Inventory deduction happens in the DB (trg_hde_order_sale_deduction):
+      // atomic decrement + audit log entry, restored automatically if the
+      // order is later rejected, cancelled or deleted before fulfilment.
 
       const qtyNote = (mode === "warehouse" || mode === "showroom") ? ` — Qty: ${item.qty}` : "";
       const replNote = (mode === "showroom" && replacementNames.length > 0)
@@ -1255,58 +1248,15 @@ function OrderDetailDialog({
 
     if (order!.order_type === "showroom") {
       await supabase.from("hde_display_items" as any).update({ display_status: "installed", updated_by: userId }).eq("order_id", order!.id);
-
-      // Auto-update inventory on display-order completion:
-      //   • Primary product → ensure a display row exists at the showroom (create or +qty)
-      //   • Replacement products → deduct from warehouse + add to showroom display
-      let repIds: string[] = [];
-      if (order!.replacement_product_ids?.length) {
-        repIds = order!.replacement_product_ids;
-      } else if (order!.custom_specs) {
-        try { const p = JSON.parse(order!.custom_specs); if (Array.isArray(p._rids)) repIds = p._rids; } catch {}
-      }
-      if (!repIds.length && order!.replacement_product_id) repIds = [order!.replacement_product_id];
-
-      if (order!.location_id) {
-        const displayProductIds = new Set<string>();
-        if (order!.product_id) displayProductIds.add(order!.product_id);
-        repIds.forEach(id => displayProductIds.add(id));
-        const qty = Math.max(1, order!.qty_sold || 1);
-
-        for (const pid of displayProductIds) {
-          const { data: invRows } = await supabase.from("hde_inventory" as any).select("*").eq("product_id", pid);
-          const rows = (invRows as any[]) || [];
-
-          // Replacement products: deduct from warehouse with most stock
-          if (repIds.includes(pid)) {
-            const warehouseRow = rows
-              .filter(r => locations.find(l => l.id === r.location_id)?.type === "warehouse" && r.quantity > 0)
-              .sort((a, b) => b.quantity - a.quantity)[0];
-            if (warehouseRow) {
-              await supabase.from("hde_inventory" as any)
-                .update({ quantity: Math.max(0, warehouseRow.quantity - qty), updated_by: userId })
-                .eq("id", warehouseRow.id);
-            }
-          }
-
-          // Add to / create the showroom display row (auto-catalogue if missing)
-          const showroomRow = rows.find(r => r.location_id === order!.location_id && r.inventory_type === "display");
-          if (showroomRow) {
-            await supabase.from("hde_inventory" as any)
-              .update({ quantity: showroomRow.quantity + qty, updated_by: userId })
-              .eq("id", showroomRow.id);
-          } else {
-            await supabase.from("hde_inventory" as any).insert({
-              product_id: pid, location_id: order!.location_id,
-              quantity: qty, inventory_type: "display", updated_by: userId,
-            });
-          }
-        }
-      }
     }
 
-    // Note: company order inventory upsert is handled by DB trigger
-    // trg_hde_company_order_completion — no duplicate app-level update needed here.
+    // Inventory movement on completion is handled by DB triggers
+    // (SECURITY DEFINER, so it works for every role and is audit-logged):
+    //   • showroom → trg_hde_order_status_movement pulls each replacement from
+    //     the warehouse with most stock onto the showroom display row. The SOLD
+    //     product is NOT re-added — its deduction happened at order creation.
+    //   • company  → trg_hde_company_order_completion receives the requested
+    //     stock at the destination with the correct inventory_type.
 
     // Copy job photos (after / other — anything that isn't a "before" shot) to the
     // product photo library so each called-for / replacement article picks up an
@@ -1571,7 +1521,7 @@ function OrdersView({ orders, onSelect, onRefresh, isAdmin, userId }: { orders: 
                             <AlertDialogHeader>
                               <AlertDialogTitle>Delete order {o.order_number}?</AlertDialogTitle>
                               <AlertDialogDescription>
-                                This permanently removes the order record. Inventory already deducted will NOT be restored automatically. This action is logged.
+                                This permanently removes the order record. For unfulfilled sale orders the stock deducted at creation is restored automatically (logged in the audit trail); completed orders leave inventory as-is. This action is logged.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
@@ -1680,6 +1630,7 @@ function DashboardView({ orders, articles }: { orders: HdeOrder[]; articles: Tra
 function StockTable({ articles, locations, userId, isAdmin, userMap, onRefresh }: { articles: TrackedArticle[]; locations: Location[]; userId: string; isAdmin: boolean; userMap: Map<string, string>; onRefresh: () => void; }) {
   const [editKey, setEditKey] = useState<string | null>(null);
   const [editQty, setEditQty] = useState(0);
+  const [editPrevQty, setEditPrevQty] = useState(0);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
 
@@ -1698,6 +1649,17 @@ function StockTable({ articles, locations, userId, isAdmin, userMap, onRefresh }
       { product_id: productId, location_id: locationId, quantity: editQty, inventory_type: locType === "warehouse" ? "warehouse" : "display", updated_by: userId },
       { onConflict: "product_id,location_id" }
     );
+    // Record the manual change in the audit log so every movement is accounted for
+    if (editQty !== editPrevQty) {
+      await supabase.from("inventory_audit_log" as any).insert({
+        product_id: productId,
+        action: "manual_adjustment",
+        quantity_change: editQty - editPrevQty,
+        location_id: locationId,
+        reason: "Stock table inline edit",
+        created_by: userId,
+      });
+    }
     setSaving(false);
     setEditKey(null);
     onRefresh();
@@ -1883,7 +1845,7 @@ function StockTable({ articles, locations, userId, isAdmin, userMap, onRefresh }
                           <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditKey(null)}><X className="w-3 h-3" /></Button>
                         </div>
                       ) : isAdmin ? (
-                        <button onClick={() => { setEditKey(k); setEditQty(qty); }} title={tip} className="flex items-center gap-1 hover:text-primary">
+                        <button onClick={() => { setEditKey(k); setEditQty(qty); setEditPrevQty(qty); }} title={tip} className="flex items-center gap-1 hover:text-primary">
                           <span className={`font-semibold ${qty === 0 ? "text-red-400" : ""}`}>{qty}</span>
                           {ageBadge(cell?.updated_at, qty)}
                           <Edit2 className="w-3 h-3 opacity-30" />
