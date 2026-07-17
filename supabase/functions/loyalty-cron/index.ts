@@ -39,6 +39,9 @@ async function sendPush(
   title: string,
   message: string,
   data?: Record<string, unknown>,
+  // Promotional pushes respect the customer's Offers & Promotions toggle;
+  // account/loyalty reminders (default) are always delivered.
+  promotional = false,
 ): Promise<void> {
   try {
     const resp = await fetch(SEND_PUSH_URL, {
@@ -47,7 +50,7 @@ async function sendPush(
         "Content-Type":      "application/json",
         "x-internal-secret": INTERNAL_SECRET,
       },
-      body: JSON.stringify({ customer_id: customerId, type, title, message, data }),
+      body: JSON.stringify({ customer_id: customerId, type, title, message, data, promotional }),
     });
     if (!resp.ok) {
       const t = await resp.text();
@@ -265,6 +268,8 @@ async function notifyDormantCustomers(): Promise<void> {
       "dormant",
       "We miss you! 🛋️",
       `Hi ${row.customer_name}, it's been a while! Visit our store and use your Elite Card for exclusive discounts on your next purchase.`,
+      undefined,
+      true, // win-back marketing — respects the customer's promotions opt-out
     );
   }
 }
