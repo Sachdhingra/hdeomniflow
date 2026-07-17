@@ -7,6 +7,9 @@
  *   title        : string  (required)
  *   message      : string  (required)
  *   data         : object  (optional) — custom key-value pairs forwarded to app
+ *   promotional  : boolean (optional, default false) — promotional sends respect
+ *                  the customer's push_enabled (Offers & Promotions) setting;
+ *                  transactional/loyalty sends (default) are always delivered
  *
  * Returns { sent: boolean, log_id: string | null, error?: string }
  *
@@ -71,6 +74,7 @@ Deno.serve(async (req: Request) => {
     title: string;
     message: string;
     data?: Record<string, unknown>;
+    promotional?: boolean;
   };
 
   try {
@@ -79,17 +83,18 @@ Deno.serve(async (req: Request) => {
     return json({ error: "Invalid JSON body" }, 400);
   }
 
-  const { customer_id, type, title, message, data: extraData } = body;
+  const { customer_id, type, title, message, data: extraData, promotional } = body;
   if (!customer_id || !type || !title || !message) {
     return json({ error: "Missing required fields: customer_id, type, title, message" }, 400);
   }
 
   // ── 1. Look up OneSignal player_id from app_users ───────────────────────
+  // push_enabled only gates promotional sends; account/loyalty pushes
+  // (points expiry, redemption reminders, birthdays) are always delivered.
   const { data: appUser, error: auErr } = await supabase
     .from("app_users")
-    .select("onesignal_player_id")
+    .select("onesignal_player_id, push_enabled")
     .eq("customer_id", customer_id)
-    .eq("push_enabled", true)
     .maybeSingle();
 
   if (auErr) {
@@ -97,7 +102,8 @@ Deno.serve(async (req: Request) => {
     return json({ sent: false, log_id: null, error: auErr.message }, 500);
   }
 
-  const playerId: string | null = appUser?.onesignal_player_id ?? null;
+  const optedOut = promotional === true && appUser?.push_enabled === false;
+  const playerId: string | null = optedOut ? null : appUser?.onesignal_player_id ?? null;
 
   // ── 2. Send via OneSignal if player ID is available ────────────────────
   let onesignalSuccess = false;
@@ -146,7 +152,7 @@ Deno.serve(async (req: Request) => {
       sent_at:           new Date().toISOString(),
       delivery_status:   playerId
         ? (onesignalSuccess ? "sent" : "failed")
-        : "no_device",
+        : (optedOut ? "opted_out" : "no_device"),
     })
     .select("id")
     .single();

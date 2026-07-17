@@ -214,7 +214,7 @@ const AdminPushNotifications = () => {
         <CardHeader>
           <CardTitle>Send a broadcast</CardTitle>
           <CardDescription>
-            Goes to every app customer with push notifications enabled.
+            Promotional — goes to every app customer who hasn&rsquo;t turned off Offers &amp; Promotions.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -329,7 +329,9 @@ const AdminPushNotifications = () => {
         <CardHeader>
           <CardTitle>Automated reminders</CardTitle>
           <CardDescription>
-            Sent automatically by the daily loyalty job. Toggle any reminder on or off.
+            Sent automatically by the daily loyalty job. Account alerts (points, card, birthday,
+            anniversary) are always delivered regardless of the customer&rsquo;s Offers &amp;
+            Promotions setting; the we-miss-you reminder is promotional and respects it.
           </CardDescription>
         </CardHeader>
         <CardContent>
