@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,10 +9,21 @@ import { toast } from "sonner";
 import LoginBannerCarousel from "@/components/LoginBannerCarousel";
 
 const Login = () => {
-  const { login, loading: authLoading } = useAuth();
+  const { login, loading: authLoading, user } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // If landed here with ?next= (e.g. from OAuth consent) and already signed in,
+  // bounce back to it.
+  useEffect(() => {
+    if (!user) return;
+    const params = new URLSearchParams(window.location.search);
+    const next = params.get("next");
+    if (next && next.startsWith("/") && !next.startsWith("//")) {
+      window.location.replace(next);
+    }
+  }, [user]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,6 +38,7 @@ const Login = () => {
     }
     setSubmitting(false);
   };
+
 
   if (authLoading) {
     return (

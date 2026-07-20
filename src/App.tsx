@@ -57,6 +57,7 @@ const LogisticsCalculator = lazy(() => import("@/pages/LogisticsCalculator"));
 const LogisticsCalculatorSettings = lazy(() => import("@/pages/LogisticsCalculatorSettings"));
 const LogisticsHistory = lazy(() => import("@/pages/LogisticsHistory"));
 const LiveTracking = lazy(() => import("@/pages/LiveTracking"));
+const OAuthConsent = lazy(() => import("@/pages/OAuthConsent"));
 import KioskModeWrapper from "@/components/kiosk/KioskModeWrapper";
 import ProfileGate from "@/components/staff/ProfileGate";
 
@@ -223,6 +224,7 @@ const App = () => (
           <Routes>
             <Route path="/feedback" element={<FeedbackKiosk />} />
             <Route path="/feedback/exit" element={<FeedbackKiosk />} />
+            <Route path="/.lovable/oauth/consent" element={<OAuthConsent />} />
             <Route
               path="/kiosk/feedback"
               element={
