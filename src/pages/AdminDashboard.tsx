@@ -144,16 +144,20 @@ const AdminDashboard = () => {
     return result;
   }, [leads, nameSearch, phoneSearch, statusFilter, categoryFilter, assignedFilter]);
 
-  const totalPipeline = leads.reduce((s, l) => s + Number(l.value_in_rupees), 0);
+  // These were previously recomputed on every render (e.g. every keystroke in
+  // the Leads search box below), doing several nested filter/map passes over
+  // leads/serviceJobs/siteVisits regardless of which tab is active. Memoizing
+  // means they only recompute when the underlying data actually changes.
+  const totalPipeline = useMemo(() => leads.reduce((s, l) => s + Number(l.value_in_rupees), 0), [leads]);
   // Note: team-wide won totals come from `summary` (full DB aggregate) instead
   // of the paginated `leads` array, otherwise the figure under-counts.
-  const serviceRevenue = serviceJobs.filter(j => !j.is_foc && j.status === "completed" && j.type === "service").reduce((s, j) => s + Number(j.value), 0);
+  const serviceRevenue = useMemo(() => serviceJobs.filter(j => !j.is_foc && j.status === "completed" && j.type === "service").reduce((s, j) => s + Number(j.value), 0), [serviceJobs]);
   const todayStr = new Date().toISOString().split("T")[0];
-  const overdueLeads = leads.filter(l => l.status === "overdue");
-  const deliveryJobs = serviceJobs.filter(j => j.type === "delivery");
+  const overdueLeads = useMemo(() => leads.filter(l => l.status === "overdue"), [leads]);
+  const deliveryJobs = useMemo(() => serviceJobs.filter(j => j.type === "delivery"), [serviceJobs]);
 
   const salesProfiles = getProfilesByRole("sales");
-  const salesPerformance = salesProfiles.map(s => {
+  const salesPerformance = useMemo(() => salesProfiles.map(s => {
     const sLeads = leads.filter(l => l.assigned_to === s.id);
     const won = sLeads.filter(l => l.status === "won");
     return {
@@ -161,10 +165,10 @@ const AdminDashboard = () => {
       wonValue: won.reduce((sum, l) => sum + Number(l.value_in_rupees), 0),
       conversion: sLeads.length ? Math.round((won.length / sLeads.length) * 100) : 0,
     };
-  }).sort((a, b) => b.wonValue - a.wonValue);
+  }).sort((a, b) => b.wonValue - a.wonValue), [salesProfiles, leads]);
 
   const fieldProfiles = getProfilesByRole("field_agent");
-  const fieldPerformance = fieldProfiles.map(s => {
+  const fieldPerformance = useMemo(() => fieldProfiles.map(s => {
     const jobs = serviceJobs.filter(j => j.assigned_agent === s.id);
     const completed = jobs.filter(j => j.status === "completed").length;
     const pending = jobs.filter(j => !["completed"].includes(j.status)).length;
@@ -175,16 +179,16 @@ const AdminDashboard = () => {
       pendingJobs: pending,
       completionRate: jobs.length ? Math.round((completed / jobs.length) * 100) : 0,
     };
-  });
+  }), [fieldProfiles, serviceJobs]);
 
   const siteProfiles = getProfilesByRole("site_agent");
-  const sitePerformance = siteProfiles.map(s => {
+  const sitePerformance = useMemo(() => siteProfiles.map(s => {
     const visits = siteVisits.filter(v => v.agent_id === s.id);
     return {
       ...s, totalVisits: visits.length, totalLeads: leads.filter(l => l.source === "site_agent" && l.assigned_to === s.id).length,
       todayVisits: visits.filter(v => v.date === todayStr).length,
     };
-  });
+  }), [siteProfiles, siteVisits, leads, todayStr]);
 
   const handleAddStaff = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -239,10 +243,10 @@ const AdminDashboard = () => {
     }
   };
 
-  const allUsersWithStatus = allProfiles.map(p => {
+  const allUsersWithStatus = useMemo(() => allProfiles.map(p => {
     const profile = profiles.find(pr => pr.id === p.id);
     return { ...p, active: profile?.active ?? true, phone_number: profile?.phone_number || "" };
-  });
+  }), [allProfiles, profiles]);
 
   const handleUpdatePhone = async (userId: string) => {
     const digits = editPhoneValue.replace(/\D/g, "");

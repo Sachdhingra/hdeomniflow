@@ -417,11 +417,19 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   }, [leads, user]);
 
 
-  // Auto-refresh on tab visibility change
+  // Auto-refresh on tab visibility change — throttled so rapidly switching
+  // back and forth between browser tabs doesn't retrigger a full reload
+  // (summary + profiles + leads + jobs + visits + notifications) every time.
+  const lastVisibilityRefreshRef = useRef(0);
+  const VISIBILITY_REFRESH_MIN_GAP_MS = 30_000;
   useEffect(() => {
     if (!user) return;
     const handleVisibility = () => {
-      if (document.visibilityState === "visible") refreshAll();
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (now - lastVisibilityRefreshRef.current < VISIBILITY_REFRESH_MIN_GAP_MS) return;
+      lastVisibilityRefreshRef.current = now;
+      refreshAll();
     };
     document.addEventListener("visibilitychange", handleVisibility);
     return () => document.removeEventListener("visibilitychange", handleVisibility);
