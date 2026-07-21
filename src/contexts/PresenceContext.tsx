@@ -83,7 +83,15 @@ export const PresenceProvider = ({ children }: { children: ReactNode }) => {
         .then(() => {});
     };
 
+    // Throttled: only re-arm the idle timer at most once every few seconds.
+    // Without this, every single mousemove pixel event tears down and
+    // recreates a setTimeout, which adds constant background overhead.
+    const RESET_THROTTLE_MS = 5000;
+    let lastReset = 0;
     const resetIdle = () => {
+      const now = Date.now();
+      if (now - lastReset < RESET_THROTTLE_MS) return;
+      lastReset = now;
       if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current);
       if (myStatus !== "online") setStatus("online");
       idleTimerRef.current = window.setTimeout(() => setStatus("away"), AWAY_AFTER_MS);
