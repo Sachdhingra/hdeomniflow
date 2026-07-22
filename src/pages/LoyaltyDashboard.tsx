@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Loader2, Search, Trophy, CreditCard, Coins, Bell,
-  CheckCircle2, XCircle, Clock, Star
+  CheckCircle2, XCircle, Clock, Star, Settings
 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
@@ -120,6 +120,37 @@ export default function LoyaltyDashboard() {
   const [tierFilter, setTierFilter] = useState<"all" | "elite" | "super_elite" | "prestige_elite">("all");
   const [holderSearch, setHolderSearch] = useState("");
   const [pushSearch, setPushSearch] = useState("");
+
+  // Program settings (admin only)
+  const [coolingDays, setCoolingDays] = useState("");
+  const [settingsSaving, setSettingsSaving] = useState(false);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    (supabase as any)
+      .from("card_settings")
+      .select("value")
+      .eq("key", "points_cooling_days")
+      .maybeSingle()
+      .then(({ data }: any) => {
+        if (data) setCoolingDays(String(data.value).replace(/"/g, ""));
+      });
+  }, [isAdmin]);
+
+  const saveCoolingDays = async () => {
+    const n = parseInt(coolingDays, 10);
+    if (isNaN(n) || n < 0 || n > 365) {
+      toast.error("Enter a number of days between 0 and 365");
+      return;
+    }
+    setSettingsSaving(true);
+    const { error } = await (supabase as any)
+      .from("card_settings")
+      .upsert({ key: "points_cooling_days", value: n, updated_at: new Date().toISOString() });
+    setSettingsSaving(false);
+    if (error) toast.error(error.message);
+    else toast.success(`Points cooling period set to ${n} day${n === 1 ? "" : "s"}`);
+  };
 
   // ── Fetch main data ──────────────────────────────────────────────────────
 
@@ -365,6 +396,7 @@ export default function LoyaltyDashboard() {
               {(isAdmin || user?.role === "accounts") && (
                 <TabsTrigger value="push-log">Push Log</TabsTrigger>
               )}
+              {isAdmin && <TabsTrigger value="settings">Settings</TabsTrigger>}
             </TabsList>
 
             {/* ── CARD HOLDERS ─────────────────────────────────────────────── */}
@@ -574,6 +606,41 @@ export default function LoyaltyDashboard() {
                 <p className="text-xs text-muted-foreground">
                   Showing last 200 records. <code>no_device</code> = customer has no app install.
                 </p>
+              </TabsContent>
+            )}
+
+            {/* ── SETTINGS (admin only) ────────────────────────────────────── */}
+            {isAdmin && (
+              <TabsContent value="settings" className="pt-3">
+                <Card>
+                  <CardContent className="p-4 space-y-4">
+                    <div>
+                      <p className="font-semibold flex items-center gap-2">
+                        <Settings className="w-4 h-4" /> Points Cooling Period
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Points start crediting only this many days after the customer's first
+                        purchase is delivered &amp; assembled (field-agent completion report with
+                        photos). Set 0 to disable the wait — e.g. temporarily, for testing.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 max-w-xs">
+                      <Input
+                        type="number"
+                        min="0"
+                        max="365"
+                        value={coolingDays}
+                        onChange={e => setCoolingDays(e.target.value)}
+                        placeholder="30"
+                      />
+                      <span className="text-sm text-muted-foreground whitespace-nowrap">days</span>
+                      <Button onClick={saveCoolingDays} disabled={settingsSaving}>
+                        {settingsSaving && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+                        Save
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
               </TabsContent>
             )}
           </Tabs>

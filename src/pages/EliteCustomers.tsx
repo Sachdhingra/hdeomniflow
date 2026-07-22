@@ -476,16 +476,21 @@ const MemberFormDialog = ({
     try {
       const canonicalP1 = toCanonicalPhone(p1);
       if (mode === "add") {
-        // Duplicate guard
-        const { data: dup } = await supabase
+        // Duplicate guard — any status, one card per phone ever. limit(1)
+        // instead of maybeSingle: maybeSingle errors out (and the guard
+        // silently passes) as soon as one duplicate exists in the table.
+        const { data: dupList } = await supabase
           .from("elite_customers" as any)
           .select("id, customer_name, status")
           .eq("phone_1", canonicalP1)
-          .neq("status", "opted_out")
-          .maybeSingle();
-        if (dup) {
-          const d: any = dup;
-          setDupError(`This number is already registered as an Elite Member (${d.customer_name})`);
+          .limit(1);
+        const d: any = (dupList as any[])?.[0];
+        if (d) {
+          setDupError(
+            d.status === "opted_out"
+              ? `This number already has an Elite record (${d.customer_name}, opted out) — re-enroll from their lead instead of creating a new card.`
+              : `This number is already registered as an Elite Member (${d.customer_name})`
+          );
           setSaving(false);
           return;
         }
