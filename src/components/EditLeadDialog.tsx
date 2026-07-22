@@ -75,6 +75,24 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
       setTierTouched(false);
       setEliteDupWarning(null);
       const cardId: string | null = l.elite_card_id ?? null;
+      // Not linked yet: surface an existing card for this phone up front so
+      // no one thinks a new card is being created
+      if (!cardId && lead.customer_phone) {
+        supabase
+          .from("elite_customers" as any)
+          .select("customer_name, card_number, status")
+          .eq("phone_1", lead.customer_phone)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .then(({ data }) => {
+            const ex: any = (data as any[])?.[0];
+            if (ex) {
+              setEliteDupWarning(
+                `⭐ Elite card already exists for this number (${ex.customer_name}${ex.card_number ? `, card ${ex.card_number}` : ""}${ex.status === "opted_out" ? ", opted out — will be reactivated" : ""}). It will be linked — no new card will be created.`
+              );
+            }
+          });
+      }
       if (cardId) {
         let cancelled = false;
         supabase
@@ -128,13 +146,16 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
         }
         // ---- Opt-in (new or unchanged) ----
         else if (eliteChoice === "opt_in") {
-          // Duplicate guard: another elite record for this phone (not this lead's card)
-          const { data: existing } = await supabase
+          // Duplicate guard: another elite record for this phone (not this lead's card).
+          // limit(1) instead of maybeSingle — maybeSingle errors out (and the guard
+          // silently passes) as soon as one duplicate exists in the table.
+          const { data: existingList } = await supabase
             .from("elite_customers" as any)
             .select("id, customer_name, status, lead_id")
             .eq("phone_1", lead.customer_phone)
-            .maybeSingle();
-          const ex: any = existing;
+            .order("created_at", { ascending: true })
+            .limit(1);
+          const ex: any = (existingList as any[])?.[0];
           if (ex && ex.id !== prevCardId) {
             if (ex.status === "opted_out") {
               // Reactivate existing record and link
@@ -149,13 +170,8 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
               elitePatch.elite_card_id = ex.id;
               toastMessage = { kind: "success", text: `⭐ Elite membership reactivated for ${lead.customer_name}` };
             } else {
-              // Link to existing record instead of creating new
-              if (ex.lead_id && ex.lead_id !== lead.id) {
-                setEliteDupWarning(`This customer (${ex.customer_name}) is already an Elite Member. No new entry will be created.`);
-                setSaving(false);
-                return;
-              }
-              // Available existing record without a lead — link it
+              // Existing card for this phone — always link, never create another.
+              // (A repeat customer's new lead simply attaches to their one card.)
               if (!ex.lead_id) {
                 await (supabase.from("elite_customers" as any).update({ lead_id: lead.id }).eq("id", ex.id) as any);
               }
