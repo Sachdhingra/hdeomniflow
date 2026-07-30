@@ -1496,6 +1496,7 @@ export type Database = {
           rejected_by: string | null
           rejection_reason: string | null
           replacement_product_id: string | null
+          replacement_product_ids: string[] | null
           service_assigned_at: string | null
           service_assigned_by: string | null
           status: string
@@ -1529,6 +1530,7 @@ export type Database = {
           rejected_by?: string | null
           rejection_reason?: string | null
           replacement_product_id?: string | null
+          replacement_product_ids?: string[] | null
           service_assigned_at?: string | null
           service_assigned_by?: string | null
           status?: string
@@ -1562,6 +1564,7 @@ export type Database = {
           rejected_by?: string | null
           rejection_reason?: string | null
           replacement_product_id?: string | null
+          replacement_product_ids?: string[] | null
           service_assigned_at?: string | null
           service_assigned_by?: string | null
           status?: string
@@ -1678,6 +1681,7 @@ export type Database = {
           id: string
           lead_id: string | null
           location_id: string | null
+          order_id: string | null
           product_id: string
           quantity_change: number
           reason: string | null
@@ -1690,6 +1694,7 @@ export type Database = {
           id?: string
           lead_id?: string | null
           location_id?: string | null
+          order_id?: string | null
           product_id: string
           quantity_change: number
           reason?: string | null
@@ -1702,6 +1707,7 @@ export type Database = {
           id?: string
           lead_id?: string | null
           location_id?: string | null
+          order_id?: string | null
           product_id?: string
           quantity_change?: number
           reason?: string | null
@@ -3742,6 +3748,18 @@ export type Database = {
         Returns: number
       }
       fn_expire_points: { Args: never; Returns: number }
+      fn_hde_apply_stock: {
+        Args: {
+          _action: string
+          _by: string
+          _delta: number
+          _location: string
+          _order: string
+          _product: string
+          _reason: string
+        }
+        Returns: undefined
+      }
       fn_points_window_start: {
         Args: { _customer: string; _exclude_entry: string; _issue: string }
         Returns: string
