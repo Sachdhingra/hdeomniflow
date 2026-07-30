@@ -1274,7 +1274,9 @@ function OrderDetailDialog({
     const completion: any = { status: "completed", completed_at: new Date().toISOString(), completed_by: userId };
     // Set in the same update so the completion trigger sees the location
     if (needsCompleteLocation && completeLocationId) completion.location_id = completeLocationId;
-    await supabase.from("hde_orders" as any).update(completion).eq("id", order!.id);
+    const { error: completeErr } = await supabase.from("hde_orders" as any).update(completion).eq("id", order!.id);
+    if (completeErr) { setSaving(false); return toast.error(completeErr.message || "Could not complete order"); }
+
 
     if (order!.order_type === "showroom") {
       await supabase.from("hde_display_items" as any).update({ display_status: "installed", updated_by: userId }).eq("order_id", order!.id);
