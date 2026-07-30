@@ -1238,12 +1238,37 @@ function OrderDetailDialog({
     await supabase.from("hde_order_timeline" as any).insert({ order_id: order!.id, action, description: desc, performed_by: userId });
   };
 
+  // Showroom sale with "no replacement needed" has nothing left to do after
+  // accounts sign-off — no field visit, no after photos. Close it right away so
+  // the inventory value settles on approval.
+  const isNoReplacementShowroom =
+    order?.order_type === "showroom" &&
+    !order?.replacement_product_id &&
+    !(order?.replacement_product_ids?.length) &&
+    !(order?.replacement_product_names?.length);
+
   const handleApprove = async () => {
     setSaving(true);
-    await supabase.from("hde_orders" as any).update({ status: "approved", approved_at: new Date().toISOString(), approved_by: userId }).eq("id", order!.id);
+    const now = new Date().toISOString();
+    const payload: any = { status: "approved", approved_at: now, approved_by: userId };
+    if (isNoReplacementShowroom) {
+      payload.status = "completed";
+      payload.completed_at = now;
+      payload.completed_by = userId;
+    }
+    const { error } = await supabase.from("hde_orders" as any).update(payload).eq("id", order!.id);
+    if (error) { setSaving(false); return toast.error(error.message || "Could not approve"); }
     await log("Approved by Accounts", actionNote || "Order approved");
-    setSaving(false); toast.success("Approved"); onUpdated(); onClose();
+    if (isNoReplacementShowroom) {
+      await supabase.from("hde_display_items" as any)
+        .update({ display_status: "sold", updated_by: userId }).eq("order_id", order!.id);
+      await log("Order Closed", "No replacement requested — closed on accounts approval; stock deducted from display");
+    }
+    setSaving(false);
+    toast.success(isNoReplacementShowroom ? "Approved & closed — inventory updated" : "Approved");
+    onUpdated(); onClose();
   };
+
 
   const handleReject = async () => {
     if (!actionNote) return toast.error("Provide rejection reason");
@@ -1413,7 +1438,7 @@ function OrderDetailDialog({
           )}
 
           {/* Photo upload */}
-          {(canComplete || canAssign) && !["completed","rejected","cancelled"].includes(order.status) && (
+          {(canComplete || canAssign) && !isNoReplacementShowroom && !["completed","rejected","cancelled"].includes(order.status) && (
             <div className="border rounded-lg p-3 space-y-2">
               <h4 className="text-sm font-semibold">Upload Photo</h4>
               <div className="flex gap-2 items-center">
@@ -1443,7 +1468,7 @@ function OrderDetailDialog({
                 <Button variant="destructive" className="flex-1" onClick={handleReject} disabled={saving}><XCircle className="w-4 h-4 mr-1" />Reject</Button>
               </div>
             )}
-            {canAssign && ["approved","service_assigned"].includes(order.status) && (
+            {canAssign && !isNoReplacementShowroom && ["approved","service_assigned"].includes(order.status) && (
               <div className="space-y-2">
                 <Select value={selectedAgent} onValueChange={setSelectedAgent}>
                   <SelectTrigger><SelectValue placeholder="Select field agent…" /></SelectTrigger>
