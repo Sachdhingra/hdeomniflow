@@ -1295,19 +1295,25 @@ function OrderDetailDialog({
       .filter(p => p.photo_type !== "before")
       .map(p => p.photo_url);
     if (productPhotoUrls.length > 0) {
+      const latestUrl = productPhotoUrls[productPhotoUrls.length - 1];
       const productIds = new Set<string>();
       if (order!.product_id) productIds.add(order!.product_id);
       if (order!.replacement_product_ids?.length) order!.replacement_product_ids.forEach(id => productIds.add(id));
       if (order!.replacement_product_id) productIds.add(order!.replacement_product_id);
 
-      const rows: any[] = [];
-      productIds.forEach(pid => productPhotoUrls.forEach(url => rows.push({
-        product_id: pid, photo_url: url, uploaded_by: userId,
-      })));
+      // one row per product — ON CONFLICT (product_id) cannot handle duplicate
+      // keys inside a single statement, which used to silently drop the update
+      const rows = Array.from(productIds).map(pid => ({
+        product_id: pid, photo_url: latestUrl, uploaded_by: userId,
+      }));
       if (rows.length) {
-        await supabase.from("hde_product_photos" as any).upsert(rows, { onConflict: "product_id" });
+        const { error: photoErr } = await supabase
+          .from("hde_product_photos" as any)
+          .upsert(rows, { onConflict: "product_id" });
+        if (photoErr) toast.error(`Photo sync failed: ${photoErr.message}`);
       }
     }
+
 
     await log("Job Completed", actionNote || "Work marked complete — inventory updated");
     setSaving(false); toast.success("Completed — inventory updated"); onUpdated(); onClose();
