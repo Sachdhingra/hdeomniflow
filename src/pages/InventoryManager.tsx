@@ -1438,7 +1438,7 @@ function OrderDetailDialog({
           )}
 
           {/* Photo upload */}
-          {(canComplete || canAssign) && !["completed","rejected","cancelled"].includes(order.status) && (
+          {(canComplete || canAssign) && !isNoReplacementShowroom && !["completed","rejected","cancelled"].includes(order.status) && (
             <div className="border rounded-lg p-3 space-y-2">
               <h4 className="text-sm font-semibold">Upload Photo</h4>
               <div className="flex gap-2 items-center">
