@@ -1468,7 +1468,7 @@ function OrderDetailDialog({
                 <Button variant="destructive" className="flex-1" onClick={handleReject} disabled={saving}><XCircle className="w-4 h-4 mr-1" />Reject</Button>
               </div>
             )}
-            {canAssign && ["approved","service_assigned"].includes(order.status) && (
+            {canAssign && !isNoReplacementShowroom && ["approved","service_assigned"].includes(order.status) && (
               <div className="space-y-2">
                 <Select value={selectedAgent} onValueChange={setSelectedAgent}>
                   <SelectTrigger><SelectValue placeholder="Select field agent…" /></SelectTrigger>
