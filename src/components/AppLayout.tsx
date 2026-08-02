@@ -16,6 +16,8 @@ import NetworkStatusBadge from "@/components/NetworkStatusBadge";
 import ChatNotifier from "@/components/ChatNotifier";
 import ChatArrivalFlash from "@/components/ChatArrivalFlash";
 import LeadNotifier from "@/components/LeadNotifier";
+import OrderNotifier from "@/components/OrderNotifier";
+import OrderActionBanner from "@/components/OrderActionBanner";
 import AttendanceClockButton from "@/components/AttendanceClockButton";
 import DiscountCalculator from "@/components/DiscountCalculator";
 import { useChatUnread } from "@/contexts/ChatUnreadContext";
@@ -168,6 +170,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
     <div className="min-h-screen flex bg-background">
       <ChatNotifier />
       <LeadNotifier />
+      <OrderNotifier />
       <ChatArrivalFlash />
       {sidebarOpen && (
         <div className="fixed inset-0 bg-foreground/20 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
@@ -250,6 +253,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
           <NetworkStatusBadge />
           <NotificationPanel />
         </header>
+        <OrderActionBanner />
         <main className="flex-1 p-4 lg:p-6 overflow-y-auto">
           {children}
         </main>
