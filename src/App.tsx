@@ -7,6 +7,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { DataProvider } from "@/contexts/DataContext";
 import { ChatUnreadProvider } from "@/contexts/ChatUnreadContext";
+import { QuoteProvider } from "@/contexts/QuoteContext";
+
 import { PresenceProvider } from "@/contexts/PresenceContext";
 import AppLayout from "@/components/AppLayout";
 import Login from "@/pages/Login";
@@ -25,6 +27,9 @@ const SiteAgentLeads = lazy(() => import("@/pages/SiteAgentLeads"));
 const AdminCategories = lazy(() => import("@/pages/AdminCategories"));
 const AdminProducts = lazy(() => import("@/pages/AdminProducts"));
 const ProductsView = lazy(() => import("@/pages/ProductsView"));
+const ProductLibrary = lazy(() => import("@/pages/ProductLibrary"));
+const AdminProductLibrary = lazy(() => import("@/pages/AdminProductLibrary"));
+
 const LeadsBoard = lazy(() => import("@/pages/LeadsBoard"));
 const AdminAutomation = lazy(() => import("@/pages/AdminAutomation"));
 const AdminMessageTemplates = lazy(() => import("@/pages/AdminMessageTemplates"));
@@ -206,6 +211,9 @@ const AppRoutes = () => {
             <Route path="/logistics-calculator" element={<LogisticsCalculator />} />
             <Route path="/logistics-calculator/history" element={<LogisticsHistory />} />
             <Route path="/logistics-calculator/settings" element={<LogisticsCalculatorSettings />} />
+            <Route path="/product-library" element={<ProductLibrary />} />
+            <Route path="/admin/product-library" element={<AdminProductLibrary />} />
+
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
@@ -240,9 +248,12 @@ const App = () => (
                   <DataProvider>
                     <ChatUnreadProvider>
                       <PresenceProvider>
-                        <AppRoutes />
-                        <PWAInstallPrompt />
+                        <QuoteProvider>
+                          <AppRoutes />
+                          <PWAInstallPrompt />
+                        </QuoteProvider>
                       </PresenceProvider>
+
                     </ChatUnreadProvider>
                   </DataProvider>
                 </AuthProvider>
