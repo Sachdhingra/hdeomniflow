@@ -5,7 +5,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import {
   Building2, LayoutDashboard, Users, Wrench, Navigation, MapPin,
   LogOut, Menu, X, ChevronRight, CalendarDays, BarChart3,
-  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot, ShieldCheck, MessageSquare, TrendingUp, ShoppingBag, MessagesSquare, Sparkles, Clock, Star, Receipt, Trophy, UserCircle, BookUser, Boxes, Truck, Calculator, CreditCard, Coins, BarChart2, AudioLines, BellRing
+  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot, ShieldCheck, MessageSquare, TrendingUp, ShoppingBag, MessagesSquare, Sparkles, Clock, Star, Receipt, Trophy, UserCircle, BookUser, Boxes, Truck, Calculator, CreditCard, Coins, BarChart2, AudioLines, BellRing, LibraryBig
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useStaffProfile } from "@/hooks/useStaffProfile";
@@ -65,6 +65,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
   const LOYALTY_DASHBOARD_NAV: NavItem = { to: "/loyalty-dashboard", label: "Loyalty Overview", icon: <BarChart2 className="w-5 h-5" /> };
   const INVENTORY_NAV: NavItem = { to: "/inventory", label: "Inventory", icon: <Boxes className="w-5 h-5" /> };
   const LOGISTICS_NAV: NavItem = { to: "/logistics-calculator", label: "Logistics Calculator", icon: <Calculator className="w-5 h-5" /> };
+  const PRODUCT_LIBRARY_NAV: NavItem = { to: "/product-library", label: "Product Library", icon: <LibraryBig className="w-5 h-5" /> };
 
   const NAV_ITEMS: Record<UserRole, NavItem[]> = {
     admin: [
@@ -87,6 +88,8 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/site-agents", label: "Site Agents", icon: <MapPin className="w-5 h-5" /> },
       { to: "/categories", label: "Categories", icon: <FolderTree className="w-5 h-5" /> },
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
+      PRODUCT_LIBRARY_NAV,
+      { to: "/admin/product-library", label: "Product Library Admin", icon: <LibraryBig className="w-5 h-5" /> },
       { to: "/admin/automation", label: "Automation", icon: <Bot className="w-5 h-5" /> },
       { to: "/admin/push-notifications", label: "Push Notifications", icon: <BellRing className="w-5 h-5" /> },
       { to: "/admin/templates", label: "WhatsApp Templates", icon: <MessageSquare className="w-5 h-5" /> },
@@ -108,6 +111,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/pipeline", label: "Pipeline", icon: <BarChart3 className="w-5 h-5" /> },
       { to: "/calendar", label: "Dispatch Calendar", icon: <CalendarDays className="w-5 h-5" /> },
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
+      PRODUCT_LIBRARY_NAV,
       { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" />, badge: chatUnread || undefined },
       { to: "/ai-assistant", label: "AI Assistant", icon: <Sparkles className="w-5 h-5" /> },
       { to: "/jarvis", label: "Jarvis Voice", icon: <AudioLines className="w-5 h-5" /> },
@@ -122,6 +126,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/claims", label: "Claims", icon: <FileText className="w-5 h-5" /> },
       { to: "/calendar", label: "Calendar", icon: <CalendarDays className="w-5 h-5" /> },
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
+      PRODUCT_LIBRARY_NAV,
       { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" />, badge: chatUnread || undefined },
       { to: "/ai-assistant", label: "AI Assistant", icon: <Sparkles className="w-5 h-5" /> },
       { to: "/jarvis", label: "Jarvis Voice", icon: <AudioLines className="w-5 h-5" /> },
@@ -135,6 +140,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/site-visits", label: "Site Visits", icon: <MapPin className="w-5 h-5" /> },
       { to: "/my-leads", label: "My Leads", icon: <ClipboardList className="w-5 h-5" /> },
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
+      PRODUCT_LIBRARY_NAV,
     ],
     accounts: [
       { to: "/", label: "Approvals", icon: <ShieldCheck className="w-5 h-5" /> },
@@ -148,6 +154,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       INVENTORY_NAV,
       LOGISTICS_NAV,
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
+      PRODUCT_LIBRARY_NAV,
       { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" />, badge: chatUnread || undefined },
       { to: "/jarvis", label: "Jarvis Voice", icon: <AudioLines className="w-5 h-5" /> },
     ],
