@@ -206,6 +206,9 @@ const AppRoutes = () => {
             <Route path="/logistics-calculator" element={<LogisticsCalculator />} />
             <Route path="/logistics-calculator/history" element={<LogisticsHistory />} />
             <Route path="/logistics-calculator/settings" element={<LogisticsCalculatorSettings />} />
+            <Route path="/product-library" element={<ProductLibrary />} />
+            <Route path="/admin/product-library" element={<AdminProductLibrary />} />
+
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
