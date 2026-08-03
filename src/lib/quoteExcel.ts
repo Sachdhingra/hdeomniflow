@@ -301,7 +301,10 @@ Delivery period will start once the following details are shared with us:
     cell.value = t;
     cell.font = base;
     cell.alignment = { wrapText: true, vertical: "top" };
-    tws.getRow(r).height = Math.min(320, Math.max(60, Math.ceil(t.length / 110) * 16));
+    const wrapped = t
+      .split("\n")
+      .reduce((n, para) => n + Math.max(1, Math.ceil(para.length / 150)), 0);
+    tws.getRow(r).height = Math.min(300, Math.max(16, wrapped * 13));
   });
 
   return wb;
