@@ -25,6 +25,9 @@ const SiteAgentLeads = lazy(() => import("@/pages/SiteAgentLeads"));
 const AdminCategories = lazy(() => import("@/pages/AdminCategories"));
 const AdminProducts = lazy(() => import("@/pages/AdminProducts"));
 const ProductsView = lazy(() => import("@/pages/ProductsView"));
+const ProductLibrary = lazy(() => import("@/pages/ProductLibrary"));
+const AdminProductLibrary = lazy(() => import("@/pages/AdminProductLibrary"));
+
 const LeadsBoard = lazy(() => import("@/pages/LeadsBoard"));
 const AdminAutomation = lazy(() => import("@/pages/AdminAutomation"));
 const AdminMessageTemplates = lazy(() => import("@/pages/AdminMessageTemplates"));
