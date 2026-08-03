@@ -126,7 +126,6 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/claims", label: "Claims", icon: <FileText className="w-5 h-5" /> },
       { to: "/calendar", label: "Calendar", icon: <CalendarDays className="w-5 h-5" /> },
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
-      PRODUCT_LIBRARY_NAV,
       { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" />, badge: chatUnread || undefined },
       { to: "/ai-assistant", label: "AI Assistant", icon: <Sparkles className="w-5 h-5" /> },
       { to: "/jarvis", label: "Jarvis Voice", icon: <AudioLines className="w-5 h-5" /> },
@@ -140,7 +139,6 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/site-visits", label: "Site Visits", icon: <MapPin className="w-5 h-5" /> },
       { to: "/my-leads", label: "My Leads", icon: <ClipboardList className="w-5 h-5" /> },
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
-      PRODUCT_LIBRARY_NAV,
     ],
     accounts: [
       { to: "/", label: "Approvals", icon: <ShieldCheck className="w-5 h-5" /> },
@@ -154,7 +152,6 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       INVENTORY_NAV,
       LOGISTICS_NAV,
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
-      PRODUCT_LIBRARY_NAV,
       { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" />, badge: chatUnread || undefined },
       { to: "/jarvis", label: "Jarvis Voice", icon: <AudioLines className="w-5 h-5" /> },
     ],
