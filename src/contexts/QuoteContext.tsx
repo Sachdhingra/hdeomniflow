@@ -12,6 +12,7 @@ export interface QuoteLine {
   quantity: number;
   unit_price: number;
   gst_percent: number;
+  discount_percent?: number;
 }
 
 interface QuoteCtx {
