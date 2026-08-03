@@ -246,9 +246,12 @@ const App = () => (
                   <DataProvider>
                     <ChatUnreadProvider>
                       <PresenceProvider>
-                        <AppRoutes />
-                        <PWAInstallPrompt />
+                        <QuoteProvider>
+                          <AppRoutes />
+                          <PWAInstallPrompt />
+                        </QuoteProvider>
                       </PresenceProvider>
+
                     </ChatUnreadProvider>
                   </DataProvider>
                 </AuthProvider>
