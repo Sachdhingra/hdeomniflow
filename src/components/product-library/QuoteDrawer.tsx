@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Trash2, Save, Share2, FileText } from "lucide-react";
+import { Trash2, Save, Share2, FileText, FileSpreadsheet } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { downloadQuoteExcel } from "@/lib/quoteExcel";
 import { useQuote } from "@/contexts/QuoteContext";
 import { money, lineTotal, plDb } from "@/lib/productLibrary";
 import StorageImage from "./StorageImage";
@@ -15,7 +17,50 @@ const QuoteDrawer = () => {
     useQuote();
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [billingAddress, setBillingAddress] = useState("");
+  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [handlingCharges, setHandlingCharges] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const quoteNumber = useMemo(() => {
+    const d = new Date();
+    const fy = d.getMonth() + 1 >= 4 ? d.getFullYear() : d.getFullYear() - 1;
+    const seq = String(Math.floor(d.getTime() / 1000) % 1000).padStart(3, "0");
+    return `HDE/Dehradun/${fy}-${String((fy + 1) % 100).padStart(2, "0")}/${seq}`;
+  }, [open]);
+
+  const exportExcel = async () => {
+    if (!items.length) return;
+    setExporting(true);
+    try {
+      await downloadQuoteExcel(
+        items.map((i) => ({
+          image_url: i.image_url,
+          product_name: i.product_name,
+          sku: i.sku,
+          unit_price: i.unit_price,
+          discount_percent: i.discount_percent || 0,
+          gst_percent: i.gst_percent,
+          quantity: i.quantity,
+        })),
+        {
+          customerName,
+          billingAddress,
+          deliveryAddress,
+          quoteNumber,
+          quoteDate: new Date().toLocaleDateString("en-GB"),
+          handlingCharges: Number(handlingCharges) || 0,
+          contactLine: "CONTACT: 9917233664 / SACHIN DHINGRA / EMAIL: SACHDHINGRA@GMAIL.COM",
+        },
+      );
+      toast.success("Quotation downloaded");
+    } catch (e: any) {
+      toast.error(e.message || "Could not generate Excel");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const saveQuote = async () => {
     if (!items.length) return;
@@ -85,17 +130,45 @@ const QuoteDrawer = () => {
           </SheetTitle>
         </SheetHeader>
 
-        <div className="grid grid-cols-2 gap-2 py-3">
-          <Input
-            placeholder="Customer name"
-            value={customerName}
-            onChange={(e) => setCustomerName(e.target.value)}
-          />
-          <Input
-            placeholder="Phone"
-            value={customerPhone}
-            onChange={(e) => setCustomerPhone(e.target.value)}
-          />
+        <div className="space-y-2 py-3">
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              placeholder="Customer name"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+            />
+            <Input
+              placeholder="Phone"
+              value={customerPhone}
+              onChange={(e) => setCustomerPhone(e.target.value)}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Textarea
+              placeholder="Billing address"
+              rows={2}
+              value={billingAddress}
+              onChange={(e) => setBillingAddress(e.target.value)}
+              className="text-xs"
+            />
+            <Textarea
+              placeholder="Delivery address"
+              rows={2}
+              value={deliveryAddress}
+              onChange={(e) => setDeliveryAddress(e.target.value)}
+              className="text-xs"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2 items-center">
+            <span className="text-xs text-muted-foreground">Handling / packaging (incl. GST)</span>
+            <Input
+              type="number"
+              value={handlingCharges}
+              onChange={(e) => setHandlingCharges(Number(e.target.value) || 0)}
+              className="h-8 text-xs"
+            />
+          </div>
+          <p className="text-[11px] text-muted-foreground">Quote No: {quoteNumber}</p>
         </div>
 
         <ScrollArea className="flex-1 -mx-2 px-2">
@@ -122,7 +195,7 @@ const QuoteDrawer = () => {
                       <Trash2 className="w-4 h-4 text-destructive" />
                     </Button>
                   </div>
-                  <div className="grid grid-cols-3 gap-1">
+                  <div className="grid grid-cols-4 gap-1">
                     <Input
                       type="number"
                       min={1}
@@ -142,6 +215,15 @@ const QuoteDrawer = () => {
                       type="number"
                       value={i.gst_percent}
                       onChange={(e) => updateItem(i.id, { gst_percent: Number(e.target.value) || 0 })}
+                      className="h-8 text-xs"
+                    />
+                    <Input
+                      type="number"
+                      placeholder="Disc %"
+                      value={i.discount_percent ?? 0}
+                      onChange={(e) =>
+                        updateItem(i.id, { discount_percent: Number(e.target.value) || 0 })
+                      }
                       className="h-8 text-xs"
                     />
                   </div>
@@ -172,8 +254,11 @@ const QuoteDrawer = () => {
             <Button className="flex-1" onClick={saveQuote} disabled={!items.length || saving}>
               <Save className="w-4 h-4 mr-1" /> Save
             </Button>
-            <Button variant="outline" onClick={shareQuote} disabled={!items.length}>
-              <Share2 className="w-4 h-4 mr-1" /> Share
+            <Button variant="outline" onClick={exportExcel} disabled={!items.length || exporting}>
+              <FileSpreadsheet className="w-4 h-4 mr-1" /> Excel
+            </Button>
+            <Button variant="outline" size="icon" onClick={shareQuote} disabled={!items.length}>
+              <Share2 className="w-4 h-4" />
             </Button>
           </div>
         </div>
