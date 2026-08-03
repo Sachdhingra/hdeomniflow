@@ -67,6 +67,8 @@ const AdminProductLibrary = () => {
   const [collections, setCollections] = useState<PLCollection[]>([]);
   const [products, setProducts] = useState<PLProduct[]>([]);
   const [editing, setEditing] = useState<Partial<PLProduct> | null>(null);
+  const [importData, setImportData] = useState<any | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -85,6 +87,30 @@ const AdminProductLibrary = () => {
     load();
   }, []);
 
+  const handleImportPdf = async (file: File) => {
+    setImporting(true);
+    try {
+      const reader = new FileReader();
+      const base64: string = await new Promise((res, rej) => {
+        reader.onload = () => res((reader.result as string).split(",")[1]);
+        reader.onerror = rej;
+        reader.readAsDataURL(file);
+      });
+      const { data, error } = await plDb.functions.invoke("extract-product-catalog-pdf", {
+        body: { pdf_base64: base64, mime_type: file.type || "application/pdf" },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      if (!data?.products?.length) throw new Error("No products found in this PDF");
+      setImportData(data);
+      toast.success(`Extracted ${data.products.length} product(s) — review and save`);
+    } catch (e: any) {
+      toast.error(e.message || "Extraction failed");
+    } finally {
+      setImporting(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
       <div>
@@ -102,9 +128,17 @@ const AdminProductLibrary = () => {
         </TabsList>
 
         <TabsContent value="products" className="pt-4 space-y-3">
-          <Button onClick={() => setEditing(emptyProduct())}>
-            <Plus className="w-4 h-4 mr-1" /> New Product
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => setEditing(emptyProduct())}>
+              <Plus className="w-4 h-4 mr-1" /> New Product
+            </Button>
+            <FilePicker
+              accept="application/pdf"
+              busy={importing}
+              label="Import category from PDF"
+              onPick={handleImportPdf}
+            />
+          </div>
           {loading ? (
             <Loader2 className="w-5 h-5 animate-spin" />
           ) : (
@@ -178,6 +212,19 @@ const AdminProductLibrary = () => {
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
+            load();
+          }}
+        />
+      )}
+
+      {importData && (
+        <CatalogImportDialog
+          data={importData}
+          categories={categories}
+          existingProducts={products}
+          onClose={() => setImportData(null)}
+          onImported={() => {
+            setImportData(null);
             load();
           }}
         />
@@ -793,6 +840,235 @@ const ProductEditor = ({
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+/* -------------------- PDF catalog import -------------------- */
+
+const CatalogImportDialog = ({
+  data,
+  categories,
+  existingProducts,
+  onClose,
+  onImported,
+}: {
+  data: any;
+  categories: PLCategory[];
+  existingProducts: PLProduct[];
+  onClose: () => void;
+  onImported: () => void;
+}) => {
+  const matchedCategory = categories.find(
+    (c) =>
+      c.slug === slugify(data.category_name || "") ||
+      c.name.toLowerCase() === (data.category_name || "").toLowerCase(),
+  );
+  const [categoryChoice, setCategoryChoice] = useState<string>(
+    matchedCategory ? matchedCategory.id : "__new__",
+  );
+  const [categoryName, setCategoryName] = useState(data.category_name || "");
+  const [categoryDescription, setCategoryDescription] = useState(data.category_description || "");
+  const [rows, setRows] = useState<any[]>(() => {
+    const usedSkus = new Set(existingProducts.map((p) => p.sku.toUpperCase()));
+    return (data.products || []).map((p: any) => {
+      let sku = (p.sku || "").trim().toUpperCase() || slugify(p.name || "product").toUpperCase().replace(/-/g, "");
+      let unique = sku;
+      let i = 1;
+      while (usedSkus.has(unique)) unique = `${sku}-${i++}`;
+      usedSkus.add(unique);
+      return { ...p, sku: unique, include: true };
+    });
+  });
+  const [saving, setSaving] = useState(false);
+
+  const updateRow = (idx: number, patch: any) =>
+    setRows((rs) => rs.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+
+  const includedCount = rows.filter((r) => r.include).length;
+
+  const save = async () => {
+    const included = rows.filter((r) => r.include);
+    if (!included.length) return toast.error("Select at least one product");
+    if (included.some((r) => !r.sku?.trim() || !r.name?.trim()))
+      return toast.error("Every selected product needs a SKU and name");
+    if (categoryChoice === "__new__" && !categoryName.trim())
+      return toast.error("Category name is required");
+
+    setSaving(true);
+    try {
+      let categoryId = categoryChoice;
+      if (categoryChoice === "__new__") {
+        const { data: cat, error: catErr } = await plDb
+          .from("pl_categories")
+          .insert({
+            name: categoryName.trim(),
+            slug: slugify(categoryName),
+            description: categoryDescription || null,
+          })
+          .select("id")
+          .single();
+        if (catErr) throw catErr;
+        categoryId = cat.id;
+      }
+
+      for (const p of included) {
+        const { data: prod, error: prodErr } = await plDb
+          .from("pl_products")
+          .insert({
+            sku: p.sku.trim(),
+            category_id: categoryId,
+            name: p.name.trim(),
+            description: p.description || null,
+            features: p.features || [],
+            dimensions: p.dimensions || null,
+            warranty: p.warranty || null,
+            mrp: Number(p.mrp) || 0,
+            offer_price: p.offer_price ? Number(p.offer_price) : null,
+            gst_percent: p.gst_percent != null ? Number(p.gst_percent) : 18,
+          })
+          .select("id")
+          .single();
+        if (prodErr) throw prodErr;
+
+        const specRows = (p.specifications || [])
+          .filter((s: any) => s.label && s.value)
+          .map((s: any, i: number) => ({
+            product_id: prod.id,
+            spec_group: s.spec_group || null,
+            label: s.label,
+            value: s.value,
+            sort_order: i,
+          }));
+        if (specRows.length) {
+          const { error } = await plDb.from("pl_product_specifications").insert(specRows);
+          if (error) throw error;
+        }
+
+        const variantRows = (p.variants || []).map((v: any, i: number) => ({
+          product_id: prod.id,
+          colour: v.colour || null,
+          size: v.size || null,
+          finish: v.finish || null,
+          mrp: v.mrp ? Number(v.mrp) : null,
+          offer_price: v.offer_price ? Number(v.offer_price) : null,
+          sort_order: i,
+        }));
+        if (variantRows.length) {
+          const { error } = await plDb.from("pl_product_variants").insert(variantRows);
+          if (error) throw error;
+        }
+      }
+
+      toast.success(`Created ${included.length} product(s)`);
+      onImported();
+    } catch (e: any) {
+      toast.error(e.message || "Import failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Import from PDF — review before saving</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div>
+            <Label>Category</Label>
+            <Select value={categoryChoice} onValueChange={setCategoryChoice}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__new__">+ Create new category</SelectItem>
+                {categories.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {categoryChoice === "__new__" && (
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <Label>New category name</Label>
+                <Input value={categoryName} onChange={(e) => setCategoryName(e.target.value)} />
+              </div>
+              <div>
+                <Label>Category description</Label>
+                <Input
+                  value={categoryDescription}
+                  onChange={(e) => setCategoryDescription(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label>
+              {includedCount} of {rows.length} product(s) selected
+            </Label>
+            <div className="space-y-2 max-h-[45vh] overflow-y-auto pr-1">
+              {rows.map((p, idx) => (
+                <div key={idx} className="rounded border p-3 space-y-2">
+                  <div className="flex items-start gap-3">
+                    <Switch
+                      checked={p.include}
+                      onCheckedChange={(v) => updateRow(idx, { include: v })}
+                      className="mt-2"
+                    />
+                    <div className="flex-1 grid sm:grid-cols-2 gap-2">
+                      <Input
+                        placeholder="SKU"
+                        value={p.sku || ""}
+                        onChange={(e) => updateRow(idx, { sku: e.target.value.toUpperCase() })}
+                      />
+                      <Input
+                        placeholder="Name"
+                        value={p.name || ""}
+                        onChange={(e) => updateRow(idx, { name: e.target.value })}
+                      />
+                      <Input
+                        type="number"
+                        placeholder="MRP"
+                        value={p.mrp ?? ""}
+                        onChange={(e) =>
+                          updateRow(idx, { mrp: e.target.value ? Number(e.target.value) : null })
+                        }
+                      />
+                      <Input
+                        type="number"
+                        placeholder="Offer price"
+                        value={p.offer_price ?? ""}
+                        onChange={(e) =>
+                          updateRow(idx, {
+                            offer_price: e.target.value ? Number(e.target.value) : null,
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground pl-10">
+                    {p.dimensions ? `${p.dimensions} · ` : ""}
+                    {(p.specifications?.length || 0)} spec(s) · {(p.variants?.length || 0)} variant(s)
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={save} disabled={saving || !includedCount}>
+            {saving && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
+            Create category & {includedCount} product(s)
           </Button>
         </DialogFooter>
       </DialogContent>
