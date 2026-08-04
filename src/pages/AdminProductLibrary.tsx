@@ -24,9 +24,13 @@ import {
 import { Plus, Pencil, Trash2, Loader2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import StorageImage from "@/components/product-library/StorageImage";
+import { supabase } from "@/integrations/supabase/client";
+
 import {
   plDb,
   uploadFile,
+  removeFile,
+
   money,
   BUCKET_IMAGES,
   BUCKET_BROCHURES,
@@ -88,20 +92,27 @@ const AdminProductLibrary = () => {
   }, []);
 
   const handleImportPdf = async (file: File) => {
-    if (file.size > 12 * 1024 * 1024) {
-      toast.error("PDF is too large (max 12 MB). Please split it into smaller files.");
+    if (file.size > 40 * 1024 * 1024) {
+      toast.error("PDF is too large (max 40 MB). Please split it into smaller files.");
       return;
     }
     setImporting(true);
+    let uploadedPath: string | null = null;
     try {
-      const reader = new FileReader();
-      const base64: string = await new Promise((res, rej) => {
-        reader.onload = () => res((reader.result as string).split(",")[1]);
-        reader.onerror = rej;
-        reader.readAsDataURL(file);
-      });
+      // Upload to storage first, then hand the extractor a short-lived signed URL.
+      // Avoids sending a huge base64 body through the edge function.
+      uploadedPath = await uploadFile(BUCKET_BROCHURES, file, "pdf-imports");
+      const { data: signed, error: signErr } = await supabase.storage
+        .from(BUCKET_BROCHURES)
+        .createSignedUrl(uploadedPath, 900);
+      if (signErr || !signed?.signedUrl) throw new Error("Could not prepare the PDF for extraction");
+
       const { data, error } = await plDb.functions.invoke("extract-product-catalog-pdf", {
-        body: { pdf_base64: base64, mime_type: file.type || "application/pdf" },
+        body: {
+          pdf_url: signed.signedUrl,
+          file_name: file.name,
+          mime_type: file.type || "application/pdf",
+        },
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
@@ -111,14 +122,16 @@ const AdminProductLibrary = () => {
     } catch (e: any) {
       const msg = String(e?.message || "");
       toast.error(
-        msg.includes("Failed to send a request")
-          ? "Could not reach the extraction service — the PDF may be too large or the connection dropped. Try a smaller PDF."
+        msg.includes("Failed to send a request") || msg.includes("Failed to fetch")
+          ? "Could not reach the extraction service. Please check your connection and try again."
           : msg || "Extraction failed",
       );
     } finally {
+      if (uploadedPath) removeFile(BUCKET_BROCHURES, uploadedPath).catch(() => {});
       setImporting(false);
     }
   };
+
 
   return (
     <div className="space-y-5">
