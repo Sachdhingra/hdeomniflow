@@ -27,6 +27,8 @@ import StorageImage from "@/components/product-library/StorageImage";
 import {
   plDb,
   uploadFile,
+  removeFile,
+
   money,
   BUCKET_IMAGES,
   BUCKET_BROCHURES,
