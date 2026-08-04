@@ -88,6 +88,10 @@ const AdminProductLibrary = () => {
   }, []);
 
   const handleImportPdf = async (file: File) => {
+    if (file.size > 12 * 1024 * 1024) {
+      toast.error("PDF is too large (max 12 MB). Please split it into smaller files.");
+      return;
+    }
     setImporting(true);
     try {
       const reader = new FileReader();
@@ -105,7 +109,12 @@ const AdminProductLibrary = () => {
       setImportData(data);
       toast.success(`Extracted ${data.products.length} product(s) — review and save`);
     } catch (e: any) {
-      toast.error(e.message || "Extraction failed");
+      const msg = String(e?.message || "");
+      toast.error(
+        msg.includes("Failed to send a request")
+          ? "Could not reach the extraction service — the PDF may be too large or the connection dropped. Try a smaller PDF."
+          : msg || "Extraction failed",
+      );
     } finally {
       setImporting(false);
     }
