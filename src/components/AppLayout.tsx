@@ -70,6 +70,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
   const NAV_ITEMS: Record<UserRole, NavItem[]> = {
     admin: [
       { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" /> },
+      PRODUCT_LIBRARY_NAV,
       { to: "/sales", label: "Sales", icon: <Users className="w-5 h-5" />, badge: overdueCount || undefined },
       { to: "/leads/board", label: "Leads Board", icon: <KanbanSquare className="w-5 h-5" /> },
       ELITE_NAV,
@@ -88,7 +89,6 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/site-agents", label: "Site Agents", icon: <MapPin className="w-5 h-5" /> },
       { to: "/categories", label: "Categories", icon: <FolderTree className="w-5 h-5" /> },
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
-      PRODUCT_LIBRARY_NAV,
       { to: "/admin/product-library", label: "Product Library Admin", icon: <LibraryBig className="w-5 h-5" /> },
       { to: "/admin/automation", label: "Automation", icon: <Bot className="w-5 h-5" /> },
       { to: "/admin/push-notifications", label: "Push Notifications", icon: <BellRing className="w-5 h-5" /> },
@@ -102,6 +102,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
     ],
     sales: [
       { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" />, badge: overdueCount || undefined },
+      PRODUCT_LIBRARY_NAV,
       { to: "/leads", label: "My Leads", icon: <ClipboardList className="w-5 h-5" /> },
       { to: "/leads/board", label: "Leads Board", icon: <KanbanSquare className="w-5 h-5" /> },
       ELITE_NAV,
@@ -111,13 +112,13 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/pipeline", label: "Pipeline", icon: <BarChart3 className="w-5 h-5" /> },
       { to: "/calendar", label: "Dispatch Calendar", icon: <CalendarDays className="w-5 h-5" /> },
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
-      PRODUCT_LIBRARY_NAV,
       { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" />, badge: chatUnread || undefined },
       { to: "/ai-assistant", label: "AI Assistant", icon: <Sparkles className="w-5 h-5" /> },
       { to: "/jarvis", label: "Jarvis Voice", icon: <AudioLines className="w-5 h-5" /> },
     ],
     service_head: [
       { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" />, badge: pendingJobCount || undefined },
+      PRODUCT_LIBRARY_NAV,
       { to: "/service-jobs", label: "Service Jobs", icon: <Wrench className="w-5 h-5" /> },
       { to: "/pending-approvals", label: "Pending Approvals", icon: <ShieldCheck className="w-5 h-5" /> },
       ELITE_NAV,
@@ -136,12 +137,14 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
     ],
     site_agent: [
       { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" /> },
+      PRODUCT_LIBRARY_NAV,
       { to: "/site-visits", label: "Site Visits", icon: <MapPin className="w-5 h-5" /> },
       { to: "/my-leads", label: "My Leads", icon: <ClipboardList className="w-5 h-5" /> },
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
     ],
     accounts: [
       { to: "/", label: "Approvals", icon: <ShieldCheck className="w-5 h-5" /> },
+      PRODUCT_LIBRARY_NAV,
       { to: "/accounts/approvals", label: "All Approvals", icon: <ClipboardList className="w-5 h-5" /> },
       ELITE_NAV,
       CARD_BILLS_NAV,
