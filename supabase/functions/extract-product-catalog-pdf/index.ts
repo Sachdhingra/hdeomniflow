@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
-    const { pdf_base64, pdf_url, mime_type } = await req.json();
+    const { pdf_base64, pdf_url, mime_type, file_name } = await req.json();
     if (!pdf_base64 && !pdf_url) {
       return new Response(JSON.stringify({ error: 'pdf_base64 or pdf_url is required' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -46,18 +46,39 @@ Deno.serve(async (req) => {
       });
     }
 
+    let base64 = pdf_base64 as string | undefined;
+    let mime = mime_type || 'application/pdf';
+
+    if (!base64 && pdf_url) {
+      const fileRes = await fetch(pdf_url);
+      if (!fileRes.ok) {
+        console.error('fetch pdf failed', fileRes.status);
+        return new Response(JSON.stringify({ error: 'Could not download the uploaded PDF' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      mime = fileRes.headers.get('content-type')?.split(';')[0] || mime;
+      if (!mime.includes('pdf')) mime = 'application/pdf';
+      const buf = new Uint8Array(await fileRes.arrayBuffer());
+      let binary = '';
+      const chunk = 0x8000;
+      for (let i = 0; i < buf.length; i += chunk) {
+        binary += String.fromCharCode(...buf.subarray(i, i + chunk));
+      }
+      base64 = btoa(binary);
+    }
+
     const userContent: any[] = [
       { type: 'text', text: USER_PROMPT },
+      {
+        type: 'file',
+        file: {
+          filename: file_name || 'catalog.pdf',
+          file_data: `data:${mime};base64,${base64}`,
+        },
+      },
     ];
 
-    if (pdf_base64) {
-      userContent.push({
-        type: 'image_url',
-        image_url: { url: `data:${mime_type || 'application/pdf'};base64,${pdf_base64}` },
-      });
-    } else {
-      userContent.push({ type: 'image_url', image_url: { url: pdf_url } });
-    }
 
     const aiRes = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
