@@ -42,10 +42,12 @@ const playDingDong = () => {
 const ORDER_TYPES: Record<string, { title: string; reminder: boolean }> = {
   order_approval: { title: "🧾 Order Awaiting Approval", reminder: false },
   order_service: { title: "🔧 Order Ready for Service", reminder: false },
+  order_rejected: { title: "❌ Order Rejected", reminder: false },
   order_approval_reminder: { title: "⏰ Approval Pending Reminder", reminder: true },
   order_service_reminder: { title: "⏰ Service Pending Reminder", reminder: true },
   order_reminder: { title: "⏰ Open Order Reminder", reminder: true },
 };
+
 
 /**
  * Listens for order workflow notifications targeted at the signed-in user and
