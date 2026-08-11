@@ -4256,6 +4256,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      fn_hde_order_reminders: { Args: never; Returns: number }
       fn_points_window_start: {
         Args: { _customer: string; _exclude_entry: string; _issue: string }
         Returns: string
