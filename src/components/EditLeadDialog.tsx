@@ -223,9 +223,17 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
             if (tierErr) throw tierErr;
           }
         } else {
-          // Trigger just auto-created the card — patch by phone
-          const { error: tierErr } = await (supabase.from("elite_customers" as any).update({ card_tier: eliteTier }).eq("phone_1", lead.customer_phone) as any);
-          if (tierErr) throw tierErr;
+          // Trigger just created/linked the card — re-read the lead to get its id
+          const { data: fresh } = await (supabase
+            .from("leads")
+            .select("elite_card_id")
+            .eq("id", lead.id)
+            .maybeSingle() as any);
+          const newCardId: string | null = (fresh as any)?.elite_card_id ?? null;
+          if (newCardId) {
+            const { error: tierErr } = await (supabase.from("elite_customers" as any).update({ card_tier: eliteTier }).eq("id", newCardId) as any);
+            if (tierErr) throw tierErr;
+          }
         }
       }
 
