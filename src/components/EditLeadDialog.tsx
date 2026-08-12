@@ -50,6 +50,8 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
   const [eliteIssueDate, setEliteIssueDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [eliteTier, setEliteTier] = useState<EliteTier>("silver");
   const [tierTouched, setTierTouched] = useState(false);
+  // True once a real (non-default) tier has been saved on the card
+  const [tierChosen, setTierChosen] = useState(false);
   const [eliteDupWarning, setEliteDupWarning] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
