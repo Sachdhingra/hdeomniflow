@@ -104,7 +104,10 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
           .maybeSingle()
           .then(({ data }) => {
             const t = (data as any)?.card_tier as EliteTier | null;
-            if (!cancelled && t) setEliteTier(t);
+            if (!cancelled && t) {
+              setEliteTier(t);
+              setTierChosen(t !== "silver");
+            }
           });
         return () => { cancelled = true; };
       }
