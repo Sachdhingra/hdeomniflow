@@ -117,8 +117,8 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
   if (!lead) return null;
   const showElite = SOLD_OR_CLOSED.includes(form.status);
   const isElite = !!(lead as any).elite_opted_in;
-  // Tier is chosen once by sales; changes after that need an admin
-  const tierLocked = isElite && !!(lead as any).elite_card_id && user?.role !== "admin";
+  // Sales pick the tier once; it locks only after a real tier has been saved
+  const tierLocked = tierChosen && user?.role !== "admin";
 
   const handleSave = async () => {
     setSaving(true);
