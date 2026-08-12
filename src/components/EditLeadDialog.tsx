@@ -50,6 +50,8 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
   const [eliteIssueDate, setEliteIssueDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [eliteTier, setEliteTier] = useState<EliteTier>("silver");
   const [tierTouched, setTierTouched] = useState(false);
+  // True once a real (non-default) tier has been saved on the card
+  const [tierChosen, setTierChosen] = useState(false);
   const [eliteDupWarning, setEliteDupWarning] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -73,6 +75,7 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
       // linked card's current tier so the dialog reflects admin-side changes.
       setEliteTier("silver");
       setTierTouched(false);
+      setTierChosen(false);
       setEliteDupWarning(null);
       const cardId: string | null = l.elite_card_id ?? null;
       // Not linked yet: surface an existing card for this phone up front so
@@ -102,7 +105,10 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
           .maybeSingle()
           .then(({ data }) => {
             const t = (data as any)?.card_tier as EliteTier | null;
-            if (!cancelled && t) setEliteTier(t);
+            if (!cancelled && t) {
+              setEliteTier(t);
+              setTierChosen(t !== "silver");
+            }
           });
         return () => { cancelled = true; };
       }
@@ -112,8 +118,8 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
   if (!lead) return null;
   const showElite = SOLD_OR_CLOSED.includes(form.status);
   const isElite = !!(lead as any).elite_opted_in;
-  // Tier is chosen once by sales; changes after that need an admin
-  const tierLocked = isElite && !!(lead as any).elite_card_id && user?.role !== "admin";
+  // Sales pick the tier once; it locks only after a real tier has been saved
+  const tierLocked = tierChosen && user?.role !== "admin";
 
   const handleSave = async () => {
     setSaving(true);
@@ -217,9 +223,17 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
             if (tierErr) throw tierErr;
           }
         } else {
-          // Trigger just auto-created the card — patch by phone
-          const { error: tierErr } = await (supabase.from("elite_customers" as any).update({ card_tier: eliteTier }).eq("phone_1", lead.customer_phone) as any);
-          if (tierErr) throw tierErr;
+          // Trigger just created/linked the card — re-read the lead to get its id
+          const { data: fresh } = await (supabase
+            .from("leads")
+            .select("elite_card_id")
+            .eq("id", lead.id)
+            .maybeSingle() as any);
+          const newCardId: string | null = (fresh as any)?.elite_card_id ?? null;
+          if (newCardId) {
+            const { error: tierErr } = await (supabase.from("elite_customers" as any).update({ card_tier: eliteTier }).eq("id", newCardId) as any);
+            if (tierErr) throw tierErr;
+          }
         }
       }
 
