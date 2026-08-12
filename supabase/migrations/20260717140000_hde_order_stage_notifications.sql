@@ -1,18 +1,17 @@
-
 -- Stage notifications + 2-day stage reminders for warehouse-request orders.
 --
 -- Flow: sales raises "Request from Warehouse" (order_type='company')
---   1. On creation  → notify every accounts (and admin) user: approve it.
---   2. On approval  → notify every service_head (and admin) user: get it done.
---   3. Stuck > 2 days in a stage → daily reminder to the responsible role:
---        pending_approval            → accounts/admin
---        approved / service_assigned → service_head/admin
+--   1. On creation  -> notify every accounts (and admin) user: approve it.
+--   2. On approval  -> notify every service_head (and admin) user: get it done.
+--   3. Stuck > 2 days in a stage -> daily reminder to the responsible role:
+--        pending_approval            -> accounts/admin
+--        approved / service_assigned -> service_head/admin
 --      (the existing 3-day overall reminder to the creator stays)
 --
 -- Delivery is via the in-app notifications table; the OrderNotifier component
 -- plays the ding-dong and shows the toast when a row arrives in realtime.
 
--- ─── 1. Stage-change notifications ───────────────────────────────────────────
+-- --- 1. Stage-change notifications ---
 
 CREATE OR REPLACE FUNCTION public.hde_notify_order_stage()
 RETURNS TRIGGER
@@ -29,11 +28,15 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  SELECT product_name INTO v_product FROM public.products WHERE id = NEW.product_id;
+  SELECT p.product_name INTO v_product
+    FROM public.products p
+   WHERE p.id = NEW.product_id;
 
-  -- New warehouse request → accounts (and admin) must approve
+  -- New warehouse request -> accounts (and admin) must approve
   IF TG_OP = 'INSERT' AND NEW.status = 'pending_approval' THEN
-    SELECT name INTO v_creator FROM public.profiles WHERE id = NEW.created_by;
+    SELECT pr.name INTO v_creator
+      FROM public.profiles pr
+     WHERE pr.id = NEW.created_by;
     FOR v_recipient IN
       SELECT DISTINCT ur.user_id FROM public.user_roles ur
        WHERE ur.role IN ('accounts'::app_role, 'admin'::app_role)
@@ -42,12 +45,12 @@ BEGIN
       VALUES (
         v_recipient,
         'Warehouse request ' || NEW.order_number || ' (' || COALESCE(v_product, 'product') || ') raised by '
-          || COALESCE(v_creator, 'sales') || ' — awaiting your approval.',
+          || COALESCE(v_creator, 'sales') || ' - awaiting your approval.',
         'order_approval', '/inventory');
     END LOOP;
   END IF;
 
-  -- Approved → service head (and admin) must assign & complete the job
+  -- Approved -> service head (and admin) must assign & complete the job
   IF TG_OP = 'UPDATE'
      AND NEW.status = 'approved'
      AND OLD.status IS DISTINCT FROM 'approved'
@@ -60,7 +63,7 @@ BEGIN
       VALUES (
         v_recipient,
         'Order ' || NEW.order_number || ' (' || COALESCE(v_product, 'product')
-          || ') approved by accounts — assign a field agent to get the job done.',
+          || ') approved by accounts - assign a field agent to get the job done.',
         'order_service', '/inventory');
     END LOOP;
   END IF;
@@ -79,7 +82,7 @@ CREATE TRIGGER trg_hde_notify_order_stage_update
   AFTER UPDATE OF status ON public.hde_orders
   FOR EACH ROW EXECUTE FUNCTION public.hde_notify_order_stage();
 
--- ─── 2. Reminders: add 2-day stage reminders to the daily job ────────────────
+-- --- 2. Reminders: add 2-day stage reminders to the daily job ---
 -- Replaces hde_remind_open_orders() (from 20260717120000). Each reminder kind
 -- has its own notification type so their daily dedupe guards don't collide.
 
@@ -103,7 +106,7 @@ BEGIN
     RAISE EXCEPTION 'Not authorized';
   END IF;
 
-  -- ── 2a. Stage reminders: stuck > 2 days at approval or service stage ──
+  -- -- 2a. Stage reminders: stuck > 2 days at approval or service stage
   FOR r IN
     SELECT o.id, o.order_number, o.status, o.created_at, o.approved_at, p.product_name
       FROM public.hde_orders o
@@ -145,7 +148,7 @@ BEGIN
     END LOOP;
   END LOOP;
 
-  -- ── 2b. Overall reminder: open > 3 days → creator + admin/accounts ──
+  -- -- 2b. Overall reminder: open > 3 days -> creator + admin/accounts
   FOR r IN
     SELECT o.id, o.order_number, o.created_at, o.created_by, p.product_name
       FROM public.hde_orders o
@@ -155,7 +158,7 @@ BEGIN
   LOOP
     v_days := FLOOR(EXTRACT(epoch FROM (now() - r.created_at)) / 86400)::integer;
     v_msg  := 'Order ' || r.order_number || ' (' || COALESCE(r.product_name, 'product')
-              || ') has been open for ' || v_days || ' days — please complete, reject or cancel it.';
+              || ') has been open for ' || v_days || ' days - please complete, reject or cancel it.';
 
     FOR v_recipient IN
       SELECT DISTINCT u FROM (
