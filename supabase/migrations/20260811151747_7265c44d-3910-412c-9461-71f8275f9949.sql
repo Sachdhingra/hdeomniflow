@@ -76,7 +76,7 @@ DECLARE
   u uuid;
   v_product text;
 BEGIN
-  SELECT name INTO v_product FROM public.products WHERE id = NEW.product_id;
+  SELECT product_name INTO v_product FROM public.products WHERE id = NEW.product_id;
 
   IF TG_OP = 'INSERT' AND NEW.status = 'pending_approval' THEN
     FOR u IN SELECT user_id FROM public.user_roles WHERE role IN ('accounts'::app_role,'admin'::app_role) LOOP
