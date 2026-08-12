@@ -75,6 +75,7 @@ const EditLeadDialog = ({ lead, open, onOpenChange, onSaved }: Props) => {
       // linked card's current tier so the dialog reflects admin-side changes.
       setEliteTier("silver");
       setTierTouched(false);
+      setTierChosen(false);
       setEliteDupWarning(null);
       const cardId: string | null = l.elite_card_id ?? null;
       // Not linked yet: surface an existing card for this phone up front so
