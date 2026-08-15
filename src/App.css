@@ -3,10 +3,9 @@
   height: 100vh;
 }
 
-/* Ensure login banner is truly full viewport width */
+/* Login banner is placed inside a full-width flex parent; let it fill naturally */
 .login-banner-container {
-  width: 100vw;
-  margin-left: calc(-50vw + 50%);
+  width: 100%;
 }
 
 .logo {
