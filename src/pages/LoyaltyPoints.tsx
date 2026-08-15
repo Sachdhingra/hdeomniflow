@@ -45,7 +45,8 @@ interface RedemptionRequest {
   points_requested: number;
   rupee_value: number;
   status: string;
-  approved_by: string | null;
+  processed_by: string | null;
+  processed_at?: string | null;
   requested_at: string;
   // joined
   customer_name?: string;
@@ -241,7 +242,9 @@ export default function LoyaltyPoints() {
         .from("redemption_requests")
         .update({
           status: actionType === "approve" ? "approved" : "rejected",
-          approved_by: user.id,
+          processed_by: user.id,
+          processed_at: new Date().toISOString(),
+          notes: actionNotes.trim() || null,
         } as any)
         .eq("id", actionReq.id);
       if (error) throw error;
