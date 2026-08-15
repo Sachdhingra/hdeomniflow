@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Star, Plus, Upload, Pencil, Search, Loader2, Download, CheckCircle2, XCircle, Lock, Trash2, AlertTriangle, ChevronLeft, ChevronRight, Smartphone, QrCode } from "lucide-react";
+import { Star, Plus, Upload, Pencil, Search, Loader2, Download, CheckCircle2, XCircle, Lock, Trash2, AlertTriangle, ChevronLeft, ChevronRight, Smartphone, QrCode, Copy } from "lucide-react";
 import { toast } from "sonner";
 import PhoneInput from "@/components/PhoneInput";
 import { extractTenDigits, isValidIndianMobile, toCanonicalPhone, formatPhoneDisplay } from "@/lib/phone";
@@ -31,6 +31,7 @@ interface EliteRow {
   lead_id: string | null;
   notes: string | null;
   created_at: string;
+  referral_code: string | null;
 }
 
 interface LeadLite { id: string; customer_name: string; customer_phone: string; elite_card_id: string | null; }
@@ -274,6 +275,7 @@ const EliteCustomers = () => {
                       <TableHead>Days Left</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Linked Lead</TableHead>
+                      <TableHead>Referral Code</TableHead>
                       {(canEdit || canViewInsider) && <TableHead>Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
@@ -296,6 +298,25 @@ const EliteCustomers = () => {
                           <TableCell className={dayCls}>{left}</TableCell>
                           <TableCell><Badge variant="outline" className={meta.cls}>{meta.label}</Badge></TableCell>
                           <TableCell>{lead ? <span className="text-primary">{lead.customer_name}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
+                          <TableCell>
+                            {r.referral_code ? (
+                              <span className="inline-flex items-center gap-1">
+                                <code className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded tracking-wider">{r.referral_code}</code>
+                                <button
+                                  title="Copy referral code"
+                                  className="text-muted-foreground hover:text-foreground transition-colors"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(r.referral_code!);
+                                    toast.success("Referral code copied");
+                                  }}
+                                >
+                                  <Copy className="w-3 h-3" />
+                                </button>
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">—</span>
+                            )}
+                          </TableCell>
                           {(canEdit || canViewInsider) && (
                             <TableCell>
                               <div className="flex gap-1">
