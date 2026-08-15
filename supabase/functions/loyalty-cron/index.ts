@@ -275,19 +275,28 @@ async function notifyDormantCustomers(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Step 6: Birthday notifications
+// Step 6a: Birthday bonus points (always credited, like anniversary bonus)
+// ---------------------------------------------------------------------------
+async function awardBirthdayBonuses(): Promise<number> {
+  const { data, error } = await supabase.rpc("fn_award_birthday_bonus");
+  if (error) {
+    console.error("fn_award_birthday_bonus error:", error.message);
+    return 0;
+  }
+  return (data as number) ?? 0;
+}
+
+// ---------------------------------------------------------------------------
+// Step 6b: Birthday push notifications
 // ---------------------------------------------------------------------------
 async function notifyBirthdays(): Promise<void> {
   const today = new Date();
   const month = today.getUTCMonth() + 1;
   const day   = today.getUTCDate();
 
-  // PostgreSQL EXTRACT — use raw filter via RPC to avoid exposing month/day
-  // Alternative: fetch active customers with app_activated and filter in-process.
-  // We use Supabase filter with cast-free approach: compare formatted strings.
   const { data: rows, error } = await supabase
     .from("elite_customers")
-    .select("id, customer_name, date_of_birth")
+    .select("id, customer_name, date_of_birth, card_tier")
     .eq("status", "active")
     .eq("app_activated", true)
     .not("date_of_birth", "is", null);
@@ -312,11 +321,19 @@ async function notifyBirthdays(): Promise<void> {
 
     if ((count ?? 0) > 0) continue;
 
+    // Include birthday bonus amount in message for points-eligible tiers
+    const tier = row.card_tier as string;
+    const bonusPts = tier === "prestige_elite" ? 25 : tier === "super_elite" ? 15 : 0;
+    const bonusLine = bonusPts > 0
+      ? ` We've added ${bonusPts} birthday bonus points to your wallet!`
+      : "";
+
     await sendPush(
       row.id as string,
       "birthday",
       "Happy Birthday! 🎂",
-      `Many happy returns of the day, ${row.customer_name}! As our valued Elite Card member, enjoy a special birthday surprise in-store today.`,
+      `Many happy returns of the day, ${row.customer_name}! As our valued Elite Card member, enjoy a special birthday surprise in-store today.${bonusLine}`,
+      bonusPts > 0 ? { birthday_bonus_pts: bonusPts } : undefined,
     );
   }
 }
@@ -402,7 +419,11 @@ Deno.serve(async (req: Request) => {
   );
   console.log("[loyalty-cron] Anniversary bonuses:", results.anniversary_bonuses);
 
-  // 3–7. Push notifications (failures are logged but don't abort the run)
+  // 3. Birthday bonuses (points always credited; push obeys birthday toggle)
+  results.birthday_bonuses = await awardBirthdayBonuses();
+  console.log("[loyalty-cron] Birthday bonuses:", results.birthday_bonuses);
+
+  // 4–8. Push notifications (failures are logged but don't abort the run)
   if (isEnabled(settings, "points_expiring")) await notifyExpiringPoints();
   if (isEnabled(settings, "card_expiring"))   await notifyCardExpiry();
   if (isEnabled(settings, "dormant"))         await notifyDormantCustomers();
