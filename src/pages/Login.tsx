@@ -51,7 +51,7 @@ const Login = () => {
   return (
     <div className="min-h-screen w-full flex flex-col bg-background">
       <LoginBannerCarousel />
-      <div className="flex-1 flex items-center justify-center p-4">
+      <div className="flex-1 flex flex-col items-center justify-start pt-8 pb-12 px-4 overflow-y-auto">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-2 gradient-primary rounded-xl px-4 py-2">
