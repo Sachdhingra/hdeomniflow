@@ -564,6 +564,7 @@ const MemberFormDialog = ({
           phone_2: p2 ? toCanonicalPhone(p2) : null,
           // Issue date locked in edit mode — do not update it
           card_tier: tier,
+          anniversary_date: anniv || null,
           notes: notes.trim() || null,
           status,
         }).eq("id", row.id) as any);
