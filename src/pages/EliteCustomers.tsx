@@ -467,6 +467,7 @@ const MemberFormDialog = ({
   const [status, setStatus] = useState<"active" | "opted_out">("active");
   const [tier, setTier] = useState<EliteTier>("silver");
   const [referralCode, setReferralCode] = useState("");
+  const [anniv, setAnniv] = useState("");
   const [saving, setSaving] = useState(false);
   const [dupError, setDupError] = useState<string | null>(null);
 
@@ -481,8 +482,9 @@ const MemberFormDialog = ({
       setNotes(row.notes || "");
       setStatus((row.status === "opted_out" ? "opted_out" : "active"));
       setTier((((row as any).card_tier as EliteTier) || "silver"));
+      setAnniv(((row as any).anniversary_date as string) || "");
     } else {
-      setName(""); setP1(""); setP2(""); setIssue(todayISO()); setNotes(""); setStatus("active"); setReferralCode(""); setTier("silver");
+      setName(""); setP1(""); setP2(""); setIssue(todayISO()); setNotes(""); setStatus("active"); setReferralCode(""); setTier("silver"); setAnniv("");
     }
   }, [open, mode, row]);
 
@@ -521,6 +523,7 @@ const MemberFormDialog = ({
           phone_2: p2 ? toCanonicalPhone(p2) : null,
           card_issue_date: issue,
           card_tier: tier,
+          anniversary_date: anniv || null,
           notes: notes.trim() || null,
           created_by: userId,
         }).select("id").single() as any);
@@ -561,6 +564,7 @@ const MemberFormDialog = ({
           phone_2: p2 ? toCanonicalPhone(p2) : null,
           // Issue date locked in edit mode — do not update it
           card_tier: tier,
+          anniversary_date: anniv || null,
           notes: notes.trim() || null,
           status,
         }).eq("id", row.id) as any);
@@ -646,6 +650,19 @@ const MemberFormDialog = ({
               <Label>Card Expiry Date</Label>
               <Input value={formatDate(expiry)} readOnly disabled className="italic text-muted-foreground bg-muted cursor-not-allowed" />
             </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Card Anniversary Date (optional)</Label>
+            <Input
+              type="date"
+              value={anniv}
+              max={todayISO()}
+              onChange={e => setAnniv(e.target.value)}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Annual bonus credited on this date — 25 pts (Super Elite) · 50 pts (Prestige Elite).
+              Customers can also set this themselves in the Insider app; falls back to enrollment date if blank.
+            </p>
           </div>
           {!isEdit && (
             <p className="text-[11px] text-muted-foreground -mt-2">Elite card is valid for 3 years from issue date</p>
