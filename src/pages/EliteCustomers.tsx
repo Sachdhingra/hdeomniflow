@@ -651,6 +651,19 @@ const MemberFormDialog = ({
               <Input value={formatDate(expiry)} readOnly disabled className="italic text-muted-foreground bg-muted cursor-not-allowed" />
             </div>
           </div>
+          <div className="space-y-1.5">
+            <Label>Card Anniversary Date (optional)</Label>
+            <Input
+              type="date"
+              value={anniv}
+              max={todayISO()}
+              onChange={e => setAnniv(e.target.value)}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Annual bonus credited on this date — 25 pts (Super Elite) · 50 pts (Prestige Elite).
+              Customers can also set this themselves in the Insider app; falls back to enrollment date if blank.
+            </p>
+          </div>
           {!isEdit && (
             <p className="text-[11px] text-muted-foreground -mt-2">Elite card is valid for 3 years from issue date</p>
           )}
