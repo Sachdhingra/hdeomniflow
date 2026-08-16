@@ -482,8 +482,9 @@ const MemberFormDialog = ({
       setNotes(row.notes || "");
       setStatus((row.status === "opted_out" ? "opted_out" : "active"));
       setTier((((row as any).card_tier as EliteTier) || "silver"));
+      setAnniv(((row as any).anniversary_date as string) || "");
     } else {
-      setName(""); setP1(""); setP2(""); setIssue(todayISO()); setNotes(""); setStatus("active"); setReferralCode(""); setTier("silver");
+      setName(""); setP1(""); setP2(""); setIssue(todayISO()); setNotes(""); setStatus("active"); setReferralCode(""); setTier("silver"); setAnniv("");
     }
   }, [open, mode, row]);
 
