@@ -1085,6 +1085,7 @@ export type Database = {
       }
       elite_customers: {
         Row: {
+          anniversary_date: string | null
           app_activated: boolean
           card_enrollment_date: string | null
           card_expiry_date: string | null
@@ -1107,6 +1108,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          anniversary_date?: string | null
           app_activated?: boolean
           card_enrollment_date?: string | null
           card_expiry_date?: string | null
@@ -1129,6 +1131,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          anniversary_date?: string | null
           app_activated?: boolean
           card_enrollment_date?: string | null
           card_expiry_date?: string | null
@@ -4304,6 +4307,7 @@ export type Database = {
       }
       is_loyalty_app_user: { Args: { _uid: string }; Returns: boolean }
       link_loyalty_app_user: { Args: { _phone: string }; Returns: string }
+      rpc_set_anniversary_date: { Args: { p_date: string }; Returns: undefined }
       verify_daily_report_secret: { Args: { _token: string }; Returns: boolean }
     }
     Enums: {
