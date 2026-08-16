@@ -140,8 +140,8 @@ async function awardAnniversaryBonuses(pushEnabled: boolean): Promise<number> {
     await sendPush(
       row.customer_id as string,
       "anniversary_bonus",
-      "Happy Anniversary! 🎉",
-      `Congratulations ${name}! You've earned ${points} bonus loyalty points on your card anniversary.`,
+      "Happy Card Anniversary! 🎉",
+      `Congratulations ${name}! It's your Elite Card anniversary — ${points} bonus loyalty points have been added to your wallet as a thank-you for being with us.`,
       { points },
     );
   }
