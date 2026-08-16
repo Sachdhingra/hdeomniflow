@@ -523,6 +523,7 @@ const MemberFormDialog = ({
           phone_2: p2 ? toCanonicalPhone(p2) : null,
           card_issue_date: issue,
           card_tier: tier,
+          anniversary_date: anniv || null,
           notes: notes.trim() || null,
           created_by: userId,
         }).select("id").single() as any);
