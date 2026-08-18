@@ -206,11 +206,24 @@ const AdminPushNotifications = () => {
             Broadcast push notifications to Insider app customers and manage automated reminders.
           </p>
         </div>
-        <Badge variant="secondary" className="flex items-center gap-1.5 text-sm px-3 py-1.5">
-          <Users className="w-4 h-4" />
-          {reach === null ? "—" : reach} reachable device{reach === 1 ? "" : "s"}
-        </Badge>
+        <div className="flex flex-col items-end gap-1">
+          <Badge variant="secondary" className="flex items-center gap-1.5 text-sm px-3 py-1.5">
+            <Users className="w-4 h-4" />
+            {reach === null ? "—" : reach} reachable device{reach === 1 ? "" : "s"}
+          </Badge>
+          <span className="text-xs text-muted-foreground">
+            {installed === null ? "—" : installed} app account{installed === 1 ? "" : "s"} linked
+          </span>
+        </div>
       </div>
+
+      {reach === 0 && (installed ?? 0) > 0 && (
+        <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
+          {installed} customer{installed === 1 ? " has" : "s have"} the Insider app linked, but no
+          device has registered for push yet, so broadcasts cannot be delivered. Devices appear here
+          once the Insider app saves its push token after the customer allows notifications.
+        </div>
+      )}
 
       {/* ── Compose ─────────────────────────────────────────────── */}
       <Card>
