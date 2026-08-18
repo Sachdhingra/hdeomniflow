@@ -61,7 +61,8 @@ Deno.serve(async (req: Request) => {
       headers: {
         "Access-Control-Allow-Origin":  "*",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Authorization, Content-Type",
+        "Access-Control-Allow-Headers":
+          "authorization, x-client-info, apikey, content-type",
       },
     });
   }
@@ -98,6 +99,13 @@ Deno.serve(async (req: Request) => {
   }
   if (!["text", "banner", "offer"].includes(campaign_type)) {
     return json({ error: "campaign_type must be one of: text, banner, offer" }, 400);
+  }
+
+  if (!ONESIGNAL_APP_ID || !ONESIGNAL_API_KEY) {
+    return json(
+      { error: "Push service is not configured yet (missing OneSignal app ID / API key)." },
+      503,
+    );
   }
 
   // ── 1. Create the campaign row ──────────────────────────────────────────
