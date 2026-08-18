@@ -87,7 +87,7 @@ const AdminPushNotifications = () => {
 
   const load = async () => {
     setLoading(true);
-    const [reachRes, campRes, setRes] = await Promise.all([
+    const [reachRes, campRes, setRes, installedRes] = await Promise.all([
       supabase
         .from("app_users")
         .select("id", { count: "exact", head: true })
