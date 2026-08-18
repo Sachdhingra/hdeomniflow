@@ -102,9 +102,11 @@ const AdminPushNotifications = () => {
         .from("push_automation_settings" as any)
         .select("key, label, description, enabled")
         .order("key"),
+      supabase.from("app_users").select("id", { count: "exact", head: true }),
     ]);
     if (reachRes.error) toast.error(reachRes.error.message);
     setReach(reachRes.count ?? 0);
+    setInstalled(installedRes.count ?? 0);
     if (campRes.error) toast.error(campRes.error.message);
     setCampaigns((campRes.data as unknown as Campaign[]) ?? []);
     if (setRes.error) toast.error(setRes.error.message);
