@@ -83,6 +83,7 @@ const AdminPushNotifications = () => {
   const [reach, setReach] = useState<number | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [settings, setSettings] = useState<AutomationSetting[]>([]);
+  const [installed, setInstalled] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
