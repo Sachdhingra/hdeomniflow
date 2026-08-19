@@ -3376,6 +3376,84 @@ export type Database = {
           },
         ]
       }
+      push_automation_settings: {
+        Row: {
+          description: string | null
+          enabled: boolean
+          key: string
+          label: string
+          updated_at: string
+        }
+        Insert: {
+          description?: string | null
+          enabled?: boolean
+          key: string
+          label: string
+          updated_at?: string
+        }
+        Update: {
+          description?: string | null
+          enabled?: boolean
+          key?: string
+          label?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      push_campaigns: {
+        Row: {
+          campaign_type: string
+          created_at: string
+          created_by: string | null
+          error: string | null
+          id: string
+          image_url: string | null
+          link_url: string | null
+          message: string
+          offer_code: string | null
+          offer_expires_at: string | null
+          recipients_sent: number
+          recipients_targeted: number
+          sent_at: string | null
+          status: string
+          title: string
+        }
+        Insert: {
+          campaign_type: string
+          created_at?: string
+          created_by?: string | null
+          error?: string | null
+          id?: string
+          image_url?: string | null
+          link_url?: string | null
+          message: string
+          offer_code?: string | null
+          offer_expires_at?: string | null
+          recipients_sent?: number
+          recipients_targeted?: number
+          sent_at?: string | null
+          status?: string
+          title: string
+        }
+        Update: {
+          campaign_type?: string
+          created_at?: string
+          created_by?: string | null
+          error?: string | null
+          id?: string
+          image_url?: string | null
+          link_url?: string | null
+          message?: string
+          offer_code?: string | null
+          offer_expires_at?: string | null
+          recipients_sent?: number
+          recipients_targeted?: number
+          sent_at?: string | null
+          status?: string
+          title?: string
+        }
+        Relationships: []
+      }
       push_notifications_log: {
         Row: {
           customer_id: string | null
