@@ -23,7 +23,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import SignedImg from "@/components/SignedImg";
 
 // ─── Bucket / storage constants ───────────────────────────────────────────────

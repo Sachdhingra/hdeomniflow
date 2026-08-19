@@ -8,7 +8,7 @@ import { Loader2, PlayCircle, MessageSquare, AlertTriangle, CheckCircle2, Clock,
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 type StageRow = { stage: string; count: number; avg_days: number };
 type LogRow = { id: string; event_type: string; success: boolean; details: any; error_message: string | null; executed_at: string; lead_id: string | null };

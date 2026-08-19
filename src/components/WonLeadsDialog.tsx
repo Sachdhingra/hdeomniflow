@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, Download, Trophy } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import * as XLSX from "xlsx";
 
 interface WonLead {

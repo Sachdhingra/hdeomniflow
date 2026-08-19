@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, Send, AlertCircle, Sparkles, ChevronLeft } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import {
   STAGE_META, statusToStage, extractVariables, fillTemplate,
   autoFillFromLead, variableLabel, type JourneyStage,

@@ -15,7 +15,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Loader2, Plus, Pencil, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { STAGE_META, extractVariables, type JourneyStage } from "@/lib/messageTemplates";
 import ABAnalyticsCard from "@/components/ABAnalyticsCard";
 

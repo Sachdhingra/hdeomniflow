@@ -13,7 +13,7 @@ import {
 import {
   CheckCircle2, XCircle, ShieldCheck, Phone, IndianRupee, Loader2, AlertTriangle
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import StatCard from "@/components/StatCard";
 import VoiceReminderCard from "@/components/VoiceReminderCard";
 

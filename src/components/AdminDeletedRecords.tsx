@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { RotateCcw, Trash2, Archive } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 const AdminDeletedRecords = () => {
   const { deletedLeads, deletedServiceJobs, deletedSiteVisits, fetchDeletedRecords, restoreLead, restoreServiceJob, restoreSiteVisit, permanentDeleteLead, permanentDeleteServiceJob, permanentDeleteSiteVisit, profiles } = useData();

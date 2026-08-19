@@ -21,7 +21,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Users, Wrench, IndianRupee, TrendingUp, MapPin, UserPlus, Trophy, Truck, KeyRound, Ban, CheckCircle, Trash2, Loader2, Download, Archive, Locate, Search, MessageSquare, Send, ShieldAlert, Target, ExternalLink } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { supabase } from "@/integrations/supabase/client";
 import LoadingError from "@/components/LoadingError";
 import { DashboardSkeleton } from "@/components/DashboardSkeleton";

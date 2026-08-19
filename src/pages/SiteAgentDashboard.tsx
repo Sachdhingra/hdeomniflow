@@ -11,7 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MapPin, Navigation, Home, Users, Play, Square, Route, ArrowRightCircle } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 const SiteAgentDashboard = () => {
   const { user } = useAuth();

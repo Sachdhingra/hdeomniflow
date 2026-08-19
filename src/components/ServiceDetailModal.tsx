@@ -10,7 +10,7 @@ import {
   CheckCircle2, XCircle, Clock, FileText, Image as ImageIcon, Info, Pencil,
   UserPlus, CalendarClock,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import SignedImg from "@/components/SignedImg";
 
 const STATUS_BADGE: Record<string, string> = {

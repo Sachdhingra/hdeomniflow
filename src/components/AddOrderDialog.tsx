@@ -8,7 +8,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { Plus } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 type OrderItem = {
   order_id: string;

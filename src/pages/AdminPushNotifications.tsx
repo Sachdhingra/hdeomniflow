@@ -12,7 +12,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { BellRing, Image as ImageIcon, Loader2, MessageSquareText, Send, Tag, Upload, Users, X } from "lucide-react";
 import { formatDate } from "@/lib/dateFormat";
 

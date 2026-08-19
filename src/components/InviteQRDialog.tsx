@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Copy, RefreshCw, Check, Share2 } from "lucide-react";
 import QRCode from "qrcode";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 // Public URL of the Insider PWA — the QR/link opens its setup page
 const INSIDER_APP_URL = "https://homedecorinsider.lovable.app";

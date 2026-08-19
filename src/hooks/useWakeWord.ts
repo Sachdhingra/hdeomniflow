@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { JARVIS_WAKE_STORAGE_KEY, extractWakeCommand, jarvisSttLang } from "@/lib/jarvis";
 import {
   getRecognitionCtor,
