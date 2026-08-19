@@ -83,6 +83,13 @@ const STATUS_META: Record<ComputedStatus, { label: string; cls: string }> = {
   opted_out: { label: "Opted Out", cls: "bg-muted text-muted-foreground border-border" },
 };
 
+const TIER_COMMISSION: Record<EliteTier, number> = {
+  silver: 0,
+  elite: 100,
+  super_elite: 100,
+  prestige_elite: 200,
+};
+
 const EliteCustomers = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
@@ -535,6 +542,17 @@ const MemberFormDialog = ({
         }).then(({ error: fnErr }) => {
           if (fnErr) console.warn("[send-app-invite]", fnErr.message);
         });
+
+        // Log salesperson commission for paid tiers
+        const commissionAmt = TIER_COMMISSION[tier];
+        if (commissionAmt > 0 && userId) {
+          await (supabase.from("card_commissions" as any).insert({
+            salesperson_id: userId,
+            customer_id: inserted.id,
+            card_tier: tier,
+            commission_amount: commissionAmt,
+          }) as any);
+        }
 
         // Referral bonus — if a referral code was entered, credit 20 pts to the referrer
         const code = referralCode.trim().toUpperCase();
