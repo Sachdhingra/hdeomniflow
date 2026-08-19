@@ -106,9 +106,32 @@ async function sendViaTwilio(params: {
   }
 }
 
+// Callers must either present the service-role key (internal edge functions /
+// cron) or a valid signed-in user JWT. Anonymous access is rejected.
+async function isAuthorized(req: Request): Promise<boolean> {
+  const authHeader = req.headers.get("Authorization") || "";
+  if (!authHeader.startsWith("Bearer ")) return false;
+  const token = authHeader.slice(7).trim();
+  if (token === serviceRoleKey) return true;
+
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+  if (token === anonKey) return false; // anon key alone is not a user session
+  const userClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+  });
+  const { data } = await userClient.auth.getUser();
+  return !!data?.user;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
+  }
+
+  if (!(await isAuthorized(req))) {
+    return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
+      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
   try {
