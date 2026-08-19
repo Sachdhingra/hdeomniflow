@@ -90,11 +90,7 @@ const AdminPushNotifications = () => {
   const load = async () => {
     setLoading(true);
     const [reachRes, campRes, setRes, installedRes] = await Promise.all([
-      supabase
-        .from("app_users")
-        .select("id", { count: "exact", head: true })
-        .eq("push_enabled", true)
-        .not("onesignal_player_id", "is", null),
+      supabase.functions.invoke("broadcast-push", { body: { action: "status" } }),
       supabase
         .from("push_campaigns" as any)
         .select("*")
@@ -106,8 +102,12 @@ const AdminPushNotifications = () => {
         .order("key"),
       supabase.from("app_users").select("id", { count: "exact", head: true }),
     ]);
-    if (reachRes.error) toast.error(reachRes.error.message);
-    setReach(reachRes.count ?? 0);
+    if (reachRes.error) {
+      console.error("Could not load OneSignal device count:", reachRes.error);
+      setReach(0);
+    } else {
+      setReach((reachRes.data as { reachable?: number } | null)?.reachable ?? 0);
+    }
     setInstalled(installedRes.count ?? 0);
     if (campRes.error) toast.error(campRes.error.message);
     setCampaigns((campRes.data as unknown as Campaign[]) ?? []);

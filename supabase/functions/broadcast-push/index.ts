@@ -77,6 +77,7 @@ Deno.serve(async (req: Request) => {
   }
 
   let body: {
+    action?: "status";
     campaign_type: string;
     title: string;
     message: string;
@@ -90,6 +91,16 @@ Deno.serve(async (req: Request) => {
     body = await req.json();
   } catch {
     return json({ error: "Invalid JSON body" }, 400);
+  }
+
+  if (body.action === "status") {
+    if (!ONESIGNAL_APP_ID || !ONESIGNAL_API_KEY) {
+      return json({ error: "Push service is not configured yet." }, 503);
+    }
+    const reachable = await getOneSignalReachableCount();
+    return reachable === null
+      ? json({ error: "Could not read registered devices from OneSignal." }, 502)
+      : json({ reachable });
   }
 
   const { campaign_type, title, message, image_url, link_url, offer_code, offer_expires_at } = body;
@@ -151,14 +162,6 @@ Deno.serve(async (req: Request) => {
     return true;
   });
 
-  if (targets.length === 0) {
-    await supabase
-      .from("push_campaigns")
-      .update({ status: "sent", recipients_targeted: 0, recipients_sent: 0, sent_at: new Date().toISOString() })
-      .eq("id", campaign.id);
-    return json({ campaign_id: campaign.id, targeted: 0, sent: 0 });
-  }
-
   // ── 3. Send via OneSignal in batches ────────────────────────────────────
   const dataPayload: Record<string, unknown> = {
     type:        `broadcast_${campaign_type}`,
@@ -170,6 +173,70 @@ Deno.serve(async (req: Request) => {
 
   let sentCount = 0;
   let lastError: string | undefined;
+
+  // Older Insider installs may already be subscribed in OneSignal without
+  // having copied their subscription ID into app_users. Keep broadcasts
+  // working for those devices via OneSignal's subscribed-user segment.
+  if (targets.length === 0) {
+    const payload: Record<string, unknown> = {
+      app_id: ONESIGNAL_APP_ID,
+      included_segments: ["Subscribed Users"],
+      headings: { en: title },
+      contents: { en: message },
+      data: dataPayload,
+      ...(link_url ? { url: link_url } : {}),
+      ...(image_url
+        ? {
+            big_picture: image_url,
+            chrome_web_image: image_url,
+            ios_attachments: { image: image_url },
+            huawei_big_picture: image_url,
+          }
+        : {}),
+    };
+
+    try {
+      const resp = await fetch(ONESIGNAL_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Key ${ONESIGNAL_API_KEY}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      const responseText = await resp.text();
+      if (resp.ok) {
+        const result = JSON.parse(responseText) as { recipients?: number };
+        sentCount = result.recipients ?? 0;
+      } else {
+        lastError = `OneSignal ${resp.status}: ${responseText}`;
+      }
+    } catch (e) {
+      lastError = String(e);
+    }
+
+    const status = lastError ? "failed" : "sent";
+    await supabase
+      .from("push_campaigns")
+      .update({
+        status,
+        recipients_targeted: sentCount,
+        recipients_sent: sentCount,
+        sent_at: new Date().toISOString(),
+        ...(lastError ? { error: lastError } : {}),
+      })
+      .eq("id", campaign.id);
+
+    return json(
+      {
+        campaign_id: campaign.id,
+        targeted: sentCount,
+        sent: sentCount,
+        ...(lastError ? { error: lastError } : {}),
+      },
+      lastError ? 502 : 200,
+    );
+  }
 
   for (let i = 0; i < targets.length; i += BATCH_SIZE) {
     const batch = targets.slice(i, i + BATCH_SIZE);
@@ -252,6 +319,24 @@ async function failCampaign(id: string, error: string): Promise<void> {
     .from("push_campaigns")
     .update({ status: "failed", error })
     .eq("id", id);
+}
+
+async function getOneSignalReachableCount(): Promise<number | null> {
+  try {
+    const response = await fetch(
+      `https://onesignal.com/api/v1/players?app_id=${encodeURIComponent(ONESIGNAL_APP_ID)}&limit=1`,
+      { headers: { "Authorization": `Key ${ONESIGNAL_API_KEY}` } },
+    );
+    if (!response.ok) {
+      console.error("OneSignal device count error:", response.status, await response.text());
+      return null;
+    }
+    const result = await response.json() as { total_count?: number };
+    return typeof result.total_count === "number" ? result.total_count : null;
+  } catch (error) {
+    console.error("OneSignal device count failed:", String(error));
+    return null;
+  }
 }
 
 function json(data: unknown, status = 200): Response {
