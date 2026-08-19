@@ -1,4 +1,5 @@
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
+import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const SYSTEM_PROMPT = `You are a precise OCR and data-extraction agent specialised in Indian GST tax invoices.
 Your ONLY job is to read the invoice image carefully and return exactly what is printed — no guessing, no inferring.
@@ -76,6 +77,35 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
+    // ── Auth: signed-in accounts/admin users only (protects paid AI credits) ──
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const userClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: userData } = await userClient.auth.getUser();
+    const caller = userData?.user;
+    if (!caller) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const adminClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+    const [{ data: isAdmin }, { data: isAccounts }] = await Promise.all([
+      adminClient.rpc('has_role', { _user_id: caller.id, _role: 'admin' }),
+      adminClient.rpc('has_role', { _user_id: caller.id, _role: 'accounts' }),
+    ]);
+    if (!isAdmin && !isAccounts) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const { pdf_base64, pdf_url, mime_type } = await req.json();
     if (!pdf_base64 && !pdf_url) {
       return new Response(JSON.stringify({ error: 'pdf_base64 or pdf_url is required' }), {
