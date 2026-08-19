@@ -13,7 +13,7 @@ import {
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from "recharts";
 import { Loader2, RefreshCw, Star, AlertTriangle, TrendingUp, TrendingDown, Trash2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Link } from "react-router-dom";
 import {
   Select as MonthSelect,

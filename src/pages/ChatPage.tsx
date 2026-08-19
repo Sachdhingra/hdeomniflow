@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Hash, Send, Plus, Search, Trash2, Edit2, Pin, ArrowLeft, Paperclip, FileText, X, Download, Loader2, Check, CheckCheck, Shield, FileDown } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { useChatUnread } from "@/contexts/ChatUnreadContext";
 import PresenceDot from "@/components/chat/PresenceDot";
 import MessageReactions from "@/components/chat/MessageReactions";

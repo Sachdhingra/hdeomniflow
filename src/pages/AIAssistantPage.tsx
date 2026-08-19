@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Bot, Send, Loader2, User as UserIcon } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import {
   DEFAULT_JARVIS_LANGUAGE,
   JARVIS_LANGUAGE_STORAGE_KEY,

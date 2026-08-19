@@ -14,7 +14,7 @@ import {
   CheckCircle2, XCircle, IndianRupee, Loader2, Search,
   Star, TrendingUp, Clock, RotateCcw, Gift
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

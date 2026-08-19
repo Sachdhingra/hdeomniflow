@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Plus, Pencil, Trash2, Loader2, Upload, X } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import StorageImage from "@/components/product-library/StorageImage";
 import { supabase } from "@/integrations/supabase/client";
 

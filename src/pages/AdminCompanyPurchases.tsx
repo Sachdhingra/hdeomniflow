@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Plus, Trash2, FileDown, FileSpreadsheet, Upload, Loader2, FileText, CheckCircle2, Edit, Download, FileCode2, Settings2, Info } from "lucide-react";
 import {
   buildTallyCsv, downloadCsv, downloadTallyExcel, buildTallyXml, buildTallyMastersXml,

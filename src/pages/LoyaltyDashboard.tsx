@@ -11,7 +11,7 @@ import {
   Loader2, Search, Trophy, CreditCard, Coins, Bell,
   CheckCircle2, XCircle, Clock, Star, Settings
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { useNavigate } from "react-router-dom";
 
 // ── Types ─────────────────────────────────────────────────────────────────────

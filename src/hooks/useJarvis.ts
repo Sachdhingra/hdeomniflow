@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { FunctionsHttpError, FunctionsFetchError } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { DEFAULT_VOICE, audioBase64ToBlob } from "@/lib/voiceReminder";
 import {
   DEFAULT_JARVIS_LANGUAGE,

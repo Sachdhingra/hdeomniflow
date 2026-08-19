@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Clock, XCircle, Phone, IndianRupee, Loader2, AlertTriangle, Eye } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import StatCard from "@/components/StatCard";
 
 type Job = {

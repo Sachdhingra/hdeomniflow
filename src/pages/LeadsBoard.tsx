@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Phone, MoveHorizontal, Sparkles, MessageCircle, MapPin, Zap, AlertTriangle, Snowflake, Star } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import LeadDetailsDrawer from "@/components/LeadDetailsDrawer";
 import SendTemplateDialog from "@/components/SendTemplateDialog";
 import RepeatBadge from "@/components/RepeatBadge";

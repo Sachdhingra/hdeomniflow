@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Upload, Download, AlertTriangle, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { parseTallyStockCsv, buildOmniStockTemplate, type TallyStockRow } from "@/lib/tallyImport";
 import { downloadCsv } from "@/lib/tallyExport";

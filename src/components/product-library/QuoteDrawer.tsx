@@ -10,7 +10,7 @@ import { downloadQuoteExcel } from "@/lib/quoteExcel";
 import { useQuote } from "@/contexts/QuoteContext";
 import { money, lineTotal, plDb } from "@/lib/productLibrary";
 import StorageImage from "./StorageImage";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 const QuoteDrawer = () => {
   const { items, open, setOpen, updateItem, removeItem, clear, subtotal, gstTotal, grandTotal } =

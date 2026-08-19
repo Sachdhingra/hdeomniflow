@@ -9,7 +9,7 @@ import {
   Building2, Loader2, User, Lock, Eye, EyeOff, Users, Wrench, BarChart3,
   MapPin, ReceiptText, PiggyBank, ShieldCheck,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import LoginBannerCarousel from "@/components/LoginBannerCarousel";
 
 const REMEMBER_KEY = "furncrm.remember.username";

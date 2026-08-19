@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Loader2, Maximize2 } from "lucide-react";
 import GoogleReviewQRCode from "@/components/GoogleReviewQRCode";
 import KioskScreensaver from "@/components/kiosk/KioskScreensaver";
