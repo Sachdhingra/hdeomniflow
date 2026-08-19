@@ -5,7 +5,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-twilio-signature",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -34,6 +34,31 @@ function mapStatus(twilioStatus: string): string {
   }
 }
 
+// Validate Twilio's X-Twilio-Signature: base64(HMAC-SHA1(authToken,
+// fullUrl + sorted key/value pairs)). Fails closed when unconfigured.
+async function verifyTwilioSignature(url: string, params: URLSearchParams, signature: string | null): Promise<boolean> {
+  const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
+  if (!authToken) {
+    console.error("[twilio-status] TWILIO_AUTH_TOKEN not configured — rejecting");
+    return false;
+  }
+  if (!signature) return false;
+
+  let payload = url;
+  for (const key of [...params.keys()].sort()) payload += key + params.get(key);
+
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(authToken),
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["sign"],
+  );
+  const mac = await crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(payload));
+  const expected = btoa(String.fromCharCode(...new Uint8Array(mac)));
+  return expected === signature;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") {
@@ -42,15 +67,21 @@ Deno.serve(async (req) => {
 
   try {
     const ct = req.headers.get("content-type") || "";
+    const rawBody = await req.text();
     let params: URLSearchParams;
-    if (ct.includes("application/x-www-form-urlencoded")) {
-      params = new URLSearchParams(await req.text());
-    } else if (ct.includes("application/json")) {
-      const j = await req.json();
+    if (ct.includes("application/json")) {
+      const j = JSON.parse(rawBody || "{}");
       params = new URLSearchParams();
       for (const [k, v] of Object.entries(j ?? {})) params.set(k, String(v));
     } else {
-      params = new URLSearchParams(await req.text());
+      params = new URLSearchParams(rawBody);
+    }
+
+    const callbackUrl = `${supabaseUrl}/functions/v1/twilio-status`;
+    const signature = req.headers.get("X-Twilio-Signature") || req.headers.get("x-twilio-signature");
+    if (!(await verifyTwilioSignature(callbackUrl, params, signature))) {
+      console.error("[twilio-status] invalid signature — rejected");
+      return new Response("invalid signature", { status: 403, headers: corsHeaders });
     }
 
     const sid = params.get("MessageSid") || params.get("SmsSid");

@@ -16,13 +16,8 @@ Deno.serve(async (req) => {
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const admin = createClient(supabaseUrl, serviceKey);
 
-    // Resolve API key: env var first, then app_settings table
-    let apiKey = Deno.env.get('FIRECRAWL_API_KEY') ?? '';
-    if (!apiKey) {
-      const { data: setting } = await admin
-        .from('app_settings').select('value').eq('key', 'FIRECRAWL_API_KEY').maybeSingle();
-      apiKey = setting?.value ?? '';
-    }
+    // API key comes only from the secret store — never from the database
+    const apiKey = Deno.env.get('FIRECRAWL_API_KEY') ?? '';
     if (!apiKey) return ok({ success: false, error: 'FIRECRAWL_API_KEY not configured' });
 
     const authHeader = req.headers.get('Authorization');

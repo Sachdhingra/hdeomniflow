@@ -24,6 +24,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
+import SignedImg from "@/components/SignedImg";
 
 // ─── Bucket / storage constants ───────────────────────────────────────────────
 const BUCKET = "field-agent-photos";
@@ -200,8 +201,8 @@ function ProductPhotoCell({
     <>
       <div className="relative w-full h-44 bg-muted flex items-center justify-center overflow-hidden">
         {currentUrl ? (
-          <img
-            src={currentUrl} alt=""
+          <SignedImg
+            src={currentUrl} bucket="job-photos" alt=""
             className="w-full h-full object-cover cursor-zoom-in"
             onClick={() => setEnlarged(true)}
             title="Click to enlarge"
@@ -225,7 +226,7 @@ function ProductPhotoCell({
       {enlarged && currentUrl && (
         <Dialog open={enlarged} onOpenChange={setEnlarged}>
           <DialogContent className="max-w-3xl p-0 overflow-hidden bg-black border-0">
-            <img src={currentUrl} alt="Full size" className="w-full h-auto max-h-[85vh] object-contain" />
+            <SignedImg src={currentUrl} bucket="job-photos" alt="Full size" className="w-full h-auto max-h-[85vh] object-contain" />
           </DialogContent>
         </Dialog>
       )}
@@ -1429,7 +1430,7 @@ function OrderDetailDialog({
               <div className="grid grid-cols-3 gap-2">
                 {photos.map(ph => (
                   <div key={ph.id} className="relative">
-                    <img src={ph.photo_url} alt={ph.photo_type} className="w-full h-24 object-cover rounded border" />
+                    <SignedImg src={ph.photo_url} bucket="job-photos" alt={ph.photo_type} className="w-full h-24 object-cover rounded border" />
                     <span className="absolute bottom-1 left-1 bg-black/60 text-white text-xs px-1 rounded">{ph.photo_type}</span>
                   </div>
                 ))}

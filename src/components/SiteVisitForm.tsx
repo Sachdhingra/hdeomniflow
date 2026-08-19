@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { MapPin, Camera, Loader2, X, Locate } from "lucide-react";
 import { toast } from "sonner";
+import SignedImg from "@/components/SignedImg";
 
 interface SiteVisitFormProps {
   trigger?: React.ReactNode;
@@ -257,7 +258,7 @@ const SiteVisitForm = ({ trigger }: SiteVisitFormProps) => {
               <div className="flex gap-2 flex-wrap mt-2">
                 {photoUrls.map((url, i) => (
                   <div key={url} className="relative">
-                    <img src={url} alt={`Site ${i + 1}`} className="w-16 h-16 rounded object-cover border border-border" loading="lazy" />
+                    <SignedImg src={url} bucket="field-agent-photos" alt={`Site ${i + 1}`} className="w-16 h-16 rounded object-cover border border-border" loading="lazy" />
                     <button
                       type="button"
                       onClick={() => removePhoto(url)}

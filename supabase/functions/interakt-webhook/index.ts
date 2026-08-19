@@ -22,7 +22,10 @@ function normalizePhone(raw: string | undefined | null): string {
 }
 
 async function verifyMetaSignature(rawBody: string, sigHeader: string | null): Promise<boolean> {
-  if (!META_APP_SECRET) return true; // verification skipped when secret not configured
+  if (!META_APP_SECRET) {
+    console.error("[interakt-webhook] META_APP_SECRET not configured — rejecting request");
+    return false; // fail closed: never trust unverified payloads
+  }
   if (!sigHeader?.startsWith("sha256=")) return false;
   const expected = sigHeader.slice(7); // strip "sha256="
   const key = await crypto.subtle.importKey(
