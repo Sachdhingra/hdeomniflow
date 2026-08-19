@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -167,7 +168,18 @@ const AdminPushNotifications = () => {
       },
     });
     setSending(false);
-    if (error) return toast.error(error.message);
+    if (error) {
+      let message = error.message;
+      if (error instanceof FunctionsHttpError) {
+        try {
+          const payload = await error.context.json() as { error?: string };
+          message = payload.error || message;
+        } catch {
+          // Keep the SDK message if the function did not return JSON.
+        }
+      }
+      return toast.error(message);
+    }
     const res = data as { targeted?: number; sent?: number; error?: string };
     if (res?.error) {
       toast.error(`Send failed: ${res.error}`);
