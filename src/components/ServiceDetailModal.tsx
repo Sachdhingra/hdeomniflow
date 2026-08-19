@@ -11,6 +11,7 @@ import {
   UserPlus, CalendarClock,
 } from "lucide-react";
 import { toast } from "sonner";
+import SignedImg from "@/components/SignedImg";
 
 const STATUS_BADGE: Record<string, string> = {
   pending: "bg-warning/10 text-warning",
@@ -238,9 +239,7 @@ const ServiceDetailModal = ({ job, open, onOpenChange, onEdit, onAssign, onResch
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {photos.map((url, i) => (
-                  <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block">
-                    <img src={url} alt={`Photo ${i + 1}`} className="w-full aspect-square object-cover rounded-lg border" />
-                  </a>
+                  <SignedImg key={i} src={url} bucket="job-photos" alt={`Photo ${i + 1}`} className="w-full aspect-square object-cover rounded-lg border" />
                 ))}
               </div>
             )}

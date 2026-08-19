@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Camera } from "lucide-react";
+import SignedImg from "@/components/SignedImg";
 
 interface LeadPhotoGalleryProps {
   leadId: string;
@@ -34,8 +35,7 @@ const LeadPhotoGallery = ({ leadId, className = "" }: LeadPhotoGalleryProps) => 
                   if (photo.startsWith("http")) {
                     allPhotos.push(photo);
                   } else {
-                    const { data } = supabase.storage.from("job-photos").getPublicUrl(photo);
-                    if (data?.publicUrl) allPhotos.push(data.publicUrl);
+                    allPhotos.push(photo);
                   }
                 }
               }
@@ -63,9 +63,10 @@ const LeadPhotoGallery = ({ leadId, className = "" }: LeadPhotoGalleryProps) => 
       </div>
       <div className="flex gap-1.5 flex-wrap">
         {photos.slice(0, 4).map((url, i) => (
-          <img
+          <SignedImg
             key={i}
             src={url}
+            bucket="job-photos"
             alt={`Photo ${i + 1}`}
             className="w-12 h-12 rounded object-cover cursor-pointer border border-border hover:ring-2 hover:ring-primary/50 transition-all"
             loading="lazy"
@@ -81,7 +82,7 @@ const LeadPhotoGallery = ({ leadId, className = "" }: LeadPhotoGalleryProps) => 
       <Dialog open={!!selectedPhoto} onOpenChange={() => setSelectedPhoto(null)}>
         <DialogContent className="max-w-lg p-2">
           {selectedPhoto && (
-            <img src={selectedPhoto} alt="Full size" className="w-full rounded" />
+            <SignedImg src={selectedPhoto} bucket="job-photos" alt="Full size" className="w-full rounded" />
           )}
         </DialogContent>
       </Dialog>
