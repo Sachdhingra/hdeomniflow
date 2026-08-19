@@ -6,6 +6,7 @@ import StatCard from "@/components/StatCard";
 import LeadForm from "@/components/LeadForm";
 import SiteVisitForm from "@/components/SiteVisitForm";
 import SiteVisitLocationDialog from "@/components/SiteVisitLocationDialog";
+import SignedImg from "@/components/SignedImg";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -167,7 +168,7 @@ const SiteAgentDashboard = () => {
                   <CardContent className="p-4">
                     <div className="flex items-start gap-3">
                       {photo && (
-                        <img
+                        <SignedImg
                           src={photo}
                           alt="Site"
                           className="w-16 h-16 rounded object-cover border border-border shrink-0"

@@ -30,13 +30,10 @@ const LeadPhotoGallery = ({ leadId, className = "" }: LeadPhotoGalleryProps) => 
           for (const job of jobs) {
             if (job.photos && Array.isArray(job.photos)) {
               for (const photo of job.photos) {
-                if (photo && typeof photo === "string" && photo.length > 0) {
-                  // Photos are stored as full URLs already
-                  if (photo.startsWith("http")) {
-                    allPhotos.push(photo);
-                  } else {
-                    allPhotos.push(photo);
-                  }
+                // Values may be full URLs (public or signed) or bare storage
+                // paths — SignedImg resolves either into a signed URL.
+                if (photo && typeof photo === "string" && photo.trim().length > 0) {
+                  allPhotos.push(photo.trim());
                 }
               }
             }
@@ -66,7 +63,6 @@ const LeadPhotoGallery = ({ leadId, className = "" }: LeadPhotoGalleryProps) => 
           <SignedImg
             key={i}
             src={url}
-            bucket="job-photos"
             alt={`Photo ${i + 1}`}
             className="w-12 h-12 rounded object-cover cursor-pointer border border-border hover:ring-2 hover:ring-primary/50 transition-all"
             loading="lazy"
@@ -82,7 +78,7 @@ const LeadPhotoGallery = ({ leadId, className = "" }: LeadPhotoGalleryProps) => 
       <Dialog open={!!selectedPhoto} onOpenChange={() => setSelectedPhoto(null)}>
         <DialogContent className="max-w-lg p-2">
           {selectedPhoto && (
-            <SignedImg src={selectedPhoto} bucket="job-photos" alt="Full size" className="w-full rounded" />
+            <SignedImg src={selectedPhoto} alt="Full size" className="w-full rounded" />
           )}
         </DialogContent>
       </Dialog>

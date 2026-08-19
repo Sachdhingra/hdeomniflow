@@ -10,6 +10,7 @@ import DeleteButton from "@/components/DeleteButton";
 import AgentTrackingTimeline from "@/components/AgentTrackingTimeline";
 import AdminSalesTargets from "@/components/AdminSalesTargets";
 import AuditDashboard from "@/components/AuditDashboard";
+import SignedImg from "@/components/SignedImg";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -483,7 +484,7 @@ const AdminDashboard = () => {
                         <TableRow key={l.id}>
                           <TableCell>
                             {photo ? (
-                              <img src={photo} alt="Visit" className="w-10 h-10 rounded object-cover border border-border" loading="lazy" />
+                              <SignedImg src={photo} alt="Visit" className="w-10 h-10 rounded object-cover border border-border" loading="lazy" />
                             ) : (
                               <div className="w-10 h-10 rounded bg-muted" />
                             )}
@@ -642,7 +643,7 @@ const AdminDashboard = () => {
                           return (
                             <div key={v.id} className="relative rounded-md overflow-hidden border border-border bg-muted/30">
                               {photo ? (
-                                <img src={photo} alt={v.location} className="w-full h-20 object-cover" loading="lazy" />
+                                <SignedImg src={photo} alt={v.location} className="w-full h-20 object-cover" loading="lazy" />
                               ) : (
                                 <div className="w-full h-20 flex items-center justify-center text-xs text-muted-foreground">No photo</div>
                               )}

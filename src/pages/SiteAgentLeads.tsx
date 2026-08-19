@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useData, LEAD_CATEGORIES } from "@/contexts/DataContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import SignedImg from "@/components/SignedImg";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,7 +55,7 @@ const SiteAgentLeads = () => {
             <Card key={l.id} className="shadow-card">
               <CardContent className="p-4 flex gap-3">
                 {(l as any).visit_photo && (
-                  <img
+                  <SignedImg
                     src={(l as any).visit_photo}
                     alt="Visit"
                     className="w-16 h-16 rounded object-cover border border-border shrink-0"

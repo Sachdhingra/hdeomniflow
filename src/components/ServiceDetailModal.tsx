@@ -77,7 +77,7 @@ const ServiceDetailModal = ({ job, open, onOpenChange, onEdit, onAssign, onResch
   const isAdmin = user?.role === "admin";
   const isServiceHead = user?.role === "service_head";
   const canAssign = isAdmin || isServiceHead;
-  const photos = (job.photos || []).filter(p => typeof p === "string" && p.startsWith("http"));
+  const photos = (job.photos || []).filter(p => typeof p === "string" && p.trim().length > 0);
   const approvalStatus = (job as any).accounts_approval_status || "pending";
 
   const handleComplete = async () => {
@@ -239,7 +239,7 @@ const ServiceDetailModal = ({ job, open, onOpenChange, onEdit, onAssign, onResch
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {photos.map((url, i) => (
-                  <SignedImg key={i} src={url} bucket="job-photos" alt={`Photo ${i + 1}`} className="w-full aspect-square object-cover rounded-lg border" />
+                  <SignedImg key={i} src={url} alt={`Photo ${i + 1}`} className="w-full aspect-square object-cover rounded-lg border" />
                 ))}
               </div>
             )}

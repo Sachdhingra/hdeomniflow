@@ -4,6 +4,7 @@ import { useData } from "@/contexts/DataContext";
 import { useGeolocation, distanceMeters } from "@/hooks/useGeolocation";
 import StatCard from "@/components/StatCard";
 import ServiceJobPhotoUpload from "@/components/ServiceJobPhotoUpload";
+import { SignedPhotoLink } from "@/components/SignedImg";
 import LeadForm from "@/components/LeadForm";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -254,12 +255,16 @@ const FieldAgentDashboard = () => {
                   )}
                 </div>
 
-                {job.photos && job.photos.length > 0 && job.photos[0] !== "" && (
+                {job.photos && job.photos.some(p => typeof p === "string" && p.trim() !== "") && (
                   <div className="flex gap-2 flex-wrap">
-                    {job.photos.filter(p => p.startsWith("http")).map((url, i) => (
-                      <a key={i} href={url} target="_blank" rel="noopener noreferrer">
-                        <img src={url} alt={`Photo ${i + 1}`} className="w-16 h-16 rounded-lg object-cover border border-border" loading="lazy" />
-                      </a>
+                    {job.photos.filter(p => typeof p === "string" && p.trim() !== "").map((url, i) => (
+                      <SignedPhotoLink
+                        key={i}
+                        src={url}
+                        alt={`Photo ${i + 1}`}
+                        className="w-16 h-16 rounded-lg object-cover border border-border"
+                        loading="lazy"
+                      />
                     ))}
                   </div>
                 )}

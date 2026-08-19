@@ -5,6 +5,7 @@ import StatCard from "@/components/StatCard";
 import DeleteButton from "@/components/DeleteButton";
 import EditJobDialog from "@/components/EditJobDialog";
 import ServiceDetailModal from "@/components/ServiceDetailModal";
+import { SignedPhotoLink } from "@/components/SignedImg";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -337,7 +338,9 @@ const ServiceDashboard = () => {
   };
 
   const getJobPhotos = (job: typeof serviceJobs[0]) => {
-    return (job.photos || []).filter(p => p.startsWith("http"));
+    // Stored values are full URLs or bare storage paths — SignedPhotoLink
+    // resolves either into a signed URL, so keep everything non-empty.
+    return (job.photos || []).filter(p => typeof p === "string" && p.trim().length > 0);
   };
 
   if (error && serviceJobs.length === 0) return <LoadingError message={error} onRetry={retryLoad} />;
@@ -572,9 +575,14 @@ const ServiceDashboard = () => {
                     {photos.length > 0 && (
                       <div className="flex gap-1.5 mt-2 flex-wrap">
                         {photos.slice(0, 3).map((url, i) => (
-                          <a key={i} href={url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>
-                            <img src={url} alt="" className="w-12 h-12 rounded object-cover border border-border" />
-                          </a>
+                          <SignedPhotoLink
+                            key={i}
+                            src={url}
+                            alt={`Job photo ${i + 1}`}
+                            className="w-12 h-12 rounded object-cover border border-border"
+                            loading="lazy"
+                            stopPropagation
+                          />
                         ))}
                         {photos.length > 3 && (
                           <button
@@ -698,9 +706,12 @@ const ServiceDashboard = () => {
           <DialogHeader><DialogTitle>Job Photos</DialogTitle></DialogHeader>
           <div className="grid grid-cols-2 gap-3">
             {photoViewJob && getJobPhotos(serviceJobs.find(j => j.id === photoViewJob)!).map((url, i) => (
-              <a key={i} href={url} target="_blank" rel="noopener noreferrer">
-                <img src={url} alt={`Photo ${i + 1}`} className="w-full rounded-lg object-cover border border-border" />
-              </a>
+              <SignedPhotoLink
+                key={i}
+                src={url}
+                alt={`Photo ${i + 1}`}
+                className="w-full rounded-lg object-cover border border-border"
+              />
             ))}
           </div>
         </DialogContent>
