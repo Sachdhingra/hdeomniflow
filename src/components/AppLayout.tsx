@@ -25,6 +25,7 @@ import { useFieldAgentDuty } from "@/hooks/useFieldAgentDuty";
 import FieldAgentGpsGuard from "@/components/FieldAgentGpsGuard";
 import JarvisFloatingButton from "@/components/JarvisFloatingButton";
 import MorningBriefing from "@/components/MorningBriefing";
+import LoyaltyAlertNotifier from "@/components/LoyaltyAlertNotifier";
 
 interface NavItem {
   to: string;
@@ -178,6 +179,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       <ChatNotifier />
       <LeadNotifier />
       <OrderNotifier />
+      <LoyaltyAlertNotifier />
       <ChatArrivalFlash />
       {sidebarOpen && (
         <div className="fixed inset-0 bg-foreground/20 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
