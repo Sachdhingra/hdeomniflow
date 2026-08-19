@@ -48,6 +48,18 @@ interface CommissionRow {
   cards_sold: number;
 }
 
+interface CommissionCredit {
+  id: string;
+  salesperson_id: string;
+  salesperson_name: string;
+  customer_id: string;
+  customer_name: string;
+  card_tier: string;
+  commission_amount: number;
+  payment_status: string;
+  created_at: string;
+}
+
 interface PushLogRow {
   id: string;
   customer_id: string;
@@ -111,6 +123,10 @@ export default function LoyaltyDashboard() {
   });
   const [holders, setHolders] = useState<CardHolder[]>([]);
   const [commissions, setCommissions] = useState<CommissionRow[]>([]);
+  const [creditsLog, setCreditsLog] = useState<CommissionCredit[]>([]);
+  const [loadingCredits, setLoadingCredits] = useState(false);
+  const [commView, setCommView] = useState<"leaderboard" | "credits">("leaderboard");
+  const [creditsLoaded, setCreditsLoaded] = useState(false);
   const [pushLog, setPushLog] = useState<PushLogRow[]>([]);
 
   const [loading, setLoading] = useState(true);
@@ -271,6 +287,66 @@ export default function LoyaltyDashboard() {
       setLoadingLog(false);
     })();
   }, [tab]);
+
+  // ── Credits log (lazy load when sub-view is first opened) ───────────────
+
+  useEffect(() => {
+    if (tab !== "commissions" || commView !== "credits" || creditsLoaded) return;
+    (async () => {
+      setLoadingCredits(true);
+      const { data: creditData, error } = await supabase
+        .from("card_commissions" as any)
+        .select("id, salesperson_id, customer_id, card_tier, commission_amount, payment_status, created_at, elite_customers(customer_name)")
+        .order("created_at", { ascending: false })
+        .limit(300);
+      if (error) { toast.error(error.message); setLoadingCredits(false); return; }
+
+      const spIds = [...new Set((creditData ?? []).map((r: any) => r.salesperson_id as string))];
+      let spMap: Record<string, string> = {};
+      if (spIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, name")
+          .in("id", spIds);
+        spMap = Object.fromEntries((profiles ?? []).map((p: any) => [p.id, p.name]));
+      }
+
+      setCreditsLog(
+        (creditData ?? []).map((r: any) => ({
+          id: r.id,
+          salesperson_id: r.salesperson_id,
+          salesperson_name: spMap[r.salesperson_id] ?? "Unknown",
+          customer_id: r.customer_id,
+          customer_name: (r.elite_customers as any)?.customer_name ?? "—",
+          card_tier: r.card_tier,
+          commission_amount: r.commission_amount ?? 0,
+          payment_status: r.payment_status,
+          created_at: r.created_at,
+        }))
+      );
+      setCreditsLoaded(true);
+      setLoadingCredits(false);
+    })();
+  }, [tab, commView, creditsLoaded]);
+
+  const markCommissionPaid = async (creditId: string, amount: number, salespersonId: string) => {
+    const { error } = await (supabase.from("card_commissions" as any)
+      .update({ payment_status: "paid" })
+      .eq("id", creditId) as any);
+    if (error) { toast.error(error.message); return; }
+    setCreditsLog(prev => prev.map(c =>
+      c.id === creditId ? { ...c, payment_status: "paid" } : c
+    ));
+    setCommissions(prev => prev.map(c =>
+      c.salesperson_id !== salespersonId ? c : {
+        ...c, paid: c.paid + amount, pending: Math.max(0, c.pending - amount),
+      }
+    ));
+    setStats(prev => ({
+      ...prev, pending_commission: Math.max(0, prev.pending_commission - amount),
+    }));
+    toast.success("Commission marked as paid");
+  };
 
   // ── Derived lists ────────────────────────────────────────────────────────
 
@@ -496,56 +572,140 @@ export default function LoyaltyDashboard() {
             </TabsContent>
 
             {/* ── COMMISSIONS ──────────────────────────────────────────────── */}
-            <TabsContent value="commissions" className="pt-3">
-              <Card>
-                <CardContent className="p-0 overflow-x-auto">
-                  {commissions.length === 0 ? (
-                    <p className="text-center text-sm text-muted-foreground py-10">No commission data yet</p>
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-8">#</TableHead>
-                          <TableHead>Salesperson</TableHead>
-                          <TableHead className="text-right">Cards Sold</TableHead>
-                          <TableHead className="text-right">Total Earned</TableHead>
-                          <TableHead className="text-right text-green-600">Paid</TableHead>
-                          <TableHead className="text-right text-amber-600">Pending</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {commissions.map((c, i) => (
-                          <TableRow key={c.salesperson_id}>
-                            <TableCell className="text-muted-foreground text-xs">{i + 1}</TableCell>
-                            <TableCell className="font-medium text-sm">
-                              <span className="flex items-center gap-1.5">
-                                {i === 0 && <Trophy className="w-4 h-4 text-amber-500" />}
-                                {i === 1 && <Trophy className="w-4 h-4 text-slate-400" />}
-                                {i === 2 && <Trophy className="w-4 h-4 text-amber-700" />}
-                                {c.salesperson_name}
-                              </span>
-                            </TableCell>
-                            <TableCell className="text-right text-sm">{c.cards_sold}</TableCell>
-                            <TableCell className="text-right font-semibold text-sm">
-                              ₹{c.total_earned.toLocaleString("en-IN")}
-                            </TableCell>
-                            <TableCell className="text-right text-sm text-green-600">
-                              ₹{c.paid.toLocaleString("en-IN")}
-                            </TableCell>
-                            <TableCell className="text-right font-bold text-sm text-amber-700">
-                              ₹{c.pending.toLocaleString("en-IN")}
-                            </TableCell>
+            <TabsContent value="commissions" className="pt-3 space-y-3">
+              {/* Sub-view toggle */}
+              <div className="flex gap-2">
+                {(["leaderboard", "credits"] as const).map(v => (
+                  <button
+                    key={v}
+                    onClick={() => setCommView(v)}
+                    className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                      commView === v
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "border-border bg-background hover:bg-muted"
+                    }`}
+                  >
+                    {v === "leaderboard" ? "Leaderboard" : "Credits Log"}
+                  </button>
+                ))}
+              </div>
+
+              {commView === "leaderboard" && (
+                <Card>
+                  <CardContent className="p-0 overflow-x-auto">
+                    {commissions.length === 0 ? (
+                      <p className="text-center text-sm text-muted-foreground py-10">No commission data yet</p>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-8">#</TableHead>
+                            <TableHead>Salesperson</TableHead>
+                            <TableHead className="text-right">Cards Sold</TableHead>
+                            <TableHead className="text-right">Total Earned</TableHead>
+                            <TableHead className="text-right text-green-600">Paid</TableHead>
+                            <TableHead className="text-right text-amber-600">Pending</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                </CardContent>
-              </Card>
-              {isAdmin && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  To mark commissions as paid, update <code>payment_status</code> on the <code>card_commissions</code> table.
-                </p>
+                        </TableHeader>
+                        <TableBody>
+                          {commissions.map((c, i) => (
+                            <TableRow key={c.salesperson_id}>
+                              <TableCell className="text-muted-foreground text-xs">{i + 1}</TableCell>
+                              <TableCell className="font-medium text-sm">
+                                <span className="flex items-center gap-1.5">
+                                  {i === 0 && <Trophy className="w-4 h-4 text-amber-500" />}
+                                  {i === 1 && <Trophy className="w-4 h-4 text-slate-400" />}
+                                  {i === 2 && <Trophy className="w-4 h-4 text-amber-700" />}
+                                  {c.salesperson_name}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-right text-sm">{c.cards_sold}</TableCell>
+                              <TableCell className="text-right font-semibold text-sm">
+                                ₹{c.total_earned.toLocaleString("en-IN")}
+                              </TableCell>
+                              <TableCell className="text-right text-sm text-green-600">
+                                ₹{c.paid.toLocaleString("en-IN")}
+                              </TableCell>
+                              <TableCell className="text-right font-bold text-sm text-amber-700">
+                                ₹{c.pending.toLocaleString("en-IN")}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {commView === "credits" && (
+                <Card>
+                  <CardContent className="p-0 overflow-x-auto">
+                    {loadingCredits ? (
+                      <LoadingSpinner />
+                    ) : creditsLog.length === 0 ? (
+                      <p className="text-center text-sm text-muted-foreground py-10">No commission credits yet</p>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Date &amp; Time</TableHead>
+                            <TableHead>Salesperson</TableHead>
+                            <TableHead>Customer</TableHead>
+                            <TableHead>Tier</TableHead>
+                            <TableHead className="text-right">Amount</TableHead>
+                            <TableHead>Status</TableHead>
+                            {isAdmin && <TableHead />}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {creditsLog.map(cr => (
+                            <TableRow key={cr.id}>
+                              <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                                {fmtDateTime(cr.created_at)}
+                              </TableCell>
+                              <TableCell className="text-sm font-medium">{cr.salesperson_name}</TableCell>
+                              <TableCell className="text-sm">{cr.customer_name}</TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className={`text-xs ${TIER_COLOR[cr.card_tier] ?? ""}`}>
+                                  {TIER_LABEL[cr.card_tier] ?? cr.card_tier}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right font-semibold text-sm">
+                                ₹{cr.commission_amount.toLocaleString("en-IN")}
+                              </TableCell>
+                              <TableCell>
+                                {cr.payment_status === "paid" ? (
+                                  <span className="flex items-center gap-1 text-xs text-green-600">
+                                    <CheckCircle2 className="w-3.5 h-3.5" /> Paid
+                                  </span>
+                                ) : (
+                                  <span className="flex items-center gap-1 text-xs text-amber-600">
+                                    <Clock className="w-3.5 h-3.5" /> Pending
+                                  </span>
+                                )}
+                              </TableCell>
+                              {isAdmin && (
+                                <TableCell>
+                                  {cr.payment_status === "pending" && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-6 text-xs px-2 text-green-700 border-green-300 hover:bg-green-50"
+                                      onClick={() => markCommissionPaid(cr.id, cr.commission_amount, cr.salesperson_id)}
+                                    >
+                                      Mark Paid
+                                    </Button>
+                                  )}
+                                </TableCell>
+                              )}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
               )}
             </TabsContent>
 
