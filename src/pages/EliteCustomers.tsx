@@ -85,7 +85,7 @@ const STATUS_META: Record<ComputedStatus, { label: string; cls: string }> = {
 
 const TIER_COMMISSION: Record<EliteTier, number> = {
   silver: 0,
-  elite: 100,
+  elite: 0,
   super_elite: 100,
   prestige_elite: 200,
 };
