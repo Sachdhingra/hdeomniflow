@@ -208,12 +208,17 @@ Deno.serve(async (req: Request) => {
       if (resp.ok) {
         const result = JSON.parse(responseText) as { recipients?: number };
         sentCount = result.recipients ?? 0;
+        if (sentCount === 0) {
+          lastError =
+            "No device has an active push subscription yet. The Insider app must request notification permission and save the subscription ID before broadcasts can be delivered.";
+        }
       } else {
         lastError = `OneSignal ${resp.status}: ${responseText}`;
       }
     } catch (e) {
       lastError = String(e);
     }
+
 
     const status = lastError ? "failed" : "sent";
     await supabase
@@ -323,21 +328,38 @@ async function failCampaign(id: string, error: string): Promise<void> {
 
 async function getOneSignalReachableCount(): Promise<number | null> {
   try {
-    const response = await fetch(
-      `https://onesignal.com/api/v1/players?app_id=${encodeURIComponent(ONESIGNAL_APP_ID)}&limit=1`,
-      { headers: { "Authorization": `Key ${ONESIGNAL_API_KEY}` } },
-    );
-    if (!response.ok) {
-      console.error("OneSignal device count error:", response.status, await response.text());
-      return null;
+    // Count only devices that actually hold a push subscription
+    // (notification_types > 0). Records with null/negative values exist in
+    // OneSignal but cannot receive anything — counting them is misleading.
+    let offset = 0;
+    let reachable = 0;
+    for (let page = 0; page < 10; page++) {
+      const response = await fetch(
+        `https://onesignal.com/api/v1/players?app_id=${encodeURIComponent(ONESIGNAL_APP_ID)}&limit=300&offset=${offset}`,
+        { headers: { "Authorization": `Key ${ONESIGNAL_API_KEY}` } },
+      );
+      if (!response.ok) {
+        console.error("OneSignal device count error:", response.status, await response.text());
+        return null;
+      }
+      const result = await response.json() as {
+        total_count?: number;
+        players?: { notification_types?: number | null; invalid_identifier?: boolean }[];
+      };
+      const players = result.players ?? [];
+      reachable += players.filter(
+        (p) => !p.invalid_identifier && typeof p.notification_types === "number" && p.notification_types > 0,
+      ).length;
+      offset += players.length;
+      if (players.length === 0 || offset >= (result.total_count ?? 0)) break;
     }
-    const result = await response.json() as { total_count?: number };
-    return typeof result.total_count === "number" ? result.total_count : null;
+    return reachable;
   } catch (error) {
     console.error("OneSignal device count failed:", String(error));
     return null;
   }
 }
+
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
