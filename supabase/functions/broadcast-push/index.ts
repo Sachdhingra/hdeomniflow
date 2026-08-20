@@ -208,12 +208,17 @@ Deno.serve(async (req: Request) => {
       if (resp.ok) {
         const result = JSON.parse(responseText) as { recipients?: number };
         sentCount = result.recipients ?? 0;
+        if (sentCount === 0) {
+          lastError =
+            "No device has an active push subscription yet. The Insider app must request notification permission and save the subscription ID before broadcasts can be delivered.";
+        }
       } else {
         lastError = `OneSignal ${resp.status}: ${responseText}`;
       }
     } catch (e) {
       lastError = String(e);
     }
+
 
     const status = lastError ? "failed" : "sent";
     await supabase
