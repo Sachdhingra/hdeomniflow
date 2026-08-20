@@ -13,14 +13,16 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "@/lib/toast";
-import { BellRing, Image as ImageIcon, Loader2, MessageSquareText, Send, Tag, Upload, Users, X } from "lucide-react";
+import { BellRing, Image as ImageIcon, Loader2, MessageSquareText, Send, Smartphone, Tag, Upload, Users, X } from "lucide-react";
 import { formatDate } from "@/lib/dateFormat";
 
-type CampaignType = "text" | "banner" | "offer";
+type CampaignType = "text" | "banner" | "offer" | "reengagement";
+type Audience = "customers" | "staff";
 
 interface Campaign {
   id: string;
   campaign_type: CampaignType;
+  audience: Audience | null;
   title: string;
   message: string;
   image_url: string | null;
@@ -57,9 +59,16 @@ const TYPE_META: Record<CampaignType, { label: string; icon: React.ReactNode; hi
     icon: <Tag className="w-4 h-4" />,
     hint: "Promotional offer with optional code, expiry and image.",
   },
+  reengagement: {
+    label: "Turn notifications on",
+    icon: <BellRing className="w-4 h-4" />,
+    hint:
+      "Nudges every device still subscribed — including customers who turned Offers & Promotions off — to switch notifications back on. Anyone whose browser permission is revoked can't be pushed at all; they get the in-app prompt the next time they open the Insider app.",
+  },
 };
 
 const emptyForm = {
+  audience: "customers" as Audience,
   campaign_type: "text" as CampaignType,
   title: "",
   message: "",
@@ -67,6 +76,13 @@ const emptyForm = {
   link_url: "",
   offer_code: "",
   offer_expires_at: "",
+};
+
+// Prefilled so re-engaging existing app users is a one-click action.
+const REENGAGEMENT_DRAFT = {
+  title: "Turn your notifications back on",
+  message:
+    "You're missing points expiry reminders, member-only offers and service updates. Open HD Insider and tap \u201cTurn on notifications\u201d to start getting them again.",
 };
 
 const STATUS_CLS: Record<Campaign["status"], string> = {
@@ -82,6 +98,8 @@ const AdminPushNotifications = () => {
   const [uploading, setUploading] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [reach, setReach] = useState<number | null>(null);
+  const [staffReach, setStaffReach] = useState<number | null>(null);
+  const [needsOptIn, setNeedsOptIn] = useState<number | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [settings, setSettings] = useState<AutomationSetting[]>([]);
   const [installed, setInstalled] = useState<number | null>(null);
@@ -105,8 +123,15 @@ const AdminPushNotifications = () => {
     if (reachRes.error) {
       console.error("Could not load OneSignal device count:", reachRes.error);
       setReach(0);
+      setStaffReach(0);
+      setNeedsOptIn(null);
     } else {
-      setReach((reachRes.data as { reachable?: number } | null)?.reachable ?? 0);
+      const status = reachRes.data as
+        | { reachable?: number; staff_reachable?: number; needs_opt_in?: number }
+        | null;
+      setReach(status?.reachable ?? 0);
+      setStaffReach(status?.staff_reachable ?? 0);
+      setNeedsOptIn(status?.needs_opt_in ?? 0);
     }
     setInstalled(installedRes.count ?? 0);
     if (campRes.error) toast.error(campRes.error.message);
@@ -141,7 +166,20 @@ const AdminPushNotifications = () => {
     if (!form.title.trim()) return "Title is required";
     if (!form.message.trim()) return "Message is required";
     if (form.campaign_type === "banner" && !form.image_url) return "Banner pushes need an image";
+    if (form.audience === "staff" && form.campaign_type === "reengagement") {
+      return "The re-engagement nudge is for Insider customers";
+    }
     return null;
+  };
+
+  // Switches the composer to the prefilled nudge so it's a single confirm.
+  const startReengagement = () => {
+    setForm({
+      ...emptyForm,
+      audience: "customers",
+      campaign_type: "reengagement",
+      ...REENGAGEMENT_DRAFT,
+    });
   };
 
   const openConfirm = () => {
@@ -155,6 +193,7 @@ const AdminPushNotifications = () => {
     setSending(true);
     const { data, error } = await supabase.functions.invoke("broadcast-push", {
       body: {
+        audience: form.audience,
         campaign_type: form.campaign_type,
         title: form.title.trim(),
         message: form.message.trim(),
@@ -184,7 +223,8 @@ const AdminPushNotifications = () => {
     if (res?.error) {
       toast.error(`Send failed: ${res.error}`);
     } else {
-      toast.success(`Push sent to ${res?.sent ?? 0} of ${res?.targeted ?? 0} customers`);
+      const noun = form.audience === "staff" ? "staff devices" : "customers";
+      toast.success(`Push sent to ${res?.sent ?? 0} of ${res?.targeted ?? 0} ${noun}`);
       setForm({ ...emptyForm });
     }
     load();
@@ -204,8 +244,10 @@ const AdminPushNotifications = () => {
     toast.success(`${s.label} ${!s.enabled ? "enabled" : "disabled"}`);
   };
 
-  const showImage = form.campaign_type !== "text";
+  const isReengagement = form.campaign_type === "reengagement";
+  const showImage = form.campaign_type === "banner" || form.campaign_type === "offer";
   const isOffer = form.campaign_type === "offer";
+  const audienceReach = form.audience === "staff" ? staffReach : reach;
 
   return (
     <div className="space-y-6 p-4 sm:p-6">
@@ -215,14 +257,21 @@ const AdminPushNotifications = () => {
             <BellRing className="w-6 h-6" /> Push Notifications
           </h1>
           <p className="text-sm text-muted-foreground">
-            Broadcast push notifications to Insider app customers and manage automated reminders.
+            Broadcast push notifications to the Insider app and the OmniFlow staff app, and manage
+            automated reminders.
           </p>
         </div>
         <div className="flex flex-col items-end gap-1">
-          <Badge variant="secondary" className="flex items-center gap-1.5 text-sm px-3 py-1.5">
-            <Users className="w-4 h-4" />
-            {reach === null ? "—" : reach} reachable device{reach === 1 ? "" : "s"}
-          </Badge>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <Badge variant="secondary" className="flex items-center gap-1.5 text-sm px-3 py-1.5">
+              <Users className="w-4 h-4" />
+              {reach === null ? "—" : reach} Insider device{reach === 1 ? "" : "s"}
+            </Badge>
+            <Badge variant="secondary" className="flex items-center gap-1.5 text-sm px-3 py-1.5">
+              <Smartphone className="w-4 h-4" />
+              {staffReach === null ? "—" : staffReach} staff device{staffReach === 1 ? "" : "s"}
+            </Badge>
+          </div>
           <span className="text-xs text-muted-foreground">
             {installed === null ? "—" : installed} app account{installed === 1 ? "" : "s"} linked
           </span>
@@ -237,20 +286,87 @@ const AdminPushNotifications = () => {
         </div>
       )}
 
+      {/* ── Re-engagement ───────────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BellRing className="w-5 h-5" /> Get existing app users switched on
+          </CardTitle>
+          <CardDescription>
+            Customers who installed the Insider app before notifications were on by default may
+            never have been asked for permission. Two things reach them: this push, which lands on
+            every device still holding a subscription, and the in-app banner the Insider app shows
+            on open to anyone whose notifications are off — including the ones no push can reach.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex items-center justify-between gap-4 flex-wrap">
+          <p className="text-sm text-muted-foreground">
+            {needsOptIn === null
+              ? "Opt-in status is still syncing from the app."
+              : needsOptIn === 0
+                ? "Every linked app account has notifications granted."
+                : `${needsOptIn} app account${needsOptIn === 1 ? " has" : "s have"} notifications off or not yet granted.`}
+          </p>
+          <Button variant="outline" onClick={startReengagement} disabled={sending}>
+            <BellRing className="w-4 h-4" /> Compose the nudge
+          </Button>
+        </CardContent>
+      </Card>
+
 
       {/* ── Compose ─────────────────────────────────────────────── */}
       <Card>
         <CardHeader>
           <CardTitle>Send a broadcast</CardTitle>
           <CardDescription>
-            Promotional — goes to every app customer who hasn&rsquo;t turned off Offers &amp; Promotions.
+            {form.audience === "staff"
+              ? "Goes to every OmniFlow staff device registered for push."
+              : isReengagement
+                ? "Goes to every Insider device still subscribed, whatever their Offers & Promotions setting — the point is to win back the ones who are off."
+                : "Promotional — goes to every app customer who hasn\u2019t turned off Offers & Promotions."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
+            <Label>Audience</Label>
+            <div className="flex gap-2 mt-1.5 flex-wrap">
+              <Button
+                type="button"
+                variant={form.audience === "customers" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setForm((f) => ({ ...f, audience: "customers" }))}
+              >
+                <Users className="w-4 h-4" /> Insider customers
+              </Button>
+              <Button
+                type="button"
+                variant={form.audience === "staff" ? "default" : "outline"}
+                size="sm"
+                onClick={() =>
+                  setForm((f) => ({
+                    ...f,
+                    audience: "staff",
+                    // The nudge is customer-only; fall back to a plain message.
+                    campaign_type: f.campaign_type === "reengagement" ? "text" : f.campaign_type,
+                  }))
+                }
+              >
+                <Smartphone className="w-4 h-4" /> OmniFlow staff
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {form.audience === "staff"
+                ? `${staffReach ?? "—"} staff device${staffReach === 1 ? "" : "s"} registered.`
+                : `${reach ?? "—"} customer device${reach === 1 ? "" : "s"} reachable.`}
+            </p>
+          </div>
+
+          <div>
             <Label>Notification type</Label>
             <div className="flex gap-2 mt-1.5 flex-wrap">
-              {(Object.keys(TYPE_META) as CampaignType[]).map((t) => (
+              {(Object.keys(TYPE_META) as CampaignType[])
+                .filter((t) => t !== "reengagement" || form.audience === "customers")
+                .map((t) => (
                 <Button
                   key={t}
                   type="button"
@@ -260,7 +376,7 @@ const AdminPushNotifications = () => {
                 >
                   {TYPE_META[t].icon} {TYPE_META[t].label}
                 </Button>
-              ))}
+                ))}
             </div>
             <p className="text-xs text-muted-foreground mt-1">{TYPE_META[form.campaign_type].hint}</p>
           </div>
@@ -347,7 +463,7 @@ const AdminPushNotifications = () => {
           <div className="flex justify-end">
             <Button onClick={openConfirm} disabled={sending || uploading}>
               {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              Send to all customers
+              {form.audience === "staff" ? "Send to all staff" : "Send to all customers"}
             </Button>
           </div>
         </CardContent>
@@ -411,7 +527,10 @@ const AdminPushNotifications = () => {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium text-sm truncate">{c.title}</span>
                       <Badge variant="outline" className="text-xs capitalize">
-                        {c.campaign_type}
+                        {TYPE_META[c.campaign_type]?.label ?? c.campaign_type}
+                      </Badge>
+                      <Badge variant="outline" className="text-xs">
+                        {c.audience === "staff" ? "Staff" : "Customers"}
                       </Badge>
                       <span className={`text-xs px-2 py-0.5 rounded-full capitalize ${STATUS_CLS[c.status]}`}>
                         {c.status}
@@ -434,10 +553,12 @@ const AdminPushNotifications = () => {
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Send this push to all customers?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Send this push to all {form.audience === "staff" ? "staff" : "customers"}?
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              &ldquo;{form.title}&rdquo; will be delivered to {reach ?? "all"} push-enabled
-              device{reach === 1 ? "" : "s"} immediately. This cannot be undone.
+              &ldquo;{form.title}&rdquo; will be delivered to {audienceReach ?? "all"} push-enabled
+              device{audienceReach === 1 ? "" : "s"} immediately. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

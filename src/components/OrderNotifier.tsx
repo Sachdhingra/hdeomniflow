@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { pushDeliversSystemNotifications } from "@/lib/push";
 import { toast } from "@/lib/toast";
 import { ClipboardList, Clock } from "lucide-react";
 
@@ -64,14 +65,6 @@ const OrderNotifier = () => {
 
   useEffect(() => {
     if (!user) return;
-    if (typeof window === "undefined" || !("Notification" in window)) return;
-    if (Notification.permission === "default") {
-      Notification.requestPermission().catch(() => {});
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (!user) return;
 
     const channel = supabase
       .channel(`order-notifier-${user.id}`)
@@ -105,11 +98,14 @@ const OrderNotifier = () => {
             },
           });
 
+          // send-staff-push delivers this same alert to registered devices,
+          // so only fall back to a local notification when push can't.
           if (
             typeof window !== "undefined" &&
             "Notification" in window &&
             Notification.permission === "granted" &&
-            !tabVisible
+            !tabVisible &&
+            !pushDeliversSystemNotifications()
           ) {
             try {
               const notif = new Notification(kind.title, {

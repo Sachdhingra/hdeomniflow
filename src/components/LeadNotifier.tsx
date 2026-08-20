@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { pushDeliversSystemNotifications } from "@/lib/push";
 import { toast } from "@/lib/toast";
 import { Target } from "lucide-react";
 
@@ -44,14 +45,6 @@ const LeadNotifier = () => {
   const allowed = !!user && ["sales", "service_head"].includes(user.role);
 
   useEffect(() => {
-    if (!allowed) return;
-    if (typeof window === "undefined" || !("Notification" in window)) return;
-    if (Notification.permission === "default") {
-      Notification.requestPermission().catch(() => {});
-    }
-  }, [allowed]);
-
-  useEffect(() => {
     if (!allowed || !user) return;
 
     const channel = supabase
@@ -83,11 +76,14 @@ const LeadNotifier = () => {
             },
           });
 
+          // send-staff-push delivers this same alert to registered devices,
+          // so only fall back to a local notification when push can't.
           if (
             typeof window !== "undefined" &&
             "Notification" in window &&
             Notification.permission === "granted" &&
-            !tabVisible
+            !tabVisible &&
+            !pushDeliversSystemNotifications()
           ) {
             try {
               const notif = new Notification("🎯 New Lead Assigned", {

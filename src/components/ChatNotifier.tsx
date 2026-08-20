@@ -7,6 +7,7 @@ import { MessagesSquare } from "lucide-react";
 import { useChatUnread } from "@/contexts/ChatUnreadContext";
 
 import { emitChatArrival } from "@/components/ChatArrivalFlash";
+import { pushDeliversSystemNotifications } from "@/lib/push";
 
 let sharedAudioCtx: AudioContext | null = null;
 
@@ -64,7 +65,7 @@ const showSystemNotification = async (
         tag,
         icon: "/icon-192.png",
         badge: "/icon-192.png",
-        data: { url: "/chat" },
+        data: { url: "/chat", __omniflow: true },
         vibrate: [200, 100, 200],
         requireInteraction: false,
       } as any);
@@ -113,15 +114,6 @@ const ChatNotifier = () => {
 
   const allowed = !!user && ["admin", "sales", "accounts", "service_head"].includes(user.role);
 
-  // Request browser notification permission once
-  useEffect(() => {
-    if (!allowed) return;
-    if (typeof window === "undefined" || !("Notification" in window)) return;
-    if (Notification.permission === "default") {
-      Notification.requestPermission().catch(() => {});
-    }
-  }, [allowed]);
-
   useEffect(() => {
     if (!allowed || !user) return;
 
@@ -165,8 +157,11 @@ const ChatNotifier = () => {
             },
           });
 
-          // System notification when tab is not visible (home screen / notification shade)
-          if (!tabVisible) {
+          // System notification when tab is not visible (home screen /
+          // notification shade). Skipped once this device is registered for
+          // push — send-staff-push already delivers the same alert, and
+          // firing both would show it twice.
+          if (!tabVisible && !pushDeliversSystemNotifications()) {
             showSystemNotification(
               `💬 ${name}${role}`,
               preview,
