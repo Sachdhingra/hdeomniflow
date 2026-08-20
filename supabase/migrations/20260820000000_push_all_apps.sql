@@ -162,16 +162,31 @@ DECLARE
   v_secret     text;
   v_request_id bigint;
 BEGIN
+  -- The shared secret lives in one of two places depending on how the
+  -- project was set up: vault (the daily-report pattern) or the
+  -- app.loyalty_cron_secret database setting (what loyalty-cron uses).
+  -- Try both, since either can be the configured one. Whichever holds it
+  -- must match the LOYALTY_CRON_SECRET edge-function env var, or
+  -- send-staff-push will reject the call with 401.
   SELECT decrypted_secret INTO v_secret
   FROM vault.decrypted_secrets
   WHERE name = 'LOYALTY_CRON_SECRET'
   LIMIT 1;
 
+  IF COALESCE(v_secret, '') = '' THEN
+    v_secret := current_setting('app.loyalty_cron_secret', true);
+  END IF;
+
+  IF COALESCE(v_secret, '') = '' THEN
+    RAISE WARNING 'staff push not dispatched: LOYALTY_CRON_SECRET is set in neither vault nor app.loyalty_cron_secret';
+    RETURN NULL;
+  END IF;
+
   SELECT net.http_post(
     url     := 'https://cdrgbhnntonyofqkhzpm.supabase.co/functions/v1/send-staff-push',
     headers := jsonb_build_object(
       'Content-Type',      'application/json',
-      'x-internal-secret', COALESCE(v_secret, '')
+      'x-internal-secret', v_secret
     ),
     body    := _payload
   ) INTO v_request_id;
