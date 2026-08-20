@@ -231,11 +231,12 @@ const AdminPushNotifications = () => {
 
       {reach === 0 && (installed ?? 0) > 0 && (
         <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
-          {installed} customer{installed === 1 ? " has" : "s have"} the Insider app linked, but no
-          device has registered for push yet, so broadcasts cannot be delivered. Devices appear here
-          once the Insider app saves its push token after the customer allows notifications.
+          All {installed} linked app account{installed === 1 ? " is" : "s are"} opted in to
+          notifications by default, but no device has saved its push token yet. Broadcasts will be
+          sent to every device subscribed in the push provider until tokens start syncing.
         </div>
       )}
+
 
       {/* ── Compose ─────────────────────────────────────────────── */}
       <Card>
