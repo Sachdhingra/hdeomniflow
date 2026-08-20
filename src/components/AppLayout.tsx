@@ -26,6 +26,7 @@ import FieldAgentGpsGuard from "@/components/FieldAgentGpsGuard";
 import JarvisFloatingButton from "@/components/JarvisFloatingButton";
 import MorningBriefing from "@/components/MorningBriefing";
 import LoyaltyAlertNotifier from "@/components/LoyaltyAlertNotifier";
+import StaffPushRegistrar from "@/components/StaffPushRegistrar";
 
 interface NavItem {
   to: string;
@@ -176,6 +177,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
 
   return (
     <div className="min-h-screen flex bg-background">
+      <StaffPushRegistrar />
       <ChatNotifier />
       <LeadNotifier />
       <OrderNotifier />
