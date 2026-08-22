@@ -31,10 +31,12 @@ const SERVICE_ROLE      = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ONESIGNAL_API_KEY = Deno.env.get("ONESIGNAL_API_KEY")!;
 const ONESIGNAL_APP_ID  = Deno.env.get("ONESIGNAL_APP_ID")!;
 
-// Staff may run on their own OneSignal app; fall back to the Insider
-// credentials so a single-app setup keeps working without extra config.
-const STAFF_APP_ID  = Deno.env.get("ONESIGNAL_STAFF_APP_ID")  ?? ONESIGNAL_APP_ID;
-const STAFF_API_KEY = Deno.env.get("ONESIGNAL_STAFF_API_KEY") ?? ONESIGNAL_API_KEY;
+// Staff run on their own OneSignal app (see send-staff-push for why). The app
+// ID matches the client default in src/lib/push.ts; the key has no fallback,
+// so an unconfigured staff broadcast fails loudly rather than sending with
+// mismatched credentials.
+const STAFF_APP_ID  = Deno.env.get("ONESIGNAL_STAFF_APP_ID")  ?? "4e6e57c1-7555-4f05-81e2-efdb9d6e19d4";
+const STAFF_API_KEY = Deno.env.get("ONESIGNAL_STAFF_API_KEY") ?? "";
 
 const ONESIGNAL_URL = "https://onesignal.com/api/v1/notifications";
 // OneSignal accepts at most 2000 player IDs per create-notification call.
@@ -155,7 +157,16 @@ Deno.serve(async (req: Request) => {
     return json({ error: "audience must be one of: customers, staff" }, 400);
   }
 
-  if (!ONESIGNAL_APP_ID || !ONESIGNAL_API_KEY) {
+  // Each audience has its own OneSignal app, so check the pair this send will
+  // actually use — a staff broadcast must not pass on the customer credentials.
+  if (audience === "staff") {
+    if (!STAFF_APP_ID || !STAFF_API_KEY) {
+      return json(
+        { error: "Staff push is not configured yet (missing ONESIGNAL_STAFF_API_KEY)." },
+        503,
+      );
+    }
+  } else if (!ONESIGNAL_APP_ID || !ONESIGNAL_API_KEY) {
     return json(
       { error: "Push service is not configured yet (missing OneSignal app ID / API key)." },
       503,
