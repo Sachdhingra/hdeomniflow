@@ -9,13 +9,17 @@ import { supabase } from "@/integrations/supabase/client";
  * closed, which is what the database triggers on notifications/chat_messages
  * depend on.
  *
- * Staff can run on their own OneSignal app; VITE_ONESIGNAL_STAFF_APP_ID
- * overrides the shared Insider app ID when one is provisioned.
+ * OneSignal app for the OmniFlow staff app. Separate from the Insider app
+ * because OneSignal binds one site origin per web-push app, and Insider's is
+ * https://homedecorinsider.lovable.app — staff push cannot be delivered from
+ * OmniFlow's domain on that app ID. VITE_ONESIGNAL_STAFF_APP_ID overrides it
+ * for a different deployment; the app ID is public and ships in the bundle,
+ * so hardcoding the default is safe (the REST API key is not, and lives only
+ * in the ONESIGNAL_STAFF_API_KEY edge-function secret).
  */
 export const ONESIGNAL_APP_ID =
   import.meta.env.VITE_ONESIGNAL_STAFF_APP_ID ??
-  import.meta.env.VITE_ONESIGNAL_APP_ID ??
-  "149863ea-a142-4a8b-8fd4-8e6a9f021bd6";
+  "4e6e57c1-7555-4f05-81e2-efdb9d6e19d4";
 
 let initPromise: Promise<unknown> | null = null;
 // Set once OneSignal reports an active subscription for this device.

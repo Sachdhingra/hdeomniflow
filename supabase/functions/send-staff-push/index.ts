@@ -29,12 +29,16 @@ const SUPABASE_URL      = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE      = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const INTERNAL_SECRET   = Deno.env.get("LOYALTY_CRON_SECRET") ?? "";
 
-// Staff may run on their own OneSignal app; fall back to the Insider
-// credentials so a single-app setup keeps working without extra config.
+// Staff run on their own OneSignal app — OneSignal binds one site origin per
+// web-push app, and the Insider app's is homedecorinsider.lovable.app, so it
+// cannot deliver from OmniFlow's domain. The app ID matches the client default
+// in src/lib/push.ts and is public. The API key is not: there is deliberately
+// no fallback to ONESIGNAL_API_KEY, because pairing the Insider key with the
+// staff app ID just draws a confusing 400 from OneSignal. Unset means the
+// "not configured" 503 below.
 const ONESIGNAL_APP_ID  = Deno.env.get("ONESIGNAL_STAFF_APP_ID")
-  ?? Deno.env.get("ONESIGNAL_APP_ID")!;
-const ONESIGNAL_API_KEY = Deno.env.get("ONESIGNAL_STAFF_API_KEY")
-  ?? Deno.env.get("ONESIGNAL_API_KEY")!;
+  ?? "4e6e57c1-7555-4f05-81e2-efdb9d6e19d4";
+const ONESIGNAL_API_KEY = Deno.env.get("ONESIGNAL_STAFF_API_KEY") ?? "";
 
 const ONESIGNAL_URL = "https://onesignal.com/api/v1/notifications";
 // OneSignal accepts at most 2000 player IDs per create-notification call.
