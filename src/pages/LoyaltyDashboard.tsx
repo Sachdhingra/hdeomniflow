@@ -196,8 +196,10 @@ export default function LoyaltyDashboard() {
         if (h.status === "active") {
           if (h.card_tier in tierCounts) {
             (tierCounts as any)[h.card_tier]++;
+            // Only card tiers counted in the denominator may count as activated,
+            // so the "x of y card holders" figure can never exceed its total.
+            if (h.app_activated) appCount++;
           }
-          if (h.app_activated) appCount++;
           totalPts += h.current_points;
         }
       });
