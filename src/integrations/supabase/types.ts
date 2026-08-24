@@ -226,6 +226,10 @@ export type Database = {
           id: string
           onesignal_player_id: string | null
           push_enabled: boolean
+          push_permission: string | null
+          push_permission_at: string | null
+          push_prompt_dismissed_at: string | null
+          push_reengaged_at: string | null
           user_id: string
         }
         Insert: {
@@ -234,6 +238,10 @@ export type Database = {
           id?: string
           onesignal_player_id?: string | null
           push_enabled?: boolean
+          push_permission?: string | null
+          push_permission_at?: string | null
+          push_prompt_dismissed_at?: string | null
+          push_reengaged_at?: string | null
           user_id: string
         }
         Update: {
@@ -242,6 +250,10 @@ export type Database = {
           id?: string
           onesignal_player_id?: string | null
           push_enabled?: boolean
+          push_permission?: string | null
+          push_permission_at?: string | null
+          push_prompt_dismissed_at?: string | null
+          push_reengaged_at?: string | null
           user_id?: string
         }
         Relationships: [
@@ -3402,6 +3414,7 @@ export type Database = {
       }
       push_campaigns: {
         Row: {
+          audience: string
           campaign_type: string
           created_at: string
           created_by: string | null
@@ -3419,6 +3432,7 @@ export type Database = {
           title: string
         }
         Insert: {
+          audience?: string
           campaign_type: string
           created_at?: string
           created_by?: string | null
@@ -3436,6 +3450,7 @@ export type Database = {
           title: string
         }
         Update: {
+          audience?: string
           campaign_type?: string
           created_at?: string
           created_by?: string | null
@@ -3462,6 +3477,7 @@ export type Database = {
           notification_type: string | null
           opened: boolean
           sent_at: string
+          staff_user_id: string | null
           title: string | null
         }
         Insert: {
@@ -3471,6 +3487,7 @@ export type Database = {
           notification_type?: string | null
           opened?: boolean
           sent_at?: string
+          staff_user_id?: string | null
           title?: string | null
         }
         Update: {
@@ -3480,6 +3497,7 @@ export type Database = {
           notification_type?: string | null
           opened?: boolean
           sent_at?: string
+          staff_user_id?: string | null
           title?: string | null
         }
         Relationships: [
@@ -4031,6 +4049,39 @@ export type Database = {
         }
         Relationships: []
       }
+      staff_push_devices: {
+        Row: {
+          created_at: string
+          id: string
+          last_seen_at: string
+          onesignal_player_id: string
+          push_enabled: boolean
+          role: string | null
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_seen_at?: string
+          onesignal_player_id: string
+          push_enabled?: boolean
+          role?: string | null
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_seen_at?: string
+          onesignal_player_id?: string
+          push_enabled?: boolean
+          role?: string | null
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       suppliers: {
         Row: {
           address: string | null
@@ -4228,6 +4279,8 @@ export type Database = {
     }
     Functions: {
       _invoke_daily_excel_report: { Args: never; Returns: number }
+      _invoke_staff_push: { Args: { _payload: Json }; Returns: number }
+      _staff_push_enabled: { Args: never; Returns: boolean }
       attendance_auto_clockout: { Args: never; Returns: number }
       attendance_clock: {
         Args: { p_action: string; p_lat?: number; p_lng?: number }
@@ -4385,6 +4438,10 @@ export type Database = {
       }
       is_loyalty_app_user: { Args: { _uid: string }; Returns: boolean }
       link_loyalty_app_user: { Args: { _phone: string }; Returns: string }
+      register_staff_push_device: {
+        Args: { _player_id: string; _role?: string; _user_agent?: string }
+        Returns: undefined
+      }
       rpc_set_anniversary_date: { Args: { p_date: string }; Returns: undefined }
       verify_daily_report_secret: { Args: { _token: string }; Returns: boolean }
     }
