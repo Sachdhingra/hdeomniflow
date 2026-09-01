@@ -647,7 +647,7 @@ function CreateOrderDialog({
   const [notes, setNotes] = useState("");
   const [customSpecs, setCustomSpecs] = useState("");
   const [companyReason, setCompanyReason] = useState("");
-  const [replacementProductIds, setReplacementProductIds] = useState<string[]>([]);
+  const [replacementItems, setReplacementItems] = useState<Array<{ id: string; qty: number }>>([]);
   const [replacementSearch, setReplacementSearch] = useState("");
   const [noReplacement, setNoReplacement] = useState(false);
   const [extraItems, setExtraItems] = useState<Array<{article: TrackedArticle; qty: number}>>([]);
@@ -659,7 +659,7 @@ function CreateOrderDialog({
   useEffect(() => {
     if (open) {
       setCustomerName(""); setCustomerPhone(""); setLocationId(""); setSoldQty(1); setNotes("");
-      setCustomSpecs(""); setCompanyReason(""); setReplacementProductIds([]); setReplacementSearch("");
+      setCustomSpecs(""); setCompanyReason(""); setReplacementItems([]); setReplacementSearch("");
       setNoReplacement(false);
       setExtraItems([]); setExtraItemSearch(""); setAdminOverride(false); setOverrideReason("");
     }
@@ -672,11 +672,11 @@ function CreateOrderDialog({
   const needsAdminOverride = mode === "showroom" && showroomDisplayQty === 0;
 
   const filteredReplacement = useMemo(() => {
-    const excluded = new Set(replacementProductIds);
+    const excluded = new Set(replacementItems.map(r => r.id));
     if (!replacementSearch) return allProducts.filter(p => !excluded.has(p.id)).slice(0, 20);
     const q = replacementSearch.toLowerCase();
     return allProducts.filter(p => !excluded.has(p.id) && (p.product_name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q))).slice(0, 20);
-  }, [allProducts, replacementSearch, replacementProductIds]);
+  }, [allProducts, replacementSearch, replacementItems]);
 
   const pickedIds = useMemo(() => new Set([article?.product_id, ...extraItems.map(e => e.article.product_id)].filter(Boolean) as string[]), [article, extraItems]);
 
@@ -692,7 +692,7 @@ function CreateOrderDialog({
   const handleCreate = async () => {
     if (!article || !mode) return;
     if (mode === "company" && !companyReason) return toast.error("Select a reason");
-    if (mode === "showroom" && replacementProductIds.length === 0 && !noReplacement)
+    if (mode === "showroom" && replacementItems.length === 0 && !noReplacement)
       return toast.error("Select a replacement product, or tick \"No replacement needed\"");
     if (!locationId) return toast.error("Select a location");
     if ((mode === "warehouse" || mode === "showroom") && soldQty < 1) return toast.error("Quantity must be at least 1");
@@ -729,11 +729,14 @@ function CreateOrderDialog({
       : undefined;
 
     // Pre-resolve replacement names (used in timeline + audit)
-    const replacementNames = replacementProductIds
-      .map(id => {
+    const replacementNames = replacementItems
+      .map(({ id, qty }) => {
         const p = allProducts.find(p => p.id === id);
-        return p ? `${p.product_name} [${p.sku}]` : id;
+        const label = p ? `${p.product_name} [${p.sku}]` : id;
+        return qty > 1 ? `${label} ×${qty}` : label;
       });
+    // Flatten to one id per unit — the completion trigger moves 1 unit per element.
+    const flatReplacementIds = replacementItems.flatMap(({ id, qty }) => Array(Math.max(1, qty)).fill(id) as string[]);
 
     // Build one order per picked item (initial article + extra items)
     const allItems = [{ article: article!, qty: soldQty }, ...extraItems];
@@ -749,8 +752,8 @@ function CreateOrderDialog({
         order_number: orderNum, order_type: mode,
         company_order_reason: companyReason || null, order_tag: orderTag || null,
         product_id: item.article.product_id,
-        replacement_product_id: replacementProductIds[0] || null,
-        replacement_product_ids: replacementProductIds.length > 0 ? replacementProductIds : null,
+        replacement_product_id: replacementItems[0]?.id || null,
+        replacement_product_ids: flatReplacementIds.length > 0 ? flatReplacementIds : null,
         location_id: locationId, customer_name: customerName || null, customer_phone: customerPhone || null,
         status: "pending_approval", notes: notes || null, custom_specs: customSpecs || null, created_by: userId,
         qty_sold: (mode === "warehouse" || mode === "showroom") ? item.qty : 1,
@@ -802,7 +805,7 @@ function CreateOrderDialog({
       if (mode === "showroom") {
         await supabase.from("hde_display_items" as any).insert({
           product_id: item.article.product_id, location_id: locationId,
-          display_status: "sold", replacement_product_id: replacementProductIds[0] || null,
+          display_status: "sold", replacement_product_id: replacementItems[0]?.id || null,
           order_id: orderId, updated_by: userId,
         });
       }
@@ -929,20 +932,46 @@ function CreateOrderDialog({
                   checked={noReplacement}
                   onChange={e => {
                     setNoReplacement(e.target.checked);
-                    if (e.target.checked) { setReplacementProductIds([]); setReplacementSearch(""); }
+                    if (e.target.checked) { setReplacementItems([]); setReplacementSearch(""); }
                   }}
                 />
                 <span>No replacement needed — stock goes out, nothing comes back to display</span>
               </label>
-              {!noReplacement && replacementProductIds.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-2 mt-1">
-                  {replacementProductIds.map(id => {
+              {!noReplacement && replacementItems.length > 0 && (
+                <div className="space-y-1.5 mb-2 mt-1">
+                  {replacementItems.map(({ id, qty }) => {
                     const p = allProducts.find(x => x.id === id);
                     return (
-                      <div key={id} className="flex items-center gap-1 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5 text-xs max-w-full">
-                        <span className="font-medium truncate">{p?.product_name || id}</span>
-                        <span className="text-muted-foreground shrink-0">{p?.sku}</span>
-                        <button onClick={() => setReplacementProductIds(ids => ids.filter(x => x !== id))} className="shrink-0 ml-0.5 text-muted-foreground hover:text-destructive leading-none">×</button>
+                      <div key={id} className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1 text-xs">
+                        <div className="flex-1 min-w-0">
+                          <span className="font-medium truncate block">{p?.product_name || id}</span>
+                          <span className="text-muted-foreground">{p?.sku}</span>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            aria-label="Decrease quantity"
+                            onClick={() => setReplacementItems(items => items.map(r => r.id === id ? { ...r, qty: Math.max(1, r.qty - 1) } : r))}
+                            className="w-6 h-6 rounded border border-blue-300 bg-white text-sm leading-none hover:bg-blue-100"
+                          >−</button>
+                          <Input
+                            type="number"
+                            min={1}
+                            value={qty}
+                            onChange={e => {
+                              const v = Math.max(1, Math.floor(Number(e.target.value) || 1));
+                              setReplacementItems(items => items.map(r => r.id === id ? { ...r, qty: v } : r));
+                            }}
+                            className="w-14 h-6 text-center text-xs px-1 bg-white"
+                          />
+                          <button
+                            type="button"
+                            aria-label="Increase quantity"
+                            onClick={() => setReplacementItems(items => items.map(r => r.id === id ? { ...r, qty: r.qty + 1 } : r))}
+                            className="w-6 h-6 rounded border border-blue-300 bg-white text-sm leading-none hover:bg-blue-100"
+                          >+</button>
+                        </div>
+                        <button onClick={() => setReplacementItems(items => items.filter(x => x.id !== id))} className="shrink-0 ml-0.5 text-muted-foreground hover:text-destructive leading-none">×</button>
                       </div>
                     );
                   })}
@@ -951,12 +980,12 @@ function CreateOrderDialog({
               {!noReplacement && (
                 <Input placeholder="Search to add replacement…" value={replacementSearch} onChange={e => setReplacementSearch(e.target.value)} className="mb-2" />
               )}
-              {!noReplacement && (replacementSearch || replacementProductIds.length === 0) && (
+              {!noReplacement && (replacementSearch || replacementItems.length === 0) && (
                 <div className="border rounded-lg max-h-40 overflow-y-auto">
                   {filteredReplacement.length === 0
                     ? <p className="px-3 py-2 text-sm text-muted-foreground">No products found</p>
                     : filteredReplacement.map(p => (
-                      <button key={p.id} onClick={() => { setReplacementProductIds(ids => [...ids, p.id]); setReplacementSearch(""); }}
+                      <button key={p.id} onClick={() => { setReplacementItems(items => [...items, { id: p.id, qty: 1 }]); setReplacementSearch(""); }}
                         className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 border-b last:border-0">
                         <span className="font-medium">{p.product_name}</span>
                         <span className="text-muted-foreground ml-2 text-xs">{p.sku}</span>
@@ -2475,10 +2504,15 @@ export default function InventoryManager() {
         if (!repIds.length && o.replacement_product_id) {
           repIds = [o.replacement_product_id];
         }
-        const replacementNames = repIds
-          .map((id: string) => {
+        // Collapse duplicate ids (one id stored per unit) into "Name [SKU] ×N"
+        const repQty = new Map<string, number>();
+        repIds.forEach((id: string) => repQty.set(id, (repQty.get(id) || 0) + 1));
+        const replacementNames = Array.from(repQty.entries())
+          .map(([id, qty]) => {
             const info = prodInfoMap.get(id);
-            return info ? `${info.name} [${info.sku}]` : null;
+            if (!info) return null;
+            const label = `${info.name} [${info.sku}]`;
+            return qty > 1 ? `${label} ×${qty}` : label;
           })
           .filter(Boolean) as string[];
         const mainInfo = prodInfoMap.get(o.product_id);
