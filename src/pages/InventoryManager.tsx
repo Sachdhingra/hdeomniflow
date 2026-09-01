@@ -692,7 +692,7 @@ function CreateOrderDialog({
   const handleCreate = async () => {
     if (!article || !mode) return;
     if (mode === "company" && !companyReason) return toast.error("Select a reason");
-    if (mode === "showroom" && replacementProductIds.length === 0 && !noReplacement)
+    if (mode === "showroom" && replacementItems.length === 0 && !noReplacement)
       return toast.error("Select a replacement product, or tick \"No replacement needed\"");
     if (!locationId) return toast.error("Select a location");
     if ((mode === "warehouse" || mode === "showroom") && soldQty < 1) return toast.error("Quantity must be at least 1");
@@ -729,11 +729,14 @@ function CreateOrderDialog({
       : undefined;
 
     // Pre-resolve replacement names (used in timeline + audit)
-    const replacementNames = replacementProductIds
-      .map(id => {
+    const replacementNames = replacementItems
+      .map(({ id, qty }) => {
         const p = allProducts.find(p => p.id === id);
-        return p ? `${p.product_name} [${p.sku}]` : id;
+        const label = p ? `${p.product_name} [${p.sku}]` : id;
+        return qty > 1 ? `${label} ×${qty}` : label;
       });
+    // Flatten to one id per unit — the completion trigger moves 1 unit per element.
+    const flatReplacementIds = replacementItems.flatMap(({ id, qty }) => Array(Math.max(1, qty)).fill(id) as string[]);
 
     // Build one order per picked item (initial article + extra items)
     const allItems = [{ article: article!, qty: soldQty }, ...extraItems];
