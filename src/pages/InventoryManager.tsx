@@ -647,7 +647,7 @@ function CreateOrderDialog({
   const [notes, setNotes] = useState("");
   const [customSpecs, setCustomSpecs] = useState("");
   const [companyReason, setCompanyReason] = useState("");
-  const [replacementProductIds, setReplacementProductIds] = useState<string[]>([]);
+  const [replacementItems, setReplacementItems] = useState<Array<{ id: string; qty: number }>>([]);
   const [replacementSearch, setReplacementSearch] = useState("");
   const [noReplacement, setNoReplacement] = useState(false);
   const [extraItems, setExtraItems] = useState<Array<{article: TrackedArticle; qty: number}>>([]);
@@ -659,7 +659,7 @@ function CreateOrderDialog({
   useEffect(() => {
     if (open) {
       setCustomerName(""); setCustomerPhone(""); setLocationId(""); setSoldQty(1); setNotes("");
-      setCustomSpecs(""); setCompanyReason(""); setReplacementProductIds([]); setReplacementSearch("");
+      setCustomSpecs(""); setCompanyReason(""); setReplacementItems([]); setReplacementSearch("");
       setNoReplacement(false);
       setExtraItems([]); setExtraItemSearch(""); setAdminOverride(false); setOverrideReason("");
     }
