@@ -672,11 +672,11 @@ function CreateOrderDialog({
   const needsAdminOverride = mode === "showroom" && showroomDisplayQty === 0;
 
   const filteredReplacement = useMemo(() => {
-    const excluded = new Set(replacementProductIds);
+    const excluded = new Set(replacementItems.map(r => r.id));
     if (!replacementSearch) return allProducts.filter(p => !excluded.has(p.id)).slice(0, 20);
     const q = replacementSearch.toLowerCase();
     return allProducts.filter(p => !excluded.has(p.id) && (p.product_name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q))).slice(0, 20);
-  }, [allProducts, replacementSearch, replacementProductIds]);
+  }, [allProducts, replacementSearch, replacementItems]);
 
   const pickedIds = useMemo(() => new Set([article?.product_id, ...extraItems.map(e => e.article.product_id)].filter(Boolean) as string[]), [article, extraItems]);
 
