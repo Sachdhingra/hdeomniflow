@@ -932,20 +932,46 @@ function CreateOrderDialog({
                   checked={noReplacement}
                   onChange={e => {
                     setNoReplacement(e.target.checked);
-                    if (e.target.checked) { setReplacementProductIds([]); setReplacementSearch(""); }
+                    if (e.target.checked) { setReplacementItems([]); setReplacementSearch(""); }
                   }}
                 />
                 <span>No replacement needed — stock goes out, nothing comes back to display</span>
               </label>
-              {!noReplacement && replacementProductIds.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-2 mt-1">
-                  {replacementProductIds.map(id => {
+              {!noReplacement && replacementItems.length > 0 && (
+                <div className="space-y-1.5 mb-2 mt-1">
+                  {replacementItems.map(({ id, qty }) => {
                     const p = allProducts.find(x => x.id === id);
                     return (
-                      <div key={id} className="flex items-center gap-1 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5 text-xs max-w-full">
-                        <span className="font-medium truncate">{p?.product_name || id}</span>
-                        <span className="text-muted-foreground shrink-0">{p?.sku}</span>
-                        <button onClick={() => setReplacementProductIds(ids => ids.filter(x => x !== id))} className="shrink-0 ml-0.5 text-muted-foreground hover:text-destructive leading-none">×</button>
+                      <div key={id} className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1 text-xs">
+                        <div className="flex-1 min-w-0">
+                          <span className="font-medium truncate block">{p?.product_name || id}</span>
+                          <span className="text-muted-foreground">{p?.sku}</span>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            aria-label="Decrease quantity"
+                            onClick={() => setReplacementItems(items => items.map(r => r.id === id ? { ...r, qty: Math.max(1, r.qty - 1) } : r))}
+                            className="w-6 h-6 rounded border border-blue-300 bg-white text-sm leading-none hover:bg-blue-100"
+                          >−</button>
+                          <Input
+                            type="number"
+                            min={1}
+                            value={qty}
+                            onChange={e => {
+                              const v = Math.max(1, Math.floor(Number(e.target.value) || 1));
+                              setReplacementItems(items => items.map(r => r.id === id ? { ...r, qty: v } : r));
+                            }}
+                            className="w-14 h-6 text-center text-xs px-1 bg-white"
+                          />
+                          <button
+                            type="button"
+                            aria-label="Increase quantity"
+                            onClick={() => setReplacementItems(items => items.map(r => r.id === id ? { ...r, qty: r.qty + 1 } : r))}
+                            className="w-6 h-6 rounded border border-blue-300 bg-white text-sm leading-none hover:bg-blue-100"
+                          >+</button>
+                        </div>
+                        <button onClick={() => setReplacementItems(items => items.filter(x => x.id !== id))} className="shrink-0 ml-0.5 text-muted-foreground hover:text-destructive leading-none">×</button>
                       </div>
                     );
                   })}
@@ -954,12 +980,12 @@ function CreateOrderDialog({
               {!noReplacement && (
                 <Input placeholder="Search to add replacement…" value={replacementSearch} onChange={e => setReplacementSearch(e.target.value)} className="mb-2" />
               )}
-              {!noReplacement && (replacementSearch || replacementProductIds.length === 0) && (
+              {!noReplacement && (replacementSearch || replacementItems.length === 0) && (
                 <div className="border rounded-lg max-h-40 overflow-y-auto">
                   {filteredReplacement.length === 0
                     ? <p className="px-3 py-2 text-sm text-muted-foreground">No products found</p>
                     : filteredReplacement.map(p => (
-                      <button key={p.id} onClick={() => { setReplacementProductIds(ids => [...ids, p.id]); setReplacementSearch(""); }}
+                      <button key={p.id} onClick={() => { setReplacementItems(items => [...items, { id: p.id, qty: 1 }]); setReplacementSearch(""); }}
                         className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 border-b last:border-0">
                         <span className="font-medium">{p.product_name}</span>
                         <span className="text-muted-foreground ml-2 text-xs">{p.sku}</span>
