@@ -2504,10 +2504,15 @@ export default function InventoryManager() {
         if (!repIds.length && o.replacement_product_id) {
           repIds = [o.replacement_product_id];
         }
-        const replacementNames = repIds
-          .map((id: string) => {
+        // Collapse duplicate ids (one id stored per unit) into "Name [SKU] ×N"
+        const repQty = new Map<string, number>();
+        repIds.forEach((id: string) => repQty.set(id, (repQty.get(id) || 0) + 1));
+        const replacementNames = Array.from(repQty.entries())
+          .map(([id, qty]) => {
             const info = prodInfoMap.get(id);
-            return info ? `${info.name} [${info.sku}]` : null;
+            if (!info) return null;
+            const label = `${info.name} [${info.sku}]`;
+            return qty > 1 ? `${label} ×${qty}` : label;
           })
           .filter(Boolean) as string[];
         const mainInfo = prodInfoMap.get(o.product_id);
