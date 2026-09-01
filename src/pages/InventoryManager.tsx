@@ -752,8 +752,8 @@ function CreateOrderDialog({
         order_number: orderNum, order_type: mode,
         company_order_reason: companyReason || null, order_tag: orderTag || null,
         product_id: item.article.product_id,
-        replacement_product_id: replacementProductIds[0] || null,
-        replacement_product_ids: replacementProductIds.length > 0 ? replacementProductIds : null,
+        replacement_product_id: replacementItems[0]?.id || null,
+        replacement_product_ids: flatReplacementIds.length > 0 ? flatReplacementIds : null,
         location_id: locationId, customer_name: customerName || null, customer_phone: customerPhone || null,
         status: "pending_approval", notes: notes || null, custom_specs: customSpecs || null, created_by: userId,
         qty_sold: (mode === "warehouse" || mode === "showroom") ? item.qty : 1,
@@ -805,7 +805,7 @@ function CreateOrderDialog({
       if (mode === "showroom") {
         await supabase.from("hde_display_items" as any).insert({
           product_id: item.article.product_id, location_id: locationId,
-          display_status: "sold", replacement_product_id: replacementProductIds[0] || null,
+          display_status: "sold", replacement_product_id: replacementItems[0]?.id || null,
           order_id: orderId, updated_by: userId,
         });
       }
