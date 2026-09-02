@@ -181,9 +181,10 @@ export default function LoyaltyDashboard() {
         .select(
           "id, customer_name, phone_1, card_tier, card_number, card_expiry_date, current_points, lifetime_points, app_activated, status"
         )
-        .not("card_tier", "is", null)
+        .in("card_tier", ["elite", "super_elite", "prestige_elite"])
         .order("card_tier")
-        .order("current_points", { ascending: false });
+        .order("current_points", { ascending: false })
+        .range(0, 4999);
 
       if (hErr) { toast.error(hErr.message); setLoading(false); return; }
       const holdersRaw = (holdersData as CardHolder[]) ?? [];
