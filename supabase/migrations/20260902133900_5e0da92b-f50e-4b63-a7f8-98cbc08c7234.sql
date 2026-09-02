@@ -1,0 +1,1 @@
+REVOKE ALL ON FUNCTION public.fn_card_issue_commission() FROM PUBLIC, anon, authenticated;
