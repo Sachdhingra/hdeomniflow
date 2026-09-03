@@ -47,19 +47,39 @@ Deno.serve(async (req) => {
   const canonical = normalizePhone(phone);
   const email = virtualEmail(canonical);
 
-  // Verify customer is an active Elite member linked to an app user
+  // Verify customer is an active Elite member linked to an app user.
+  // Phone numbers are stored inconsistently (+91XXXXXXXXXX, 91XXXXXXXXXX or
+  // bare 10 digits), so match on the last 10 digits instead of exact text.
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  const { data: cust } = await admin
+  const ten = canonical.replace(/\D/g, "").slice(-10);
+
+  const { data: matches } = await admin
     .from("elite_customers")
-    .select("id, status, app_activated")
-    .eq("phone_1", canonical)
-    .maybeSingle();
+    .select("id, status, app_activated, phone_1")
+    .or(`phone_1.eq.${ten},phone_1.eq.+91${ten},phone_1.eq.91${ten},phone_1.ilike.%${ten}`);
+
+  const cust = (matches || []).find(
+    (c: { phone_1?: string | null }) => (c.phone_1 || "").replace(/\D/g, "").slice(-10) === ten,
+  );
 
   if (!cust || cust.status !== "active" || !cust.app_activated) {
     return json({ error: "not_enrolled" }, 403);
+  }
+
+  // Prefer the real auth email of the linked app user; fall back to the
+  // derived virtual email for accounts created before the link existed.
+  let loginEmail = email;
+  const { data: appUser } = await admin
+    .from("app_users")
+    .select("user_id")
+    .eq("customer_id", cust.id)
+    .maybeSingle();
+  if (appUser?.user_id) {
+    const { data: authUser } = await admin.auth.admin.getUserById(appUser.user_id);
+    if (authUser?.user?.email) loginEmail = authUser.user.email;
   }
 
   // Sign in with password using an anon client
@@ -67,7 +87,8 @@ Deno.serve(async (req) => {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  const { data, error } = await client.auth.signInWithPassword({ email, password });
+  const { data, error } = await client.auth.signInWithPassword({ email: loginEmail, password });
+
 
   if (error || !data.session) {
     return json({ error: "invalid_credentials" }, 401);
