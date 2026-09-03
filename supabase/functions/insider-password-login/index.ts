@@ -47,20 +47,28 @@ Deno.serve(async (req) => {
   const canonical = normalizePhone(phone);
   const email = virtualEmail(canonical);
 
-  // Verify customer is an active Elite member linked to an app user
+  // Verify customer is an active Elite member linked to an app user.
+  // Phone numbers are stored inconsistently (+91XXXXXXXXXX, 91XXXXXXXXXX or
+  // bare 10 digits), so match on the last 10 digits instead of exact text.
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  const { data: cust } = await admin
+  const ten = canonical.replace(/\D/g, "").slice(-10);
+
+  const { data: matches } = await admin
     .from("elite_customers")
-    .select("id, status, app_activated")
-    .eq("phone_1", canonical)
-    .maybeSingle();
+    .select("id, status, app_activated, phone_1")
+    .or(`phone_1.eq.${ten},phone_1.eq.+91${ten},phone_1.eq.91${ten},phone_1.ilike.%${ten}`);
+
+  const cust = (matches || []).find(
+    (c: { phone_1?: string | null }) => (c.phone_1 || "").replace(/\D/g, "").slice(-10) === ten,
+  );
 
   if (!cust || cust.status !== "active" || !cust.app_activated) {
     return json({ error: "not_enrolled" }, 403);
   }
+
 
   // Sign in with password using an anon client
   const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
