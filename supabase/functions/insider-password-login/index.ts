@@ -69,13 +69,26 @@ Deno.serve(async (req) => {
     return json({ error: "not_enrolled" }, 403);
   }
 
+  // Prefer the real auth email of the linked app user; fall back to the
+  // derived virtual email for accounts created before the link existed.
+  let loginEmail = email;
+  const { data: appUser } = await admin
+    .from("app_users")
+    .select("user_id")
+    .eq("customer_id", cust.id)
+    .maybeSingle();
+  if (appUser?.user_id) {
+    const { data: authUser } = await admin.auth.admin.getUserById(appUser.user_id);
+    if (authUser?.user?.email) loginEmail = authUser.user.email;
+  }
 
   // Sign in with password using an anon client
   const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  const { data, error } = await client.auth.signInWithPassword({ email, password });
+  const { data, error } = await client.auth.signInWithPassword({ email: loginEmail, password });
+
 
   if (error || !data.session) {
     return json({ error: "invalid_credentials" }, 401);
