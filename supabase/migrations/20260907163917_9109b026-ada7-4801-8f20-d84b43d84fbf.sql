@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.guard_push_log_customer_update() FROM PUBLIC, anon, authenticated;
