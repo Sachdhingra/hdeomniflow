@@ -3471,36 +3471,64 @@ export type Database = {
       }
       push_notifications_log: {
         Row: {
+          campaign_id: string | null
           customer_id: string | null
+          expires_at: string
           id: string
+          image_url: string | null
+          link_url: string | null
           message: string | null
           notification_type: string | null
+          offer_code: string | null
+          offer_expires_at: string | null
           opened: boolean
+          opened_at: string | null
           sent_at: string
           staff_user_id: string | null
           title: string | null
         }
         Insert: {
+          campaign_id?: string | null
           customer_id?: string | null
+          expires_at?: string
           id?: string
+          image_url?: string | null
+          link_url?: string | null
           message?: string | null
           notification_type?: string | null
+          offer_code?: string | null
+          offer_expires_at?: string | null
           opened?: boolean
+          opened_at?: string | null
           sent_at?: string
           staff_user_id?: string | null
           title?: string | null
         }
         Update: {
+          campaign_id?: string | null
           customer_id?: string | null
+          expires_at?: string
           id?: string
+          image_url?: string | null
+          link_url?: string | null
           message?: string | null
           notification_type?: string | null
+          offer_code?: string | null
+          offer_expires_at?: string | null
           opened?: boolean
+          opened_at?: string | null
           sent_at?: string
           staff_user_id?: string | null
           title?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "push_notifications_log_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "push_campaigns"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "push_notifications_log_customer_id_fkey"
             columns: ["customer_id"]
