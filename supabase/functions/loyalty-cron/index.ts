@@ -379,6 +379,20 @@ async function notifyPointsBalance(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Step 8: Housekeeping — drop notification log rows older than 30 days.
+// Customers already stop seeing them after 24 hours; this keeps the table
+// from growing without bound while short-term admin reporting stays intact.
+// ---------------------------------------------------------------------------
+async function purgeOldNotificationLogs(): Promise<void> {
+  const cutoff = addDays(new Date(), -30).toISOString();
+  const { error } = await supabase
+    .from("push_notifications_log")
+    .delete()
+    .lt("sent_at", cutoff);
+  if (error) console.error("push_notifications_log purge error:", error.message);
+}
+
+// ---------------------------------------------------------------------------
 // Main handler
 // ---------------------------------------------------------------------------
 Deno.serve(async (req: Request) => {
