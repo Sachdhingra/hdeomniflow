@@ -391,6 +391,7 @@ Deno.serve(async (req: Request) => {
 
     // Per-recipient log rows (bulk insert, mirrors send-push logging).
     // Customer sends key on customer_id, staff sends on staff_user_id.
+    const nowIso = new Date().toISOString();
     const logRows = batch.map((r) => ({
       customer_id:       audience === "staff" ? null : r.customer_id,
       staff_user_id:     audience === "staff"
@@ -399,7 +400,14 @@ Deno.serve(async (req: Request) => {
       notification_type: `broadcast_${campaign_type}`,
       title,
       message,
-      sent_at:           new Date().toISOString(),
+      sent_at:           nowIso,
+      // In-app feed fields — the Insider app shows these for 24 hours.
+      image_url:         image_url || null,
+      link_url:          link_url || null,
+      offer_code:        offer_code || null,
+      offer_expires_at:  offer_expires_at || null,
+      campaign_id:       campaign.id,
+      expires_at:        new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       delivery_status:   batchOk ? "sent" : "failed",
     }));
     const { error: logErr } = await supabase.from("push_notifications_log").insert(logRows);

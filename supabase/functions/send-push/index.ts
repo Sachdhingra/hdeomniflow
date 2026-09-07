@@ -142,6 +142,9 @@ Deno.serve(async (req: Request) => {
   }
 
   // ── 3. Log to push_notifications_log ────────────────────────────────────
+  const extras = (extraData ?? {}) as Record<string, unknown>;
+  const asText = (v: unknown) => (typeof v === "string" && v.trim() ? v : null);
+
   const { data: logRow, error: logErr } = await supabase
     .from("push_notifications_log")
     .insert({
@@ -150,6 +153,12 @@ Deno.serve(async (req: Request) => {
       title,
       message,
       sent_at:           new Date().toISOString(),
+      // In-app feed fields — the Insider app shows these for 24 hours.
+      image_url:         asText(extras.image_url),
+      link_url:          asText(extras.link_url),
+      offer_code:        asText(extras.offer_code),
+      offer_expires_at:  asText(extras.offer_expires_at),
+      expires_at:        new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       delivery_status:   playerId
         ? (onesignalSuccess ? "sent" : "failed")
         : (optedOut ? "opted_out" : "no_device"),
