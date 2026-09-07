@@ -444,6 +444,9 @@ Deno.serve(async (req: Request) => {
   if (isEnabled(settings, "birthday"))        await notifyBirthdays();
   if (isEnabled(settings, "points_balance"))  await notifyPointsBalance();
 
+  // 9. Housekeeping
+  await purgeOldNotificationLogs();
+
   console.log("[loyalty-cron] Completed:", new Date().toISOString(), results);
 
   return json({ ok: true, ...results });
