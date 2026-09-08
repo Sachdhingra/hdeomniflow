@@ -211,14 +211,32 @@ const AdminDashboard = () => {
     }
   };
 
+  const readFnError = async (res: any): Promise<string | null> => {
+    if (res.data?.error) return String(res.data.error);
+    if (!res.error) return null;
+    try {
+      const ctx = (res.error as any)?.context;
+      if (ctx && typeof ctx.json === "function") {
+        const body = await ctx.clone().json();
+        if (body?.error) return String(body.error);
+      }
+    } catch { /* ignore */ }
+    return res.error.message || "Action failed";
+  };
+
+  const friendlyPasswordError = (msg: string) =>
+    /weak and easy to guess|pwned|compromised/i.test(msg)
+      ? "This password is too common and has appeared in known data leaks. Please choose a stronger one (mix of letters, numbers and symbols, at least 8 characters)."
+      : msg;
+
   const handleUserAction = async (action: string, userId: string, password?: string) => {
     setActionLoading(userId + action);
     try {
       const body: any = { action, user_id: userId };
       if (password) body.password = password;
       const res = await supabase.functions.invoke("manage-user", { body });
-      if (res.error) throw new Error(res.error.message);
-      if (res.data?.error) throw new Error(res.data.error);
+      const errMsg = await readFnError(res);
+      if (errMsg) throw new Error(friendlyPasswordError(errMsg));
       toast.success(`User ${action === "reset_password" ? "password reset" : action === "disable" ? "disabled" : action === "enable" ? "enabled" : "deleted"} successfully`);
       if (action === "reset_password") { setResetPwOpen(null); setNewPassword(""); }
       await refreshProfiles();
@@ -227,6 +245,7 @@ const AdminDashboard = () => {
     }
     setActionLoading(null);
   };
+
 
   const [editPhoneUser, setEditPhoneUser] = useState<string | null>(null);
   const [editPhoneValue, setEditPhoneValue] = useState("");
