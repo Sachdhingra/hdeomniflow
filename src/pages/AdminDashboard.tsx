@@ -200,8 +200,8 @@ const AdminDashboard = () => {
       const res = await supabase.functions.invoke("create-user", {
         body: { name: newStaff.name, password: newStaff.password, role: newStaff.role, phone_number: newStaff.phone_number },
       });
-      if (res.error) throw new Error(res.error.message || "Failed to create user");
-      if (res.data?.error) throw new Error(res.data.error);
+      const addErr = await readFnError(res);
+      if (addErr) throw new Error(friendlyPasswordError(addErr));
       toast.success(`${newStaff.name} added as ${newStaff.role}!`);
       setNewStaff({ name: "", role: "", password: "", phone_number: "" });
       setStaffOpen(false);
