@@ -38,7 +38,7 @@ interface OutreachLead {
 
 type SendState = "idle" | "sending" | "sent" | "failed";
 
-const STATUSES = ["follow_up", "negotiation", "overdue"];
+const STATUSES = ["follow_up", "negotiation", "overdue"] as const;
 
 const STATUS_LABEL: Record<string, string> = {
   follow_up: "Follow up",
