@@ -19,6 +19,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
+import { mirrorToWhatsApp } from "../_shared/whatsapp-mirror.ts";
 
 const SUPABASE_URL        = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE        = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -168,6 +169,13 @@ Deno.serve(async (req: Request) => {
 
   if (logErr) {
     console.error("Log insert error:", logErr.message);
+  }
+
+  // ── 4. Mirror the same notification on WhatsApp (best effort) ──────────
+  try {
+    await mirrorToWhatsApp(supabase, [{ customer_id, title, message }]);
+  } catch (e) {
+    console.error("WhatsApp mirror failed:", String(e));
   }
 
   return json({

@@ -25,6 +25,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
+import { mirrorToWhatsApp } from "../_shared/whatsapp-mirror.ts";
 
 const SUPABASE_URL      = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE      = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -412,6 +413,20 @@ Deno.serve(async (req: Request) => {
     }));
     const { error: logErr } = await supabase.from("push_notifications_log").insert(logRows);
     if (logErr) console.error("Log insert error:", logErr.message);
+
+    // Mirror the same notification on WhatsApp for customer audiences.
+    if (audience !== "staff") {
+      try {
+        await mirrorToWhatsApp(
+          supabase,
+          batch
+            .filter((r) => !!r.customer_id)
+            .map((r) => ({ customer_id: r.customer_id as string, title, message })),
+        );
+      } catch (e) {
+        console.error("WhatsApp mirror failed:", String(e));
+      }
+    }
   }
 
   // ── 4. Finalise campaign row ────────────────────────────────────────────
