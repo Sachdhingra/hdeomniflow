@@ -11,6 +11,9 @@ export const TWILIO_TEMPLATES = {
   leadWelcome: "HXa50d2f1a512771a524583a6432c860f4",
   eliteCardWelcome: "HX2c0e7b006df9d6823059c69f9816d819",
   reviewThankYou: "HX16893586e03d1d1fd84b484f2d4a4252",
+  // Generic Insider app notification mirror:
+  // {{1}} first name, {{2}} notification title, {{3}} notification message
+  insiderNotification: "HX9311ebb75eca678d1cb894ce1ea9c0a9",
 } as const;
 
 export const WHATSAPP_FROM_FALLBACK = "whatsapp:+15559890033";
