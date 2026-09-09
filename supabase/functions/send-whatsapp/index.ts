@@ -92,8 +92,15 @@ async function sendViaTwilio(params: {
     try { parsed = JSON.parse(text); } catch (_) { /* keep raw */ }
 
     if (!res.ok) {
-      const err = parsed?.message || parsed?.error_message || `HTTP ${res.status}`;
-      console.error("[send-whatsapp] Twilio error:", err, parsed);
+      const code = parsed?.code;
+      let err = parsed?.message || parsed?.error_message || `HTTP ${res.status}`;
+      if (code === 63016) {
+        err =
+          "WhatsApp blocked this message: the customer has not replied in the last 24 hours, so an approved template must be used (Twilio 63016).";
+      } else if (code === 63024) {
+        err = `WhatsApp rejected this number as invalid (Twilio 63024): ${e164}`;
+      }
+      console.error("[send-whatsapp] Twilio error:", code, err);
       return { success: false, error: err, phone: e164, providerResponse: parsed, httpStatus: res.status };
     }
     const message_id = parsed?.sid;

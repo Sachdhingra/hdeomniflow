@@ -1,9 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { TWILIO_TEMPLATES, whatsappFrom } from "../_shared/twilio-templates.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID")!;
 const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN")!;
-const WHATSAPP_FROM = "whatsapp:+15559890033";
+const WHATSAPP_FROM = whatsappFrom();
 const PWA_URL = Deno.env.get("PWA_URL") ?? "https://homedecorinsider.lovable.app";
 
 const cors = {
@@ -61,33 +62,52 @@ Deno.serve(async (req) => {
   }
 
   const inviteLink = `${PWA_URL}/invite?token=${token}`;
-  const firstName = customerName.split(" ")[0];
-  const body =
-    `Hi ${firstName}! 🎉 Your Home Decor Insider Elite Card is ready.\n\n` +
-    `Tap here to access your exclusive account:\n${inviteLink}\n\n` +
-    `_This link is valid for 30 days._`;
+  const firstName = (customerName || "").split(" ")[0] || "there";
 
-  const res = await fetch(
-    `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`)}`,
-        "Content-Type": "application/x-www-form-urlencoded",
+  const send = (params: Record<string, string>) =>
+    fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`)}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          From: WHATSAPP_FROM,
+          To: `whatsapp:${phone}`,
+          ...params,
+        }).toString(),
       },
-      body: new URLSearchParams({
-        From: WHATSAPP_FROM,
-        To: `whatsapp:${phone}`,
-        Body: body,
-      }).toString(),
-    },
-  );
+    );
+
+  // Business-initiated WhatsApp → approved template required outside the 24h window.
+  let res = await send({
+    ContentSid: TWILIO_TEMPLATES.appInvite,
+    ContentVariables: JSON.stringify({ "1": firstName, "2": token }),
+  });
 
   if (!res.ok) {
-    console.error("[send-app-invite] Twilio error:", await res.text());
+    console.error("[send-app-invite] template send failed:", await res.text());
+    res = await send({
+      Body:
+        `Hi ${firstName}! 🎉 Your Home Decor Insider Elite Card is ready.\n\n` +
+        `Tap here to access your exclusive account:\n${inviteLink}\n\n` +
+        `_This link is valid for 30 days._`,
+    });
+  }
+
+  if (!res.ok) {
+    const detail = await res.text();
+    console.error("[send-app-invite] Twilio error:", detail);
     return new Response(
-      JSON.stringify({ success: true, warning: "Token created but WhatsApp delivery failed" }),
-      { headers: { ...cors, "Content-Type": "application/json" } },
+      JSON.stringify({
+        success: false,
+        inviteLink,
+        error: "WhatsApp delivery failed",
+        details: detail,
+      }),
+      { status: 502, headers: { ...cors, "Content-Type": "application/json" } },
     );
   }
 
