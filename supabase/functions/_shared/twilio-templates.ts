@@ -3,7 +3,7 @@
 // works inside the 24h window after the customer's last reply (Twilio 63016).
 export const TWILIO_TEMPLATES = {
   // "Hi {{1}}! ... /invite?token={{2}} ..." — Insider Elite Card app invite
-  appInvite: "HX7049c5c6b072b287534f9fae592f0e97",
+  appInvite: "HX7e8100646a839538ce9cc29f5ff2bd9a",
   // Authentication template, {{1}} = one-time code
   verificationCode: "HXad13029a82f0c6966ced9d47fb7fb888",
   // Marketing / utility templates already approved
