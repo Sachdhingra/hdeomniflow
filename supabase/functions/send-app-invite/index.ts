@@ -1,9 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { TWILIO_TEMPLATES, whatsappFrom } from "../_shared/twilio-templates.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID")!;
 const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN")!;
-const WHATSAPP_FROM = "whatsapp:+15559890033";
+const WHATSAPP_FROM = whatsappFrom();
 const PWA_URL = Deno.env.get("PWA_URL") ?? "https://homedecorinsider.lovable.app";
 
 const cors = {
