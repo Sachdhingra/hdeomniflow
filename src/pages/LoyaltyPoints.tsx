@@ -80,6 +80,7 @@ const TX_LABEL: Record<string, string> = {
   purchase: "Purchase earned",
   redemption: "Redeemed",
   anniversary_bonus: "Anniversary bonus",
+  welcome_bonus: "Welcome bonus",
   referral: "Referral bonus",
   reversal: "Return reversal",
   expiry: "Expired",
@@ -88,6 +89,7 @@ const TX_LABEL: Record<string, string> = {
 const TX_COLOR: Record<string, string> = {
   purchase: "text-green-600",
   anniversary_bonus: "text-green-600",
+  welcome_bonus: "text-green-600",
   referral: "text-green-600",
   redemption: "text-red-500",
   reversal: "text-red-500",
@@ -97,6 +99,7 @@ const TX_COLOR: Record<string, string> = {
 const TX_ICON: Record<string, React.ReactNode> = {
   purchase: <TrendingUp className="w-4 h-4 text-green-500" />,
   anniversary_bonus: <Gift className="w-4 h-4 text-green-500" />,
+  welcome_bonus: <Gift className="w-4 h-4 text-green-500" />,
   referral: <Star className="w-4 h-4 text-green-500" />,
   redemption: <IndianRupee className="w-4 h-4 text-red-400" />,
   reversal: <RotateCcw className="w-4 h-4 text-red-400" />,

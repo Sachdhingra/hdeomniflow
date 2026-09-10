@@ -26,6 +26,53 @@ function virtualEmail(phone: string): string {
   return `${normalizePhone(phone).replace(/\D/g, "")}@invite.hdi.local`;
 }
 
+/**
+ * Credit the one-time welcome bonus and notify the customer (app + WhatsApp).
+ * Best effort: never blocks invite redemption.
+ */
+// deno-lint-ignore no-explicit-any
+async function awardWelcomePoints(admin: any, customerId: string): Promise<void> {
+  try {
+    const { data: points, error } = await admin.rpc("fn_award_welcome_points", {
+      _customer_id: customerId,
+    });
+    if (error) {
+      console.error("[welcome-points] rpc failed:", error.message);
+      return;
+    }
+    const awarded = Number(points ?? 0);
+    if (!awarded) return;
+
+    const title = `${awarded} welcome points added`;
+    const message =
+      `Welcome to HD Insider! ${awarded} bonus points are in your wallet. ` +
+      `Use them on your next purchase.`;
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        ...(Deno.env.get("LOYALTY_CRON_SECRET")
+          ? { "x-internal-secret": Deno.env.get("LOYALTY_CRON_SECRET")! }
+          : {}),
+      },
+      body: JSON.stringify({
+        customer_id: customerId,
+        type: "welcome_points",
+        title,
+        message,
+        data: { points: awarded },
+      }),
+    });
+    if (!res.ok) {
+      console.error("[welcome-points] send-push failed:", res.status, await res.text());
+    }
+  } catch (e) {
+    console.error("[welcome-points] failed:", String(e));
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
@@ -128,6 +175,10 @@ Deno.serve(async (req) => {
     if (Object.keys(updates).length > 0) {
       await admin.from("elite_customers").update(updates).eq("id", customer_id);
     }
+
+    // First-activation welcome bonus (Super Elite 50 / Prestige Elite 75).
+    // The DB function is idempotent — it never credits a customer twice.
+    await awardWelcomePoints(admin, customer_id);
   }
 
   // 3. Generate magic link → hashed_token for client-side verifyOtp
