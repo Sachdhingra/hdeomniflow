@@ -4401,6 +4401,10 @@ export type Database = {
         Returns: undefined
       }
       fn_award_anniversary_bonus: { Args: never; Returns: number }
+      fn_award_welcome_points: {
+        Args: { _customer_id: string }
+        Returns: number
+      }
       fn_calc_points: {
         Args: { _amount: number; _tier: string }
         Returns: number
