@@ -128,6 +128,10 @@ Deno.serve(async (req) => {
     if (Object.keys(updates).length > 0) {
       await admin.from("elite_customers").update(updates).eq("id", customer_id);
     }
+
+    // First-activation welcome bonus (Super Elite 50 / Prestige Elite 75).
+    // The DB function is idempotent — it never credits a customer twice.
+    await awardWelcomePoints(admin, customer_id);
   }
 
   // 3. Generate magic link → hashed_token for client-side verifyOtp
