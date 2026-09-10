@@ -99,6 +99,7 @@ const TX_COLOR: Record<string, string> = {
 const TX_ICON: Record<string, React.ReactNode> = {
   purchase: <TrendingUp className="w-4 h-4 text-green-500" />,
   anniversary_bonus: <Gift className="w-4 h-4 text-green-500" />,
+  welcome_bonus: <Gift className="w-4 h-4 text-green-500" />,
   referral: <Star className="w-4 h-4 text-green-500" />,
   redemption: <IndianRupee className="w-4 h-4 text-red-400" />,
   reversal: <RotateCcw className="w-4 h-4 text-red-400" />,
