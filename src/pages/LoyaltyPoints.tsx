@@ -80,6 +80,7 @@ const TX_LABEL: Record<string, string> = {
   purchase: "Purchase earned",
   redemption: "Redeemed",
   anniversary_bonus: "Anniversary bonus",
+  welcome_bonus: "Welcome bonus",
   referral: "Referral bonus",
   reversal: "Return reversal",
   expiry: "Expired",
