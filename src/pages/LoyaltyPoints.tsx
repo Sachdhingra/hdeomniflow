@@ -89,6 +89,7 @@ const TX_LABEL: Record<string, string> = {
 const TX_COLOR: Record<string, string> = {
   purchase: "text-green-600",
   anniversary_bonus: "text-green-600",
+  welcome_bonus: "text-green-600",
   referral: "text-green-600",
   redemption: "text-red-500",
   reversal: "text-red-500",
