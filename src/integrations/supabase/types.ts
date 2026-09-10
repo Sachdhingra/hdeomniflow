@@ -3473,6 +3473,7 @@ export type Database = {
         Row: {
           campaign_id: string | null
           customer_id: string | null
+          delivery_status: string
           expires_at: string
           id: string
           image_url: string | null
@@ -3490,6 +3491,7 @@ export type Database = {
         Insert: {
           campaign_id?: string | null
           customer_id?: string | null
+          delivery_status?: string
           expires_at?: string
           id?: string
           image_url?: string | null
@@ -3507,6 +3509,7 @@ export type Database = {
         Update: {
           campaign_id?: string | null
           customer_id?: string | null
+          delivery_status?: string
           expires_at?: string
           id?: string
           image_url?: string | null
