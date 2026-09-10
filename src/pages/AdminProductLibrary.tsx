@@ -415,8 +415,45 @@ const ProductEditor = ({
   const [videos, setVideos] = useState<PLVideo[]>([]);
   const [specs, setSpecs] = useState<PLSpec[]>([]);
   const [busy, setBusy] = useState(false);
+  const [fillingInventory, setFillingInventory] = useState(false);
 
   const productId = form.id;
+
+  const fillFromInventory = async () => {
+    const sku = (form.sku || "").trim();
+    if (!sku) return toast.error("Enter a SKU first");
+    setFillingInventory(true);
+    try {
+      const { data: invProduct, error } = await plDb
+        .from("products")
+        .select("id, product_name, net_price")
+        .ilike("sku", sku)
+        .maybeSingle();
+      if (error) throw error;
+      if (!invProduct) return toast.error(`No inventory match for SKU "${sku}"`);
+
+      const { data: photo } = await plDb
+        .from("hde_product_photos")
+        .select("photo_url")
+        .eq("product_id", invProduct.id)
+        .maybeSingle();
+
+      setForm((s) => ({
+        ...s,
+        name: s.name || invProduct.product_name,
+        mrp: invProduct.net_price ?? s.mrp,
+        hero_image_url: photo?.photo_url || s.hero_image_url,
+        thumbnail_url: photo?.photo_url || s.thumbnail_url,
+      }));
+      toast.success(
+        `Filled from inventory — price ₹${invProduct.net_price}${photo?.photo_url ? ", photo found" : " (no photo in inventory)"}`,
+      );
+    } catch (e: any) {
+      toast.error(e.message || "Inventory lookup failed");
+    } finally {
+      setFillingInventory(false);
+    }
+  };
 
   const loadChildren = async () => {
     if (!productId) return;
@@ -510,7 +547,22 @@ const ProductEditor = ({
         <div className="grid md:grid-cols-2 gap-3">
           <div>
             <Label>SKU</Label>
-            <Input value={form.sku || ""} onChange={(e) => setForm({ ...form, sku: e.target.value })} />
+            <div className="flex gap-2">
+              <Input value={form.sku || ""} onChange={(e) => setForm({ ...form, sku: e.target.value })} />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={fillFromInventory}
+                disabled={fillingInventory}
+                title="Pull price and photo from Inventory by matching this SKU"
+              >
+                {fillingInventory ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  "Fill from Inventory"
+                )}
+              </Button>
+            </div>
           </div>
           <div>
             <Label>Product Name</Label>
