@@ -10,6 +10,7 @@ import { downloadQuoteExcel } from "@/lib/quoteExcel";
 import { useQuote } from "@/contexts/QuoteContext";
 import { money, lineTotal, plDb } from "@/lib/productLibrary";
 import StorageImage from "./StorageImage";
+import AddFromInventory from "./AddFromInventory";
 import { toast } from "@/lib/toast";
 
 const QuoteDrawer = () => {
@@ -169,12 +170,14 @@ const QuoteDrawer = () => {
             />
           </div>
           <p className="text-[11px] text-muted-foreground">Quote No: {quoteNumber}</p>
+          <AddFromInventory />
         </div>
 
         <ScrollArea className="flex-1 -mx-2 px-2">
           {items.length === 0 && (
             <p className="text-sm text-muted-foreground py-10 text-center">
-              No products added yet. Use “Add to Quote” from the Product Library.
+              No products added yet. Search Inventory above, or use “Add to Quote” from the
+              Product Library.
             </p>
           )}
           <div className="space-y-3">
