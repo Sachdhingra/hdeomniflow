@@ -36,6 +36,14 @@ export function whatsappMirrorEnabled(): boolean {
   return (Deno.env.get("WHATSAPP_MIRROR_DISABLED") || "").toLowerCase() !== "true";
 }
 
+type SendOutcome = {
+  ok: boolean;
+  phone: string;
+  name: string | null;
+  sid?: string;
+  error?: string;
+};
+
 async function sendOne(
   accountSid: string,
   authToken: string,
@@ -44,9 +52,9 @@ async function sendOne(
   name: string | null,
   title: string,
   message: string,
-): Promise<boolean> {
+): Promise<SendOutcome> {
   const to = normalizePhone(phone);
-  if (!to) return false;
+  if (!to) return { ok: false, phone: phone || "", name, error: "Invalid phone number" };
 
   const body = new URLSearchParams();
   body.set("To", `whatsapp:${to}`);
@@ -60,6 +68,10 @@ async function sendOne(
       "3": clean(message, 700),
     }),
   );
+  // Delivery result (delivered / undelivered + error code) is reported back to
+  // twilio-status, so mirror failures stop being invisible.
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  if (supabaseUrl) body.set("StatusCallback", `${supabaseUrl}/functions/v1/twilio-status`);
 
   try {
     const res = await fetch(
@@ -73,14 +85,19 @@ async function sendOne(
         body,
       },
     );
+    const text = await res.text();
+    // deno-lint-ignore no-explicit-any
+    let parsed: any = text;
+    try { parsed = JSON.parse(text); } catch { /* keep raw */ }
     if (!res.ok) {
-      console.error("[whatsapp-mirror] Twilio error", res.status, await res.text());
-      return false;
+      const err = parsed?.message || `HTTP ${res.status}`;
+      console.error("[whatsapp-mirror] Twilio error", res.status, err);
+      return { ok: false, phone: to, name, error: String(err) };
     }
-    return true;
+    return { ok: true, phone: to, name, sid: parsed?.sid };
   } catch (e) {
     console.error("[whatsapp-mirror] fetch failed:", String(e));
-    return false;
+    return { ok: false, phone: to, name, error: String(e) };
   }
 }
 
