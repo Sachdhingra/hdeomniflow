@@ -131,16 +131,39 @@ export async function mirrorToWhatsApp(supabase: any, targets: MirrorTarget[]): 
   for (const c of customers ?? []) byId.set(c.id as string, c);
 
   let sent = 0;
+  const logRows: Record<string, unknown>[] = [];
   for (let i = 0; i < targets.length; i += MAX_CONCURRENCY) {
     const slice = targets.slice(i, i + MAX_CONCURRENCY);
     const results = await Promise.all(
       slice.map((t) => {
         const c = byId.get(t.customer_id);
-        if (!c?.phone_1) return Promise.resolve(false);
+        if (!c?.phone_1) {
+          return Promise.resolve<SendOutcome>({
+            ok: false, phone: "", name: null, error: "No phone number on file",
+          });
+        }
         return sendOne(accountSid, authToken, from, c.phone_1, c.customer_name, t.title, t.message);
       }),
     );
-    sent += results.filter(Boolean).length;
+    results.forEach((r, idx) => {
+      if (r.ok) sent += 1;
+      if (!r.phone) return;
+      logRows.push({
+        phone: r.phone,
+        recipient_name: r.name,
+        message: `[insider-notification] ${slice[idx].title} — ${slice[idx].message}`,
+        provider: "twilio",
+        provider_message_id: r.sid ?? null,
+        status: r.ok ? "sent" : "failed",
+        error_message: r.error ?? null,
+        sent_at: r.ok ? new Date().toISOString() : null,
+      });
+    });
+  }
+
+  if (logRows.length) {
+    const { error: logErr } = await supabase.from("message_logs").insert(logRows);
+    if (logErr) console.error("[whatsapp-mirror] log insert failed:", logErr.message);
   }
 
   console.log(`[whatsapp-mirror] ${sent}/${targets.length} mirrored to WhatsApp`);
