@@ -13,7 +13,11 @@ export const TWILIO_TEMPLATES = {
   reviewThankYou: "HX16893586e03d1d1fd84b484f2d4a4252",
   // Generic Insider app notification mirror:
   // {{1}} first name, {{2}} notification title, {{3}} notification message
-  insiderNotification: "HX9311ebb75eca678d1cb894ce1ea9c0a9",
+  // UTILITY-category version — the earlier MARKETING template was throttled by
+  // Meta for many recipients (Twilio error 63049), so account/loyalty updates
+  // now go out on this utility template.
+  insiderNotification: "HX1fef4e22ebe19472923e1df82c23d814",
+  insiderNotificationMarketingLegacy: "HX9311ebb75eca678d1cb894ce1ea9c0a9",
 } as const;
 
 export const WHATSAPP_FROM_FALLBACK = "whatsapp:+15559890033";

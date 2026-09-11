@@ -36,6 +36,14 @@ export function whatsappMirrorEnabled(): boolean {
   return (Deno.env.get("WHATSAPP_MIRROR_DISABLED") || "").toLowerCase() !== "true";
 }
 
+type SendOutcome = {
+  ok: boolean;
+  phone: string;
+  name: string | null;
+  sid?: string;
+  error?: string;
+};
+
 async function sendOne(
   accountSid: string,
   authToken: string,
@@ -44,9 +52,9 @@ async function sendOne(
   name: string | null,
   title: string,
   message: string,
-): Promise<boolean> {
+): Promise<SendOutcome> {
   const to = normalizePhone(phone);
-  if (!to) return false;
+  if (!to) return { ok: false, phone: phone || "", name, error: "Invalid phone number" };
 
   const body = new URLSearchParams();
   body.set("To", `whatsapp:${to}`);
@@ -60,6 +68,10 @@ async function sendOne(
       "3": clean(message, 700),
     }),
   );
+  // Delivery result (delivered / undelivered + error code) is reported back to
+  // twilio-status, so mirror failures stop being invisible.
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  if (supabaseUrl) body.set("StatusCallback", `${supabaseUrl}/functions/v1/twilio-status`);
 
   try {
     const res = await fetch(
@@ -73,14 +85,19 @@ async function sendOne(
         body,
       },
     );
+    const text = await res.text();
+    // deno-lint-ignore no-explicit-any
+    let parsed: any = text;
+    try { parsed = JSON.parse(text); } catch { /* keep raw */ }
     if (!res.ok) {
-      console.error("[whatsapp-mirror] Twilio error", res.status, await res.text());
-      return false;
+      const err = parsed?.message || `HTTP ${res.status}`;
+      console.error("[whatsapp-mirror] Twilio error", res.status, err);
+      return { ok: false, phone: to, name, error: String(err) };
     }
-    return true;
+    return { ok: true, phone: to, name, sid: parsed?.sid };
   } catch (e) {
     console.error("[whatsapp-mirror] fetch failed:", String(e));
-    return false;
+    return { ok: false, phone: to, name, error: String(e) };
   }
 }
 
@@ -114,16 +131,39 @@ export async function mirrorToWhatsApp(supabase: any, targets: MirrorTarget[]): 
   for (const c of customers ?? []) byId.set(c.id as string, c);
 
   let sent = 0;
+  const logRows: Record<string, unknown>[] = [];
   for (let i = 0; i < targets.length; i += MAX_CONCURRENCY) {
     const slice = targets.slice(i, i + MAX_CONCURRENCY);
     const results = await Promise.all(
       slice.map((t) => {
         const c = byId.get(t.customer_id);
-        if (!c?.phone_1) return Promise.resolve(false);
+        if (!c?.phone_1) {
+          return Promise.resolve<SendOutcome>({
+            ok: false, phone: "", name: null, error: "No phone number on file",
+          });
+        }
         return sendOne(accountSid, authToken, from, c.phone_1, c.customer_name, t.title, t.message);
       }),
     );
-    sent += results.filter(Boolean).length;
+    results.forEach((r, idx) => {
+      if (r.ok) sent += 1;
+      if (!r.phone) return;
+      logRows.push({
+        phone: r.phone,
+        recipient_name: r.name,
+        message: `[insider-notification] ${slice[idx].title} — ${slice[idx].message}`,
+        provider: "twilio",
+        provider_message_id: r.sid ?? null,
+        status: r.ok ? "sent" : "failed",
+        error_message: r.error ?? null,
+        sent_at: r.ok ? new Date().toISOString() : null,
+      });
+    });
+  }
+
+  if (logRows.length) {
+    const { error: logErr } = await supabase.from("message_logs").insert(logRows);
+    if (logErr) console.error("[whatsapp-mirror] log insert failed:", logErr.message);
   }
 
   console.log(`[whatsapp-mirror] ${sent}/${targets.length} mirrored to WhatsApp`);
