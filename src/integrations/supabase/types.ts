@@ -3769,7 +3769,6 @@ export type Database = {
           created_by: string | null
           id: string
           image_url: string
-          media_type: string
           sort_order: number
           title: string
           updated_at: string
@@ -3780,7 +3779,6 @@ export type Database = {
           created_by?: string | null
           id?: string
           image_url: string
-          media_type?: string
           sort_order?: number
           title?: string
           updated_at?: string
@@ -3791,7 +3789,6 @@ export type Database = {
           created_by?: string | null
           id?: string
           image_url?: string
-          media_type?: string
           sort_order?: number
           title?: string
           updated_at?: string
