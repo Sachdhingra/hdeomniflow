@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { KIOSK_MEDIA_ACCEPT, detectUploadType, mediaTypeOf } from "@/lib/kioskMedia";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { KIOSK_MEDIA_ACCEPT, detectUploadType, mediaTypeOf, probeVideo } from "@/lib/kioskMedia";
 
 describe("mediaTypeOf", () => {
   it("trusts a stored media_type", () => {
@@ -45,5 +45,69 @@ describe("KIOSK_MEDIA_ACCEPT", () => {
   it("offers both images and videos in the file picker", () => {
     expect(KIOSK_MEDIA_ACCEPT).toContain("image/png");
     expect(KIOSK_MEDIA_ACCEPT).toContain("video/mp4");
+  });
+});
+
+describe("probeVideo", () => {
+  const fakeVideo = () => {
+    const el: Record<string, unknown> = {
+      preload: "", muted: false, videoWidth: 0, duration: 0,
+      onloadedmetadata: null, onerror: null,
+      removeAttribute: () => {}, load: () => {},
+    };
+    // Setting src is what kicks a real <video> into loading.
+    return el as unknown as HTMLVideoElement;
+  };
+
+  beforeEach(() => {
+    vi.stubGlobal("URL", {
+      createObjectURL: () => "blob:probe",
+      revokeObjectURL: () => {},
+    });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  const blob = () => new Blob(["x"], { type: "video/mp4" });
+
+  it("accepts a clip whose metadata decodes to a real frame size", async () => {
+    const el = fakeVideo();
+    const p = probeVideo(blob(), { createElement: () => el });
+    Object.assign(el, { videoWidth: 1920, duration: 12.5 });
+    el.onloadedmetadata?.(new Event("loadedmetadata"));
+    await expect(p).resolves.toEqual({ ok: true, durationSeconds: 12.5 });
+  });
+
+  it("rejects a container the browser cannot decode", async () => {
+    const el = fakeVideo();
+    const p = probeVideo(blob(), { createElement: () => el });
+    el.onerror?.(new Event("error"));
+    await expect(p).resolves.toEqual({
+      ok: false,
+      reason: "uses a format this browser can't play",
+    });
+  });
+
+  it("rejects an audio-only file that loads metadata but has no picture", async () => {
+    const el = fakeVideo();
+    const p = probeVideo(blob(), { createElement: () => el });
+    el.onloadedmetadata?.(new Event("loadedmetadata"));
+    await expect(p).resolves.toEqual({ ok: false, reason: "has no video track" });
+  });
+
+  it("gives up rather than hanging the upload form", async () => {
+    vi.useFakeTimers();
+    const p = probeVideo(blob(), { createElement: fakeVideo, timeoutMs: 100 });
+    vi.advanceTimersByTime(100);
+    await expect(p).resolves.toEqual({ ok: false, reason: "took too long to open" });
+    vi.useRealTimers();
+  });
+
+  it("ignores a late event once it has already settled", async () => {
+    const el = fakeVideo();
+    const p = probeVideo(blob(), { createElement: () => el });
+    Object.assign(el, { videoWidth: 640, duration: 3 });
+    el.onloadedmetadata?.(new Event("loadedmetadata"));
+    el.onerror?.(new Event("error"));
+    await expect(p).resolves.toEqual({ ok: true, durationSeconds: 3 });
   });
 });
