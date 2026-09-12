@@ -38,3 +38,59 @@ export function detectUploadType(file: { type: string; name: string }): KioskMed
   if (!type && VIDEO_EXTENSION_RE.test(file.name)) return "video";
   return null;
 }
+
+export interface VideoProbe {
+  ok: boolean;
+  /** Fills the sentence "That video ___." when `ok` is false. */
+  reason?: string;
+  durationSeconds?: number;
+}
+
+interface ProbeOptions {
+  timeoutMs?: number;
+  /** Injectable for tests — jsdom has no media pipeline to probe with. */
+  createElement?: () => HTMLVideoElement;
+}
+
+/**
+ * Can this browser actually decode the picked file?
+ *
+ * A MIME type only names the container: an `.mp4` holding H.265 announces
+ * itself as `video/mp4`, uploads happily, and then refuses to play. On the
+ * kiosk that shows up as a clip which silently never appears, so it is worth
+ * catching before the file reaches storage. Reaching `loadedmetadata` with a
+ * real frame size proves the container and the codec are both readable.
+ */
+export function probeVideo(file: Blob, options: ProbeOptions = {}): Promise<VideoProbe> {
+  const { timeoutMs = 15000, createElement = () => document.createElement("video") } = options;
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const el = createElement();
+    let settled = false;
+
+    const done = (result: VideoProbe) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      URL.revokeObjectURL(url);
+      // Drop the decoder before the element is garbage — a probe per pick
+      // otherwise stacks up on a kiosk tablet that never reloads the page.
+      el.removeAttribute("src");
+      el.load?.();
+      resolve(result);
+    };
+
+    const timer = setTimeout(() => done({ ok: false, reason: "took too long to open" }), timeoutMs);
+
+    el.preload = "metadata";
+    el.muted = true;
+    el.onloadedmetadata = () =>
+      done(
+        el.videoWidth > 0
+          ? { ok: true, durationSeconds: el.duration }
+          : { ok: false, reason: "has no video track" },
+      );
+    el.onerror = () => done({ ok: false, reason: "uses a format this browser can't play" });
+    el.src = url;
+  });
+}

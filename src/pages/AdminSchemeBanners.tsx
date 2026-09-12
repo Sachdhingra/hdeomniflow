@@ -13,7 +13,7 @@ import { compressImage } from "@/components/ImageCompressor";
 import { parseStorageUrl } from "@/lib/photoUrls";
 import { moveBanner, nextSortOrder, orderUpdates } from "@/lib/bannerOrder";
 import {
-  KIOSK_MEDIA_ACCEPT, MAX_VIDEO_MB, detectUploadType, mediaTypeOf,
+  KIOSK_MEDIA_ACCEPT, MAX_VIDEO_MB, detectUploadType, mediaTypeOf, probeVideo,
 } from "@/lib/kioskMedia";
 
 const BUCKET = "scheme-banners";
@@ -37,7 +37,8 @@ const AdminSchemeBanners = () => {
   const [banners, setBanners] = useState<Banner[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
+  // The label of the step in flight, or null when idle.
+  const [busy, setBusy] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [reordering, setReordering] = useState(false);
   // id -> why it will not render, so the tile can say something true.
@@ -83,7 +84,19 @@ const AdminSchemeBanners = () => {
       );
     }
 
-    setUploading(true);
+    if (kind === "video") {
+      // The picker's MIME type names the container, not the codec inside, so
+      // an unplayable clip would otherwise reach storage and then quietly fail
+      // to appear on the kiosk.
+      setBusy("Checking video…");
+      const probe = await probeVideo(file);
+      if (!probe.ok) {
+        setBusy(null);
+        return toast.error(`That video ${probe.reason}. Re-encode it as H.264 MP4 and try again.`);
+      }
+    }
+
+    setBusy("Uploading…");
     try {
       // Videos go up as-is: the canvas compressor only understands images, and
       // re-encoding video in the browser is not worth the wait on this page.
@@ -125,7 +138,7 @@ const AdminSchemeBanners = () => {
       toast.success(kind === "video" ? "Video uploaded" : "Banner uploaded");
       load();
     } finally {
-      setUploading(false);
+      setBusy(null);
     }
   };
 
@@ -248,12 +261,12 @@ const AdminSchemeBanners = () => {
               type="file"
               accept={KIOSK_MEDIA_ACCEPT}
               onChange={onFile}
-              disabled={uploading}
+              disabled={!!busy}
             />
           </div>
-          {uploading && (
+          {busy && (
             <span className="text-sm text-muted-foreground flex items-center gap-1">
-              <Loader2 className="w-4 h-4 animate-spin" /> Uploading…
+              <Loader2 className="w-4 h-4 animate-spin" /> {busy}
             </span>
           )}
           <p className="text-xs text-muted-foreground w-full flex items-center gap-1">
