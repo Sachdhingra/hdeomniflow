@@ -135,8 +135,14 @@ const KioskScreensaver = ({
           aria-label={current.title || "Scheme video"}
           onEnded={() => { if (!single) next(); }}
           // A missing or undecodable file would otherwise park the screensaver
-          // on a black rectangle until someone touches the screen.
-          onError={() => { if (!single) next(); }}
+          // on a black rectangle until someone touches the screen. The warning
+          // is the only trace left, since the kiosk runs unattended.
+          onError={(e) => {
+            console.warn(
+              `[kiosk] skipping "${current.title || current.id}": video error ${e.currentTarget.error?.code ?? "unknown"}`,
+            );
+            if (!single) next();
+          }}
         />
       ) : (
         <img

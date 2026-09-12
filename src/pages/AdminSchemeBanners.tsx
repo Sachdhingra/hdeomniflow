@@ -40,7 +40,8 @@ const AdminSchemeBanners = () => {
   const [uploading, setUploading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [reordering, setReordering] = useState(false);
-  const [broken, setBroken] = useState<Set<string>>(new Set());
+  // id -> why it will not render, so the tile can say something true.
+  const [broken, setBroken] = useState<Map<string, string>>(new Map());
   const [title, setTitle] = useState("");
 
   const load = useCallback(async () => {
@@ -58,7 +59,7 @@ const AdminSchemeBanners = () => {
       return;
     }
     setLoadError(null);
-    setBroken(new Set());
+    setBroken(new Map());
     setBanners((data as Banner[]) ?? []);
   }, []);
 
@@ -184,7 +185,32 @@ const AdminSchemeBanners = () => {
     setReordering(false);
   };
 
-  const markBroken = (id: string) => setBroken((prev) => new Set(prev).add(id));
+  const markBroken = (id: string, reason: string) =>
+    setBroken((prev) => new Map(prev).set(id, reason));
+
+  /**
+   * A <video> reports one undifferentiated error for "404", "empty file" and
+   * "codec this browser can't decode", and guessing wrong sends someone
+   * hunting through storage for a file that is sitting right there. Ask the
+   * URL what actually happened.
+   */
+  const diagnoseVideo = async (b: Banner) => {
+    markBroken(b.id, "Checking…");
+    let res: Response;
+    try {
+      res = await fetch(b.image_url, { method: "HEAD" });
+    } catch {
+      return markBroken(b.id, "Could not reach storage — check the connection");
+    }
+    if (!res.ok) return markBroken(b.id, "File missing from storage — upload it again");
+    if (Number(res.headers.get("content-length") ?? 0) === 0) {
+      return markBroken(b.id, "Uploaded file is empty — upload it again");
+    }
+    markBroken(
+      b.id,
+      `File is in storage but this browser can't play it (${res.headers.get("content-type") || "unknown type"}). Re-encode as H.264 MP4.`,
+    );
+  };
 
   const activeCount = banners.filter((b) => b.active).length;
 
@@ -270,9 +296,9 @@ const AdminSchemeBanners = () => {
                 <div key={b.id} className="border rounded-lg overflow-hidden bg-card">
                   <div className="aspect-video bg-muted">
                     {broken.has(b.id) ? (
-                      <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-muted-foreground">
+                      <div className="w-full h-full flex flex-col items-center justify-center gap-1 p-3 text-center text-muted-foreground">
                         <ImageOff className="w-6 h-6" />
-                        <span className="text-xs">File missing from storage</span>
+                        <span className="text-xs">{broken.get(b.id)}</span>
                       </div>
                     ) : mediaTypeOf(b) === "video" ? (
                       // Muted and controllable so an admin can check the clip
@@ -284,14 +310,14 @@ const AdminSchemeBanners = () => {
                         playsInline
                         controls
                         preload="metadata"
-                        onError={() => markBroken(b.id)}
+                        onError={() => diagnoseVideo(b)}
                       />
                     ) : (
                       <img
                         src={b.image_url}
                         alt={b.title}
                         className="w-full h-full object-cover"
-                        onError={() => markBroken(b.id)}
+                        onError={() => markBroken(b.id, "Image missing from storage")}
                       />
                     )}
                   </div>
