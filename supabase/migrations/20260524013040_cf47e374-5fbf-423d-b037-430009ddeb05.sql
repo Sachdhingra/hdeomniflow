@@ -34,6 +34,7 @@ CREATE POLICY "Admins manage banners" ON public.scheme_banners
   FOR ALL USING (has_role(auth.uid(),'admin'::app_role))
   WITH CHECK (has_role(auth.uid(),'admin'::app_role));
 
+DROP TRIGGER IF EXISTS trg_scheme_banners_updated ON public.scheme_banners;
 CREATE TRIGGER trg_scheme_banners_updated
   BEFORE UPDATE ON public.scheme_banners
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
