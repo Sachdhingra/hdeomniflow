@@ -35,6 +35,7 @@ const AdminAutomation = lazy(() => import("@/pages/AdminAutomation"));
 const LeadOutreach = lazy(() => import("@/pages/LeadOutreach"));
 const AdminMessageTemplates = lazy(() => import("@/pages/AdminMessageTemplates"));
 const AdminFunnelAnalytics = lazy(() => import("@/pages/AdminFunnelAnalytics"));
+const SafesMovementTrend = lazy(() => import("@/pages/SafesMovementTrend"));
 const AccountsApprovals = lazy(() => import("@/pages/AccountsApprovals"));
 const ServiceHeadPendingApprovals = lazy(() => import("@/pages/ServiceHeadPendingApprovals"));
 const AdminOrdersDashboard = lazy(() => import("@/pages/AdminOrdersDashboard"));
@@ -211,6 +212,7 @@ const AppRoutes = () => {
             <Route path="/loyalty-points" element={<LoyaltyPoints />} />
             <Route path="/loyalty-dashboard" element={<LoyaltyDashboard />} />
             <Route path="/inventory" element={<InventoryManager />} />
+            <Route path="/inventory/safes-movement" element={<SafesMovementTrend />} />
             <Route path="/logistics-calculator" element={<LogisticsCalculator />} />
             <Route path="/logistics-calculator/history" element={<LogisticsHistory />} />
             <Route path="/logistics-calculator/settings" element={<LogisticsCalculatorSettings />} />
