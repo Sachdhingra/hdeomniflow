@@ -63,12 +63,18 @@ describe("classifyAction", () => {
 });
 
 describe("isSafesCategory", () => {
-  it("matches the safes naming variants", () => {
+  it("matches the safes naming variants, coded ones included", () => {
+    expect(isSafesCategory("SAFES1")).toBe(true);
     expect(isSafesCategory("Safes")).toBe(true);
     expect(isSafesCategory("SAFE - Home")).toBe(true);
-    expect(isSafesCategory("Lockers")).toBe(true);
+    expect(isSafesCategory("Vaults")).toBe(true);
     expect(isSafesCategory("Sofa")).toBe(false);
     expect(isSafesCategory(null)).toBe(false);
+  });
+
+  it("does not sweep in storage-locker furniture", () => {
+    expect(isSafesCategory("Lockers")).toBe(false);
+    expect(isSafesCategory("UPMDSDINCHR1")).toBe(false);
   });
 });
 

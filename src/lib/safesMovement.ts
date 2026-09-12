@@ -34,10 +34,15 @@ export function classifyAction(action: string): MovementKind {
   return "adjustment";
 }
 
-/** Category names that mean "safes" across the variations used in the catalogue. */
+/**
+ * Category names that mean "safes" — matches the coded names the catalogue
+ * uses (SAFES1, SAFES2 …) as well as plain ones. Deliberately narrow: "locker"
+ * is excluded because storage-locker furniture is not a safe. Any other
+ * category can still be picked by hand on the report.
+ */
 export function isSafesCategory(name?: string | null): boolean {
   if (!name) return false;
-  return /safe|locker|vault/i.test(name);
+  return /safe|vault/i.test(name);
 }
 
 export function monthKey(iso: string): string {
