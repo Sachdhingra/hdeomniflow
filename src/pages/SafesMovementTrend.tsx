@@ -16,9 +16,9 @@ import {
 } from "lucide-react";
 import { toast } from "@/lib/toast";
 import {
-  MOVEMENT_MONTHS, aggregateMovement, buildMonthKeys, isSafesCategory,
-  shortMonth, toCsv, windowStart,
-  type AuditRow, type ModelMovementRow, type ProductRef,
+  MANUAL_RECEIPT_ACTION, MOVEMENT_MONTHS, aggregateMovement, buildMonthKeys,
+  isSafesCategory, shortMonth, toCsv, windowStart,
+  type AuditRow, type ModelMovementRow, type OrderRow, type ProductRef,
 } from "@/lib/safesMovement";
 
 const ALLOWED_ROLES = ["admin", "sales", "accounts", "service_head"];
@@ -60,9 +60,9 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
 }
 
 /**
- * Model-wise movement trend for safes over the last three months, read off
- * inventory_audit_log (sales, receipts and reversals) rather than order rows,
- * so every movement the inventory triggers record is counted exactly once.
+ * Model-wise movement trend for safes over the last three months. Sales are
+ * read from hde_orders, the book of record — the inventory audit log only
+ * carries a deduction when the order has a location_id, so it undercounts.
  */
 const SafesMovementTrend = () => {
   const { user } = useAuth();
@@ -70,6 +70,7 @@ const SafesMovementTrend = () => {
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [categoryFilter, setCategoryFilter] = useState<string>("safes");
   const [products, setProducts] = useState<ProductRef[]>([]);
+  const [orders, setOrders] = useState<OrderRow[]>([]);
   const [audit, setAudit] = useState<AuditRow[]>([]);
   const [stock, setStock] = useState<Record<string, number>>({});
   const [search, setSearch] = useState("");
@@ -97,7 +98,7 @@ const SafesMovementTrend = () => {
           : [categoryFilter];
 
       if (wantedIds.length === 0) {
-        setProducts([]); setAudit([]); setStock({});
+        setProducts([]); setOrders([]); setAudit([]); setStock({});
         return;
       }
 
@@ -128,11 +129,32 @@ const SafesMovementTrend = () => {
 
       // Filter by date server-side and by product client-side: the id list is
       // far too long for a URL filter once the catalogue grows.
+      //
+      // A company order is dated by completed_at, which can fall in the window
+      // while created_at sits before it, so orders are fetched on either date.
+      const orderRows: OrderRow[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+          .from("hde_orders")
+          .select("product_id, order_type, status, qty_sold, created_at, completed_at")
+          .or(`created_at.gte.${since},completed_at.gte.${since}`)
+          .order("created_at", { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        const batch = (data ?? []) as OrderRow[];
+        orderRows.push(...batch.filter(r => productIds.has(r.product_id)));
+        if (batch.length < PAGE) break;
+      }
+      setOrders(orderRows);
+
+      // Only manual Receive Stock entries — every other receipt has an order
+      // row behind it and would otherwise be counted twice.
       const auditRows: AuditRow[] = [];
       for (let from = 0; ; from += PAGE) {
         const { data, error } = await supabase
           .from("inventory_audit_log")
           .select("product_id, action, quantity_change, created_at")
+          .eq("action", MANUAL_RECEIPT_ACTION)
           .gte("created_at", since)
           .order("created_at", { ascending: true })
           .range(from, from + PAGE - 1);
@@ -168,8 +190,8 @@ const SafesMovementTrend = () => {
   useEffect(() => { load(); }, [load]);
 
   const summary = useMemo(
-    () => aggregateMovement(audit, products, monthKeys, { stockByProduct: stock }),
-    [audit, products, monthKeys, stock],
+    () => aggregateMovement({ orders, audit }, products, monthKeys, { stockByProduct: stock }),
+    [orders, audit, products, monthKeys, stock],
   );
 
   const visibleRows = useMemo(() => {
@@ -242,9 +264,9 @@ const SafesMovementTrend = () => {
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <Stat label="Net units sold" value={String(totals.netSold)} hint={`${totals.sold} sold − ${totals.returned} returned`} />
+            <Stat label="Units sold" value={String(totals.sold)} hint={totals.cancelled ? `${totals.cancelled} more cancelled` : "orders raised in the window"} />
             <Stat label="Units received" value={String(totals.received)} />
-            <Stat label="Net stock movement" value={`${totals.netMovement > 0 ? "+" : ""}${totals.netMovement}`} hint="received − net sold" />
+            <Stat label="Net stock movement" value={`${totals.netMovement > 0 ? "+" : ""}${totals.netMovement}`} hint="received − sold" />
             <Stat label="Sales value" value={inr(totals.value)} hint="net units × net price" />
             <Stat label="Models moved" value={`${totals.modelsMoved}`} hint={`${totals.modelsIdle} with no movement`} />
           </div>
@@ -312,7 +334,7 @@ const SafesMovementTrend = () => {
                     <TableRow>
                       <TableHead>Model</TableHead>
                       {monthKeys.map(k => <TableHead key={k} className="text-right">{shortMonth(k)}</TableHead>)}
-                      <TableHead className="text-right">Net sold</TableHead>
+                      <TableHead className="text-right">Sold</TableHead>
                       <TableHead className="text-right">Received</TableHead>
                       <TableHead className="text-right">Net movement</TableHead>
                       <TableHead className="text-right">In stock</TableHead>
@@ -330,16 +352,16 @@ const SafesMovementTrend = () => {
                         </TableCell>
                         {monthKeys.map(k => (
                           <TableCell key={k} className="text-right tabular-nums">
-                            {r.months[k].netSold || <span className="text-muted-foreground">—</span>}
+                            {r.months[k].sold || <span className="text-muted-foreground">—</span>}
                           </TableCell>
                         ))}
-                        <TableCell className="text-right tabular-nums font-medium">{r.netSold}</TableCell>
+                        <TableCell className="text-right tabular-nums font-medium">{r.totalSold}</TableCell>
                         <TableCell className="text-right tabular-nums">{r.totalReceived}</TableCell>
                         <TableCell className={`text-right tabular-nums ${r.netMovement < 0 ? "text-red-600" : ""}`}>
                           {r.netMovement > 0 ? `+${r.netMovement}` : r.netMovement}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {r.stockOnHand === 0 && r.netSold > 0
+                          {r.stockOnHand === 0 && r.totalSold > 0
                             ? <Badge variant="outline" className="text-[10px]">out of stock</Badge>
                             : r.stockOnHand}
                         </TableCell>
@@ -350,8 +372,9 @@ const SafesMovementTrend = () => {
                 </Table>
               )}
               <p className="text-xs text-muted-foreground mt-3">
-                Net sold = sales minus cancellations and rejections. Internal warehouse-to-showroom
-                transfers and stock corrections are excluded. Trend compares {shortMonth(monthKeys[monthKeys.length - 1])} with {shortMonth(monthKeys[monthKeys.length - 2])}.
+                Sold counts sale orders raised in each month, excluding ones later cancelled or
+                rejected. Received counts completed company orders plus manual stock receipts.
+                Trend compares {shortMonth(monthKeys[monthKeys.length - 1])} with {shortMonth(monthKeys[monthKeys.length - 2])}.
               </p>
             </CardContent>
           </Card>

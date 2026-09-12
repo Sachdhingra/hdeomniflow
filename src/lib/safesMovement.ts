@@ -1,38 +1,28 @@
 // Model-wise movement trend for a product category (defaults to Safes).
 //
-// Every stock movement in the system lands in inventory_audit_log with a signed
-// quantity_change and an action string (see the hde_apply_inventory_delta
-// helper). This module turns those raw rows into a month-by-month, model-wise
-// trend — kept pure so the numbers can be unit-tested without a database.
+// Units sold come from hde_orders, which is the book of record for a sale.
+// The inventory_audit_log is deliberately NOT used for sales: a deduction is
+// only written when the order carries a location_id (see
+// handle_hde_order_sale_deduction, and the legacy backfill in
+// 20260717120000), so location-less sale orders are missing from it entirely.
+//
+// Receipts come from two non-overlapping paths: company orders completed
+// (which write 'warehouse_receipt' themselves) and the manual Receive Stock
+// RPC (which writes 'stock_received' with no order row). Counting the order
+// rows for the first and the audit rows for the second avoids double counting.
+//
+// Kept pure so the numbers can be unit-tested without a database.
 
 export const MOVEMENT_MONTHS = 3;
 
-export type MovementKind = "sold" | "received" | "returned" | "transfer" | "adjustment";
-
-/** Units leaving stock to a customer. */
-const SOLD_ACTIONS = new Set(["sale_deduction", "admin_override_sale", "stock_out_order"]);
-/** Units entering stock from the company / supplier. */
-const RECEIVED_ACTIONS = new Set(["stock_received", "warehouse_receipt", "order_company_receipt"]);
-/** Units put back after a cancelled, rejected or deleted sale. */
-const RETURNED_ACTIONS = new Set(["sale_reversal", "sale_reversal_on_delete", "reversal"]);
-/** Internal warehouse → showroom shuffles. Net zero, never counted as movement. */
-const TRANSFER_ACTIONS = new Set(["replacement_warehouse_deduction", "replacement_display_receipt"]);
-/** Corrections and imports — real, but not trade. */
-const ADJUSTMENT_ACTIONS = new Set(["manual_adjustment", "stock_count", "tally_import", "pending_resolved"]);
-
-/**
- * Bucket an audit action. Unknown actions fall back to "adjustment" so a new
- * action type never silently inflates the sold/received figures.
- */
-export function classifyAction(action: string): MovementKind {
-  const a = (action || "").toLowerCase();
-  if (SOLD_ACTIONS.has(a)) return "sold";
-  if (RECEIVED_ACTIONS.has(a)) return "received";
-  if (RETURNED_ACTIONS.has(a)) return "returned";
-  if (TRANSFER_ACTIONS.has(a)) return "transfer";
-  if (ADJUSTMENT_ACTIONS.has(a)) return "adjustment";
-  return "adjustment";
-}
+/** Order types that mean a unit left the business to a customer. */
+export const SALE_ORDER_TYPES = ["warehouse", "showroom"];
+/** Order type that means stock is being pulled in from the company. */
+export const RECEIPT_ORDER_TYPE = "company";
+/** Statuses that void an order — the unit never actually went out. */
+export const VOID_STATUSES = ["rejected", "cancelled"];
+/** The one audit action that has no order row behind it. */
+export const MANUAL_RECEIPT_ACTION = "stock_received";
 
 /**
  * Category names that mean "safes" — matches the coded names the catalogue
@@ -71,12 +61,20 @@ export function shortMonth(key: string): string {
     .toLocaleString("en-IN", { month: "short", year: "2-digit" });
 }
 
+export interface OrderRow {
+  product_id: string;
+  order_type: string;
+  status: string;
+  qty_sold: number | null;
+  created_at: string;
+  completed_at?: string | null;
+}
+
 export interface AuditRow {
   product_id: string;
   action: string;
   quantity_change: number;
   created_at: string;
-  location_id?: string | null;
 }
 
 export interface ProductRef {
@@ -88,11 +86,12 @@ export interface ProductRef {
 }
 
 export interface MonthCell {
+  /** Units that actually went out to customers. */
   sold: number;
-  returned: number;
+  /** Units on orders that were later rejected or cancelled. Not sold. */
+  cancelled: number;
+  /** Units taken into stock. */
   received: number;
-  /** sold minus returned — what actually left the business that month. */
-  netSold: number;
 }
 
 export interface ModelMovementRow {
@@ -102,10 +101,9 @@ export interface ModelMovementRow {
   category: string | null;
   months: Record<string, MonthCell>;
   totalSold: number;
-  totalReturned: number;
-  netSold: number;
+  totalCancelled: number;
   totalReceived: number;
-  /** received minus netSold — stock built up (+) or drawn down (−) in the window. */
+  /** received minus sold — stock built up (+) or drawn down (−) in the window. */
   netMovement: number;
   stockOnHand: number;
   value: number;
@@ -119,8 +117,7 @@ export interface ModelMovementRow {
 export interface MovementTotals {
   months: Record<string, MonthCell>;
   sold: number;
-  returned: number;
-  netSold: number;
+  cancelled: number;
   received: number;
   netMovement: number;
   value: number;
@@ -137,7 +134,7 @@ export interface MovementSummary {
 }
 
 function emptyCell(): MonthCell {
-  return { sold: 0, returned: 0, received: 0, netSold: 0 };
+  return { sold: 0, cancelled: 0, received: 0 };
 }
 
 function pctChange(from: number, to: number): number {
@@ -148,6 +145,17 @@ function pctChange(from: number, to: number): number {
 /** Anything under this swing reads as flat rather than a real move. */
 const FLAT_BAND = 5;
 
+/** An order row always moves at least one unit, even with qty_sold unset. */
+function orderUnits(order: OrderRow): number {
+  return Math.max(1, order.qty_sold ?? 1);
+}
+
+export interface MovementInput {
+  orders: OrderRow[];
+  /** Audit rows; only manual 'stock_received' entries are read. */
+  audit?: AuditRow[];
+}
+
 export interface AggregateOptions {
   /** How many models to plot on the trend chart. */
   topN?: number;
@@ -156,16 +164,17 @@ export interface AggregateOptions {
 }
 
 /**
- * Fold audit rows into one row per model over the given month window.
+ * Fold orders and receipts into one row per model over the given month window.
  * Rows outside the window, or for products not in `products`, are ignored.
  */
 export function aggregateMovement(
-  audit: AuditRow[],
+  input: MovementInput,
   products: ProductRef[],
   monthKeys: string[],
   options: AggregateOptions = {},
 ): MovementSummary {
   const { topN = 6, stockByProduct = {} } = options;
+  const { orders, audit = [] } = input;
   const productById = new Map(products.map(p => [p.id, p]));
   const inWindow = new Set(monthKeys);
 
@@ -182,8 +191,7 @@ export function aggregateMovement(
         category: p.category_name ?? null,
         months: blankMonths(),
         totalSold: 0,
-        totalReturned: 0,
-        netSold: 0,
+        totalCancelled: 0,
         totalReceived: 0,
         netMovement: 0,
         stockOnHand: stockByProduct[p.id] ?? 0,
@@ -200,40 +208,56 @@ export function aggregateMovement(
   // Seed every catalogue model so idle ones still surface as zero-movement.
   products.forEach(rowFor);
 
+  /** Returns the month cell to write into, or null when out of scope. */
+  const cellAt = (productId: string, iso: string): MonthCell | null => {
+    const product = productById.get(productId);
+    if (!product) return null;
+    const key = monthKey(iso);
+    if (!inWindow.has(key)) return null;
+    return rowFor(product).months[key];
+  };
+
+  for (const order of orders) {
+    const units = orderUnits(order);
+
+    if (SALE_ORDER_TYPES.includes(order.order_type)) {
+      // A sale is dated when it was raised, not when it was fulfilled.
+      const cell = cellAt(order.product_id, order.created_at);
+      if (!cell) continue;
+      if (VOID_STATUSES.includes(order.status)) cell.cancelled += units;
+      else cell.sold += units;
+      continue;
+    }
+
+    if (order.order_type === RECEIPT_ORDER_TYPE && order.status === "completed") {
+      // Stock lands when the company order is completed.
+      const cell = cellAt(order.product_id, order.completed_at || order.created_at);
+      if (cell) cell.received += units;
+    }
+  }
+
   for (const entry of audit) {
-    const product = productById.get(entry.product_id);
-    if (!product) continue;
-    const key = monthKey(entry.created_at);
-    if (!inWindow.has(key)) continue;
-
-    const kind = classifyAction(entry.action);
-    if (kind === "transfer" || kind === "adjustment") continue;
-
+    if (entry.action !== MANUAL_RECEIPT_ACTION) continue;
     const units = Math.abs(entry.quantity_change ?? 0);
     if (units === 0) continue;
-
-    const cell = rowFor(product).months[key];
-    if (kind === "sold") cell.sold += units;
-    else if (kind === "returned") cell.returned += units;
-    else if (kind === "received") cell.received += units;
+    const cell = cellAt(entry.product_id, entry.created_at);
+    if (cell) cell.received += units;
   }
 
   const rows = [...byProduct.values()];
   for (const row of rows) {
     for (const key of monthKeys) {
       const cell = row.months[key];
-      cell.netSold = cell.sold - cell.returned;
       row.totalSold += cell.sold;
-      row.totalReturned += cell.returned;
+      row.totalCancelled += cell.cancelled;
       row.totalReceived += cell.received;
     }
-    row.netSold = row.totalSold - row.totalReturned;
-    row.netMovement = row.totalReceived - row.netSold;
+    row.netMovement = row.totalReceived - row.totalSold;
 
     const price = productById.get(row.productId)?.net_price ?? 0;
-    row.value = row.netSold * (price || 0);
+    row.value = row.totalSold * (price || 0);
 
-    const series = monthKeys.map(k => row.months[k].netSold);
+    const series = monthKeys.map(k => row.months[k].sold);
     const last = series[series.length - 1] ?? 0;
     const prev = series[series.length - 2] ?? 0;
     row.trendPct = pctChange(prev, last);
@@ -242,15 +266,14 @@ export function aggregateMovement(
   }
 
   rows.sort((a, b) =>
-    b.netSold - a.netSold ||
+    b.totalSold - a.totalSold ||
     b.totalReceived - a.totalReceived ||
     a.model.localeCompare(b.model));
 
   const totals: MovementTotals = {
     months: blankMonths(),
     sold: 0,
-    returned: 0,
-    netSold: 0,
+    cancelled: 0,
     received: 0,
     netMovement: 0,
     value: 0,
@@ -263,26 +286,24 @@ export function aggregateMovement(
       const from = row.months[key];
       const into = totals.months[key];
       into.sold += from.sold;
-      into.returned += from.returned;
+      into.cancelled += from.cancelled;
       into.received += from.received;
-      into.netSold += from.netSold;
     }
     totals.sold += row.totalSold;
-    totals.returned += row.totalReturned;
+    totals.cancelled += row.totalCancelled;
     totals.received += row.totalReceived;
     totals.value += row.value;
     if (row.totalSold > 0 || row.totalReceived > 0) totals.modelsMoved += 1;
     else totals.modelsIdle += 1;
   }
-  totals.netSold = totals.sold - totals.returned;
-  totals.netMovement = totals.received - totals.netSold;
+  totals.netMovement = totals.received - totals.sold;
 
-  const topModels = rows.filter(r => r.netSold > 0).slice(0, topN).map(r => r.model);
+  const topModels = rows.filter(r => r.totalSold > 0).slice(0, topN).map(r => r.model);
   const chartData = monthKeys.map(key => {
     const point: Record<string, string | number> = { month: shortMonth(key), key };
     for (const name of topModels) {
       const row = rows.find(r => r.model === name);
-      point[name] = row ? row.months[key].netSold : 0;
+      point[name] = row ? row.months[key].sold : 0;
     }
     return point;
   });
@@ -296,7 +317,7 @@ export function toCsv(summary: MovementSummary): string {
   const header = [
     "Model", "SKU", "Category",
     ...monthKeys.map(k => `${shortMonth(k)} sold`),
-    "Total sold", "Returned", "Net sold", "Received", "Net movement", "Stock on hand", "MoM %",
+    "Total sold", "Cancelled", "Received", "Net movement", "Stock on hand", "MoM %",
   ].join(",");
 
   const escape = (v: string | number) => {
@@ -306,8 +327,8 @@ export function toCsv(summary: MovementSummary): string {
 
   const lines = rows.map(r => [
     r.model, r.sku, r.category ?? "",
-    ...monthKeys.map(k => r.months[k].netSold),
-    r.totalSold, r.totalReturned, r.netSold, r.totalReceived, r.netMovement, r.stockOnHand, r.trendPct,
+    ...monthKeys.map(k => r.months[k].sold),
+    r.totalSold, r.totalCancelled, r.totalReceived, r.netMovement, r.stockOnHand, r.trendPct,
   ].map(escape).join(","));
 
   return [header, ...lines].join("\n");
