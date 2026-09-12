@@ -7,11 +7,14 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/lib/toast";
 import {
-  AlertCircle, ChevronLeft, ChevronRight, ImageOff, Loader2, RefreshCw, Trash2, Upload,
+  AlertCircle, ChevronLeft, ChevronRight, ImageOff, Loader2, RefreshCw, Trash2, Upload, Video,
 } from "lucide-react";
 import { compressImage } from "@/components/ImageCompressor";
 import { parseStorageUrl } from "@/lib/photoUrls";
 import { moveBanner, nextSortOrder, orderUpdates } from "@/lib/bannerOrder";
+import {
+  KIOSK_MEDIA_ACCEPT, MAX_VIDEO_MB, detectUploadType, mediaTypeOf,
+} from "@/lib/kioskMedia";
 
 const BUCKET = "scheme-banners";
 /** Kiosk screens are 1080p — anything larger is bandwidth the kiosk pays for on every idle loop. */
@@ -25,6 +28,7 @@ interface Banner {
   id: string;
   title: string;
   image_url: string;
+  media_type: string | null;
   active: boolean;
   sort_order: number;
 }
@@ -43,7 +47,7 @@ const AdminSchemeBanners = () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("scheme_banners")
-      .select("id,title,image_url,active,sort_order")
+      .select("id,title,image_url,media_type,active,sort_order")
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: true });
     setLoading(false);
@@ -67,27 +71,35 @@ const AdminSchemeBanners = () => {
     // Cleared up front so the same file can be picked again after a failure.
     input.value = "";
 
-    if (!file.type.startsWith("image/")) return toast.error("Please choose an image file.");
-    if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+    const kind = detectUploadType(file);
+    if (!kind) {
+      return toast.error("Please choose a JPG, PNG, WEBP or GIF image, or an MP4 or WEBM video.");
+    }
+    const sizeLimitMb = kind === "video" ? MAX_VIDEO_MB : MAX_UPLOAD_MB;
+    if (file.size > sizeLimitMb * 1024 * 1024) {
       return toast.error(
-        `That image is ${(file.size / 1024 / 1024).toFixed(1)} MB — please use one under ${MAX_UPLOAD_MB} MB.`,
+        `That ${kind} is ${(file.size / 1024 / 1024).toFixed(1)} MB — please use one under ${sizeLimitMb} MB.`,
       );
     }
 
     setUploading(true);
     try {
-      const compressed = await compressImage(file, MAX_SIZE_KB, MAX_DIMENSION);
+      // Videos go up as-is: the canvas compressor only understands images, and
+      // re-encoding video in the browser is not worth the wait on this page.
+      const upload = kind === "video"
+        ? file
+        : await compressImage(file, MAX_SIZE_KB, MAX_DIMENSION);
       // compressImage hands the original file back when the browser cannot
       // decode it — an iPhone HEIC, mostly. Those upload happily and then show
       // as a blank screen on the kiosk, so stop them here.
-      if (!DISPLAYABLE.includes(compressed.type)) {
+      if (kind === "image" && !DISPLAYABLE.includes(upload.type)) {
         return toast.error("That image format can't be shown on the kiosk. Please upload a JPG or PNG.");
       }
 
-      const path = `${Date.now()}-${compressed.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
-      const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, compressed, {
+      const path = `${Date.now()}-${upload.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+      const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, upload, {
         cacheControl: "31536000",
-        contentType: compressed.type,
+        contentType: upload.type || (kind === "video" ? "video/mp4" : "image/jpeg"),
         upsert: false,
       });
       if (upErr) return toast.error(`Upload failed: ${upErr.message}`);
@@ -97,6 +109,7 @@ const AdminSchemeBanners = () => {
       const { error: insErr } = await supabase.from("scheme_banners").insert({
         title: title.trim() || file.name,
         image_url: pub.publicUrl,
+        media_type: kind,
         active: true,
         sort_order: nextSortOrder(banners),
         created_by: auth.user?.id ?? null,
@@ -108,7 +121,7 @@ const AdminSchemeBanners = () => {
       }
 
       setTitle("");
-      toast.success("Banner uploaded");
+      toast.success(kind === "video" ? "Video uploaded" : "Banner uploaded");
       load();
     } finally {
       setUploading(false);
@@ -182,6 +195,7 @@ const AdminSchemeBanners = () => {
           <h1 className="text-2xl font-bold">Kiosk Scheme Banners</h1>
           <p className="text-sm text-muted-foreground">
             Shown as a full-screen screensaver when the feedback kiosk sits idle, in the order below.
+            Videos play right through before the next item; a single video loops on its own.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={load} disabled={loading}>
@@ -190,7 +204,7 @@ const AdminSchemeBanners = () => {
       </div>
 
       <Card>
-        <CardHeader><CardTitle>Add new banner</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Add new banner or video</CardTitle></CardHeader>
         <CardContent className="flex flex-wrap items-end gap-3">
           <div className="flex-1 min-w-[200px]">
             <Label htmlFor="banner-title">Title (optional)</Label>
@@ -202,11 +216,11 @@ const AdminSchemeBanners = () => {
             />
           </div>
           <div>
-            <Label htmlFor="banner-file">Image</Label>
+            <Label htmlFor="banner-file">Image or video</Label>
             <Input
               id="banner-file"
               type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
+              accept={KIOSK_MEDIA_ACCEPT}
               onChange={onFile}
               disabled={uploading}
             />
@@ -217,8 +231,9 @@ const AdminSchemeBanners = () => {
             </span>
           )}
           <p className="text-xs text-muted-foreground w-full flex items-center gap-1">
-            <Upload className="w-3 h-3" /> JPG or PNG, landscape. Larger images are resized to{" "}
-            {MAX_DIMENSION}px wide so the kiosk loads them quickly.
+            <Upload className="w-3 h-3" /> JPG or PNG images (landscape) are resized to{" "}
+            {MAX_DIMENSION}px wide so the kiosk loads them quickly. MP4 or WEBM videos upload as
+            they are — keep them under {MAX_VIDEO_MB} MB so the kiosk isn't waiting on the download.
           </p>
         </CardContent>
       </Card>
@@ -257,8 +272,20 @@ const AdminSchemeBanners = () => {
                     {broken.has(b.id) ? (
                       <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-muted-foreground">
                         <ImageOff className="w-6 h-6" />
-                        <span className="text-xs">Image missing from storage</span>
+                        <span className="text-xs">File missing from storage</span>
                       </div>
+                    ) : mediaTypeOf(b) === "video" ? (
+                      // Muted and controllable so an admin can check the clip
+                      // without a wall of tiles all playing at once.
+                      <video
+                        src={b.image_url}
+                        className="w-full h-full object-cover bg-black"
+                        muted
+                        playsInline
+                        controls
+                        preload="metadata"
+                        onError={() => markBroken(b.id)}
+                      />
                     ) : (
                       <img
                         src={b.image_url}
@@ -269,7 +296,14 @@ const AdminSchemeBanners = () => {
                     )}
                   </div>
                   <div className="p-3 space-y-2">
-                    <div className="font-medium truncate">{b.title || "Untitled"}</div>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-medium truncate">{b.title || "Untitled"}</span>
+                      {mediaTypeOf(b) === "video" && (
+                        <span className="shrink-0 flex items-center gap-1 text-xs rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+                          <Video className="w-3 h-3" /> Video
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center justify-between gap-2">
                       <label className="flex items-center gap-2 text-sm">
                         <Switch
