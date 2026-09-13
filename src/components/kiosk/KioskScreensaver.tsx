@@ -33,6 +33,7 @@ const KioskScreensaver = ({
   const [active, setActive] = useState(false);
   const [idx, setIdx] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRetryRef = useRef(0);
 
   const fetchBanners = async () => {
     const { data } = await supabase
@@ -102,6 +103,7 @@ const KioskScreensaver = ({
   useEffect(() => {
     const el = videoRef.current;
     if (!active || !isVideo || !el) return;
+    videoRetryRef.current = 0;
     el.currentTime = 0;
     // Muted autoplay is allowed everywhere, but a rejected promise must not
     // stall the rotation — the fallback timer above still moves things along.
@@ -133,11 +135,23 @@ const KioskScreensaver = ({
           loop={single}
           preload="auto"
           aria-label={current.title || "Scheme video"}
+          onPlaying={() => { videoRetryRef.current = 0; }}
           onEnded={() => { if (!single) next(); }}
           // A missing or undecodable file would otherwise park the screensaver
           // on a black rectangle until someone touches the screen. The warning
           // is the only trace left, since the kiosk runs unattended.
           onError={(e) => {
+            const video = e.currentTarget;
+            if (videoRetryRef.current === 0) {
+              videoRetryRef.current = 1;
+              window.setTimeout(() => {
+                const separator = current.image_url.includes("?") ? "&" : "?";
+                video.src = `${current.image_url}${separator}retry=${Date.now()}`;
+                video.load();
+                void video.play().catch(() => {});
+              }, 1500);
+              return;
+            }
             console.warn(
               `[kiosk] skipping "${current.title || current.id}": video error ${e.currentTarget.error?.code ?? "unknown"}`,
             );
