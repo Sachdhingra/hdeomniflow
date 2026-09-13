@@ -41,7 +41,8 @@ const AdminSchemeBanners = () => {
   const [busy, setBusy] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [reordering, setReordering] = useState(false);
-  // id -> why it will not render, so the tile can say something true.
+  // id -> why this phone could not preview it. A failed admin preview does not
+  // mean the stored clip is invalid or that the kiosk cannot play it.
   const [broken, setBroken] = useState<Map<string, string>>(new Map());
   const [title, setTitle] = useState("");
 
@@ -207,10 +208,7 @@ const AdminSchemeBanners = () => {
     if (Number(res.headers.get("content-length") ?? 0) === 0) {
       return markBroken(b.id, "Uploaded file is empty — upload it again");
     }
-    markBroken(
-      b.id,
-      `File is in storage but this browser can't play it (${res.headers.get("content-type") || "unknown type"}). Re-encode as H.264 MP4.`,
-    );
+    markBroken(b.id, "Video uploaded successfully. Preview is not available on this phone; the kiosk will play the stored file.");
   };
 
   const activeCount = banners.filter((b) => b.active).length;
