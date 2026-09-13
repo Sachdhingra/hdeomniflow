@@ -13,7 +13,7 @@ import { compressImage } from "@/components/ImageCompressor";
 import { parseStorageUrl } from "@/lib/photoUrls";
 import { moveBanner, nextSortOrder, orderUpdates } from "@/lib/bannerOrder";
 import {
-  KIOSK_MEDIA_ACCEPT, MAX_VIDEO_MB, detectUploadType, mediaTypeOf, probeVideo,
+  KIOSK_MEDIA_ACCEPT, MAX_VIDEO_MB, detectUploadType, mediaTypeOf,
 } from "@/lib/kioskMedia";
 
 const BUCKET = "scheme-banners";
@@ -82,18 +82,6 @@ const AdminSchemeBanners = () => {
       return toast.error(
         `That ${kind} is ${(file.size / 1024 / 1024).toFixed(1)} MB — please use one under ${sizeLimitMb} MB.`,
       );
-    }
-
-    if (kind === "video") {
-      // The picker's MIME type names the container, not the codec inside, so
-      // an unplayable clip would otherwise reach storage and then quietly fail
-      // to appear on the kiosk.
-      setBusy("Checking video…");
-      const probe = await probeVideo(file);
-      if (!probe.ok) {
-        setBusy(null);
-        return toast.error(`That video ${probe.reason}. Re-encode it as H.264 MP4 and try again.`);
-      }
     }
 
     setBusy("Uploading…");
@@ -271,8 +259,8 @@ const AdminSchemeBanners = () => {
           )}
           <p className="text-xs text-muted-foreground w-full flex items-center gap-1">
             <Upload className="w-3 h-3" /> JPG or PNG images (landscape) are resized to{" "}
-            {MAX_DIMENSION}px wide so the kiosk loads them quickly. MP4 or WEBM videos upload as
-            they are — keep them under {MAX_VIDEO_MB} MB so the kiosk isn't waiting on the download.
+            {MAX_DIMENSION}px wide so the kiosk loads them quickly. Standard MP4 videos, including
+            Gemini-generated 1280 × 720 clips, upload directly. Keep videos under {MAX_VIDEO_MB} MB.
           </p>
         </CardContent>
       </Card>
