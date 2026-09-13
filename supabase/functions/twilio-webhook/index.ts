@@ -53,7 +53,7 @@ function normalizePhone(raw: string | undefined | null): string {
 }
 
 async function findLeadByPhone(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   phone: string,
 ): Promise<{ id: string; sequence: number } | null> {
   if (!phone) return null;
