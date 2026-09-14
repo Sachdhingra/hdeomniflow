@@ -34,6 +34,8 @@ const KioskScreensaver = ({
   const [idx, setIdx] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoRetryRef = useRef(0);
+  const fallbackUrlRef = useRef<string | null>(null);
+  const fallbackLoadingRef = useRef(false);
 
   const fetchBanners = async () => {
     const { data } = await supabase
@@ -72,7 +74,10 @@ const KioskScreensaver = ({
     const check = setInterval(() => {
       if (!active && Date.now() - last > idleSeconds * 1000 && banners.length > 0) {
         setActive(true);
-        setIdx(0);
+        // Start with a video when one exists. Otherwise a newly uploaded clip
+        // can appear not to work while every still image ahead of it rotates.
+        const firstVideo = banners.findIndex((banner) => mediaTypeOf(banner) === "video");
+        setIdx(firstVideo >= 0 ? firstVideo : 0);
       }
     }, 2000);
     return () => {
@@ -104,11 +109,58 @@ const KioskScreensaver = ({
     const el = videoRef.current;
     if (!active || !isVideo || !el) return;
     videoRetryRef.current = 0;
+    fallbackLoadingRef.current = false;
+    if (fallbackUrlRef.current) {
+      URL.revokeObjectURL(fallbackUrlRef.current);
+      fallbackUrlRef.current = null;
+    }
+    // Setting the properties as well as the JSX attributes matters on older
+    // Android WebViews, which evaluate autoplay before React has committed all
+    // media attributes.
+    el.muted = true;
+    el.defaultMuted = true;
+    el.playsInline = true;
     el.currentTime = 0;
     // Muted autoplay is allowed everywhere, but a rejected promise must not
     // stall the rotation — the fallback timer above still moves things along.
     void el.play().catch(() => {});
+
+    return () => {
+      if (fallbackUrlRef.current) {
+        URL.revokeObjectURL(fallbackUrlRef.current);
+        fallbackUrlRef.current = null;
+      }
+    };
   }, [active, isVideo, idx]);
+
+  const retryVideoFromDownload = async (video: HTMLVideoElement) => {
+    if (!current || fallbackLoadingRef.current || videoRetryRef.current > 0) return;
+    videoRetryRef.current = 1;
+    fallbackLoadingRef.current = true;
+    try {
+      // Some kiosk WebViews reject ranged playback from cloud storage even
+      // though they can decode the same MP4. A local blob avoids that streaming
+      // path and gives the decoder the complete file.
+      const response = await fetch(current.image_url, { cache: "no-store" });
+      if (!response.ok) throw new Error(`download returned ${response.status}`);
+      const blob = await response.blob();
+      if (blob.size === 0) throw new Error("download was empty");
+      const localUrl = URL.createObjectURL(blob);
+      if (fallbackUrlRef.current) URL.revokeObjectURL(fallbackUrlRef.current);
+      fallbackUrlRef.current = localUrl;
+      video.src = localUrl;
+      video.load();
+      await video.play();
+    } catch (error) {
+      console.warn(
+        `[kiosk] could not play "${current.title || current.id}" after downloading it`,
+        error,
+      );
+      if (!single) next();
+    } finally {
+      fallbackLoadingRef.current = false;
+    }
+  };
 
   // Clamp index if banners shrink while active
   useEffect(() => {
@@ -126,7 +178,6 @@ const KioskScreensaver = ({
         <video
           ref={videoRef}
           key={current.id}
-          src={current.image_url}
           className="w-full h-full object-contain animate-fade-in"
           autoPlay
           muted
@@ -135,7 +186,8 @@ const KioskScreensaver = ({
           loop={single}
           preload="auto"
           aria-label={current.title || "Scheme video"}
-          onPlaying={() => { videoRetryRef.current = 0; }}
+          onCanPlay={(e) => { void e.currentTarget.play().catch(() => {}); }}
+          onPlaying={() => { /* Playback is healthy; keep any local fallback alive until this slide ends. */ }}
           onEnded={() => { if (!single) next(); }}
           // A missing or undecodable file would otherwise park the screensaver
           // on a black rectangle until someone touches the screen. The warning
@@ -143,13 +195,7 @@ const KioskScreensaver = ({
           onError={(e) => {
             const video = e.currentTarget;
             if (videoRetryRef.current === 0) {
-              videoRetryRef.current = 1;
-              window.setTimeout(() => {
-                const separator = current.image_url.includes("?") ? "&" : "?";
-                video.src = `${current.image_url}${separator}retry=${Date.now()}`;
-                video.load();
-                void video.play().catch(() => {});
-              }, 1500);
+              void retryVideoFromDownload(video);
               return;
             }
             console.warn(
@@ -157,7 +203,9 @@ const KioskScreensaver = ({
             );
             if (!single) next();
           }}
-        />
+        >
+          <source src={current.image_url} type="video/mp4" />
+        </video>
       ) : (
         <img
           src={current.image_url}
