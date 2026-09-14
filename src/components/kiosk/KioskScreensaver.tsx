@@ -179,7 +179,6 @@ const KioskScreensaver = ({
           className="w-full h-full object-contain animate-fade-in"
           autoPlay
           muted
-          defaultMuted
           playsInline
           // One clip on its own has nothing to hand over to, so it repeats.
           loop={single}
