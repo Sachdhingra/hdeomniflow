@@ -74,7 +74,10 @@ const KioskScreensaver = ({
     const check = setInterval(() => {
       if (!active && Date.now() - last > idleSeconds * 1000 && banners.length > 0) {
         setActive(true);
-        setIdx(0);
+        // Start with a video when one exists. Otherwise a newly uploaded clip
+        // can appear not to work while every still image ahead of it rotates.
+        const firstVideo = banners.findIndex((banner) => mediaTypeOf(banner) === "video");
+        setIdx(firstVideo >= 0 ? firstVideo : 0);
       }
     }, 2000);
     return () => {
@@ -175,7 +178,6 @@ const KioskScreensaver = ({
         <video
           ref={videoRef}
           key={current.id}
-          src={current.image_url}
           className="w-full h-full object-contain animate-fade-in"
           autoPlay
           muted
@@ -201,7 +203,9 @@ const KioskScreensaver = ({
             );
             if (!single) next();
           }}
-        />
+        >
+          <source src={current.image_url} type="video/mp4" />
+        </video>
       ) : (
         <img
           src={current.image_url}
