@@ -35,7 +35,7 @@ let subscribed = false;
 let lastRegistrationError: string | null = null;
 let registrationPromise: Promise<boolean> | null = null;
 
-function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs = STEP_TIMEOUT_MS): Promise<T> {
+function withTimeout<T>(promise: PromiseLike<T>, label: string, timeoutMs = STEP_TIMEOUT_MS): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = window.setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
     promise.then(
@@ -60,6 +60,11 @@ function registrationFailed(context: string, error?: unknown): false {
 
 async function getOneSignal() {
   if (typeof window === "undefined") return null;
+  if (!("serviceWorker" in navigator)) return null;
+  await withTimeout(
+    navigator.serviceWorker.register("/sw.js").then(() => navigator.serviceWorker.ready),
+    "Notification worker startup",
+  );
   const { default: OneSignal } = await import("react-onesignal");
   const pushWindow = window as PushWindow;
   if (!pushWindow.__omniflowOneSignalInit) {
@@ -79,7 +84,12 @@ async function getOneSignal() {
       throw error;
     });
   }
-  await withTimeout(pushWindow.__omniflowOneSignalInit, "Notification service startup");
+  try {
+    await withTimeout(pushWindow.__omniflowOneSignalInit, "Notification service startup");
+  } catch (error) {
+    delete pushWindow.__omniflowOneSignalInit;
+    throw error;
+  }
   return OneSignal;
 }
 
@@ -102,6 +112,12 @@ function waitForSubscriptionId(OneSignal: Exclude<OneSignalClient, null>): Promi
     };
 
     subscription.addEventListener("change", onChange);
+    const currentId = subscription.id;
+    if (currentId && subscription.optedIn) {
+      window.clearTimeout(timer);
+      subscription.removeEventListener("change", onChange);
+      resolve(currentId);
+    }
   });
 }
 
