@@ -25,10 +25,31 @@ type PushWindow = Window & {
   __omniflowOneSignalInit?: Promise<void>;
 };
 
+type OneSignalClient = Awaited<ReturnType<typeof getOneSignal>>;
+
+const STEP_TIMEOUT_MS = 12_000;
+const SUBSCRIPTION_TIMEOUT_MS = 15_000;
+
 // Set once OneSignal reports an active subscription for this device.
 let subscribed = false;
 let lastRegistrationError: string | null = null;
 let registrationPromise: Promise<boolean> | null = null;
+
+function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs = STEP_TIMEOUT_MS): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
 
 function registrationFailed(context: string, error?: unknown): false {
   const detail = error instanceof Error ? error.message : error ? String(error) : "unknown error";
@@ -58,8 +79,49 @@ async function getOneSignal() {
       throw error;
     });
   }
-  await pushWindow.__omniflowOneSignalInit;
+  await withTimeout(pushWindow.__omniflowOneSignalInit, "Notification service startup");
   return OneSignal;
+}
+
+function waitForSubscriptionId(OneSignal: Exclude<OneSignalClient, null>): Promise<string> {
+  const existingId = OneSignal.User.PushSubscription.id;
+  if (existingId) return Promise.resolve(existingId);
+
+  return new Promise<string>((resolve, reject) => {
+    const subscription = OneSignal.User.PushSubscription;
+    const timer = window.setTimeout(() => {
+      subscription.removeEventListener("change", onChange);
+      reject(new Error("No device subscription was created. Close and reopen OmniFlow, then try once more."));
+    }, SUBSCRIPTION_TIMEOUT_MS);
+
+    const onChange = (event: { current: { id: string | null | undefined; optedIn: boolean } }) => {
+      if (!event.current.id || !event.current.optedIn) return;
+      window.clearTimeout(timer);
+      subscription.removeEventListener("change", onChange);
+      resolve(event.current.id);
+    };
+
+    subscription.addEventListener("change", onChange);
+  });
+}
+
+async function saveSubscription(
+  subscriptionId: string,
+  role?: string | null,
+): Promise<boolean> {
+  const { error } = await withTimeout(
+    supabase.rpc("register_staff_push_device" as never, {
+      _player_id: subscriptionId,
+      _role: role ?? null,
+      _user_agent: navigator.userAgent.slice(0, 300),
+    } as never),
+    "Saving this phone",
+  );
+  if (error) return registrationFailed("The device subscription could not be saved", error);
+
+  subscribed = true;
+  lastRegistrationError = null;
+  return true;
 }
 
 /** Load the SDK early so the browser doesn't swallow the subscription state. */
@@ -94,6 +156,24 @@ export function staffPushRegistrationError(): string | null {
   return lastRegistrationError;
 }
 
+/** Restore an existing subscription without opening a browser permission prompt. */
+export async function restoreStaffPush(
+  userId: string,
+  role?: string | null,
+): Promise<boolean> {
+  if (typeof window === "undefined" || !userId || permissionState() !== "granted") return false;
+  try {
+    const OneSignal = await getOneSignal();
+    if (!OneSignal) return false;
+    await withTimeout(OneSignal.login(userId), "Staff notification sign-in");
+    const subscriptionId = OneSignal.User.PushSubscription.id;
+    if (!subscriptionId || !OneSignal.User.PushSubscription.optedIn) return false;
+    return saveSubscription(subscriptionId, role);
+  } catch (error) {
+    return registrationFailed("Existing notification setup could not be restored", error);
+  }
+}
+
 /**
  * Ask for notification permission, opt the device in, and store the OneSignal
  * subscription against the signed-in staff user.
@@ -113,37 +193,21 @@ async function performStaffPushRegistration(
     const OneSignal = await getOneSignal();
     if (!OneSignal) return registrationFailed("Push is unavailable in this browser");
 
-    await OneSignal.Notifications.requestPermission();
+    await withTimeout(OneSignal.login(userId), "Staff notification sign-in");
+
+    await withTimeout(OneSignal.Notifications.requestPermission(), "Notification permission request");
     if (!OneSignal.Notifications.permission) {
       return registrationFailed("Notification permission was not granted");
     }
 
-    await OneSignal.User.PushSubscription.optIn();
-
-    // The subscription ID can arrive a moment after opt-in.
-    let subscriptionId = OneSignal.User.PushSubscription.id;
-    for (let i = 0; i < 10 && !subscriptionId; i++) {
-      await new Promise((r) => setTimeout(r, 500));
-      subscriptionId = OneSignal.User.PushSubscription.id;
-    }
-    if (!subscriptionId) {
-      return registrationFailed("Permission is allowed, but no device subscription was created");
-    }
+    await withTimeout(OneSignal.User.PushSubscription.optIn(), "Device subscription");
+    const subscriptionId = await waitForSubscriptionId(OneSignal);
 
     // Goes through the RPC rather than a direct upsert: on a shared browser
     // the subscription ID outlives the sign-in, and only a SECURITY DEFINER
     // can hand the existing row to whoever is signed in now. Without that,
     // the second person's alerts would keep going to the first.
-    const { error } = await supabase.rpc("register_staff_push_device" as never, {
-      _player_id: subscriptionId,
-      _role: role ?? null,
-      _user_agent: navigator.userAgent.slice(0, 300),
-    } as never);
-    if (error) return registrationFailed("The device subscription could not be saved", error);
-
-    subscribed = true;
-    lastRegistrationError = null;
-    return true;
+    return saveSubscription(subscriptionId, role);
   } catch (error) {
     return registrationFailed("Device registration did not complete", error);
   }

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import {
   permissionState,
   registerStaffPush,
+  restoreStaffPush,
   staffPushRegistrationError,
 } from "@/lib/push";
 
@@ -20,10 +21,10 @@ import {
  */
 const StaffPushRegistrar = () => {
   const { user } = useAuth();
-  const [blocked, setBlocked] = useState(false);
+  const [blocked, setBlocked] = useState(true);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [registering, setRegistering] = useState(false);
-  const attemptedFor = useRef<string | null>(null);
+  const restoredFor = useRef<string | null>(null);
 
   const register = useCallback(async () => {
     if (!user) return false;
@@ -40,59 +41,26 @@ const StaffPushRegistrar = () => {
 
   useEffect(() => {
     if (!user) return;
-    // Once per signed-in user per page load.
-    if (attemptedFor.current === user.id) return;
-    attemptedFor.current = user.id;
+    // Restore only an existing subscription. Permission and opt-in are always
+    // initiated by the one visible button so mobile browsers keep the tap's
+    // user gesture and never leave an automatic prompt hanging.
+    if (restoredFor.current === user.id) return;
+    restoredFor.current = user.id;
 
     let cancelled = false;
     (async () => {
-      if (permissionState() === "denied") {
-        setBlocked(true);
-        return;
-      }
-
-      const ok = await register();
+      const ok = await restoreStaffPush(user.id, user.role);
       if (cancelled) return;
-      // Permission and registration are separate. A device can have permission
-      // while the provider subscription or database save still failed.
-      if (!ok) {
-        setBlocked(true);
-        if (permissionState() === "granted") {
-          console.warn(
-            "Staff push registration failed despite granted browser permission.",
-            staffPushRegistrationError(),
-          );
-        }
-      }
+      setBlocked(!ok);
+      setSetupError(ok ? null : staffPushRegistrationError());
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [user, register]);
+  }, [user]);
 
-  // Android may finish granting permission after the first registration
-  // attempt. Retry when the installed app returns to the foreground.
-  useEffect(() => {
-    if (!user) return;
-
-    const retryWhenActive = () => {
-      if (document.visibilityState === "visible" && permissionState() === "granted") {
-        void register();
-      }
-    };
-
-    document.addEventListener("visibilitychange", retryWhenActive);
-    window.addEventListener("focus", retryWhenActive);
-    window.addEventListener("online", retryWhenActive);
-    return () => {
-      document.removeEventListener("visibilitychange", retryWhenActive);
-      window.removeEventListener("focus", retryWhenActive);
-      window.removeEventListener("online", retryWhenActive);
-    };
-  }, [user, register]);
-
-  const retry = async () => {
+  const activate = async () => {
     if (!user) return;
     const ok = await register();
     if (ok) setBlocked(false);
@@ -115,7 +83,7 @@ const StaffPushRegistrar = () => {
               {denied
                 ? "Your browser is blocking OmniFlow notifications, so chat messages and new lead alerts won't reach you when the app is closed. Allow notifications for this site in your browser settings, then reload."
                 : grantedButUnregistered
-                  ? "Notification permission is allowed, but this device has not finished connecting. Tap Retry device setup."
+                  ? "Permission is allowed. Tap once to finish connecting this phone."
                   : "Turn on notifications so chat messages and new lead alerts reach you even when OmniFlow is closed."}
             </p>
             {setupError && grantedButUnregistered && (
@@ -127,7 +95,7 @@ const StaffPushRegistrar = () => {
               </p>
             ) : (
               <Button
-                onClick={retry}
+                onClick={activate}
                 disabled={registering}
                 size="sm"
                 className="mt-3"
@@ -136,7 +104,7 @@ const StaffPushRegistrar = () => {
                 {registering
                   ? "Connecting device…"
                   : grantedButUnregistered
-                    ? "Retry device setup"
+                    ? "Connect this phone"
                     : "Turn on notifications"}
               </Button>
             )}
