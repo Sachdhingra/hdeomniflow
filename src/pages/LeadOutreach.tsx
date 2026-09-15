@@ -60,6 +60,7 @@ const LeadOutreach = () => {
   const [sending, setSending] = useState(false);
   const [results, setResults] = useState<Record<string, { state: SendState; error?: string }>>({});
   const [period, setPeriod] = useState("7");
+  const [sourceFilter, setSourceFilter] = useState("all");
   const [performance, setPerformance] = useState<Performance>({ total: 0, sent: 0, delivered: 0, read: 0, replied: 0, failed: 0 });
   const [activity, setActivity] = useState<ActivityRow[]>([]);
 
@@ -88,7 +89,8 @@ const LeadOutreach = () => {
         .gte("created_at", since)
         .order("created_at", { ascending: false })
         .limit(500);
-      const rows = (data ?? []) as Array<ActivityRow & { response_received?: boolean }>;
+      const allRows = (data ?? []) as Array<ActivityRow & { response_received?: boolean }>;
+      const rows = sourceFilter === "all" ? allRows : allRows.filter(r => r.outreach_source === sourceFilter || r.message_type === "inbound");
       const outbound = rows.filter(r => r.message_type === "outbound");
       setPerformance({
         total: outbound.length,
@@ -101,7 +103,7 @@ const LeadOutreach = () => {
       setActivity(rows.filter(r => r.message_type === "inbound" || r.status === "failed").slice(0, 12));
     };
     loadPerformance();
-  }, [period, sending]);
+  }, [period, sourceFilter, sending]);
 
   const categories = useMemo(() => {
     const s = new Set<string>();
@@ -233,12 +235,18 @@ const LeadOutreach = () => {
         </Card>
       </div>
 
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2 className="font-semibold">WhatsApp performance</h2>
-        <Select value={period} onValueChange={setPeriod}>
-          <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-          <SelectContent><SelectItem value="7">Last 7 days</SelectItem><SelectItem value="30">Last 30 days</SelectItem></SelectContent>
-        </Select>
+        <div className="flex gap-2">
+          <Select value={sourceFilter} onValueChange={setSourceFilter}>
+            <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="all">All sends</SelectItem><SelectItem value="automatic">Automatic</SelectItem><SelectItem value="manual">Manual</SelectItem></SelectContent>
+          </Select>
+          <Select value={period} onValueChange={setPeriod}>
+            <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="7">Last 7 days</SelectItem><SelectItem value="30">Last 30 days</SelectItem></SelectContent>
+          </Select>
+        </div>
       </div>
       <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
         {([
