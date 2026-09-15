@@ -23,18 +23,35 @@ export const ONESIGNAL_APP_ID =
 
 type PushWindow = Window & {
   __omniflowOneSignalInit?: Promise<void>;
+  /** Set by the OneSignal CDN bundle once it has actually executed. */
+  OneSignal?: unknown;
 };
 
 type OneSignalClient = Awaited<ReturnType<typeof getOneSignal>>;
 
 const STEP_TIMEOUT_MS = 12_000;
-const SUBSCRIPTION_TIMEOUT_MS = 15_000;
-const REGISTRATION_TIMEOUT_MS = 35_000;
+// init() downloads the CDN bundle, fetches the app config and completes the
+// service-worker handshake. On a sales phone on mobile data that regularly
+// runs past 12s, so it gets its own, longer budget.
+const INIT_TIMEOUT_MS = 30_000;
+const SUBSCRIPTION_TIMEOUT_MS = 20_000;
+const SUBSCRIPTION_POLL_MS = 400;
+// Backstop only — every step above has its own, more specific timeout.
+const REGISTRATION_TIMEOUT_MS = 90_000;
 
 // Set once OneSignal reports an active subscription for this device.
 let subscribed = false;
 let lastRegistrationError: string | null = null;
 let registrationPromise: Promise<boolean> | null = null;
+
+/** Opt in from the browser console on a real phone: localStorage.omniflow_push_debug = "1" */
+function debugEnabled(): boolean {
+  try {
+    return localStorage.getItem("omniflow_push_debug") === "1";
+  } catch {
+    return false;
+  }
+}
 
 function withTimeout<T>(promise: PromiseLike<T>, label: string, timeoutMs = STEP_TIMEOUT_MS): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -52,73 +69,156 @@ function withTimeout<T>(promise: PromiseLike<T>, label: string, timeoutMs = STEP
   });
 }
 
+/** react-onesignal rejects with bare strings as well as Errors. */
+function describeError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object" && "message" in error) {
+    return String((error as { message: unknown }).message);
+  }
+  return error ? String(error) : "unknown error";
+}
+
+// A TypeError on a minified property ("Cannot read properties of undefined
+// (reading 'Qe')") is thrown inside OneSignal's own CDN bundle, never by this
+// file or by react-onesignal — the wrapper reads everything through optional
+// chaining. It means SDK internals were dereferenced before init finished
+// building them, so say something the person holding the phone can act on.
+const SDK_INTERNAL_CRASH = /cannot read propert(?:y|ies) of (?:undefined|null)/i;
+
+function explainError(detail: string): string {
+  if (!SDK_INTERNAL_CRASH.test(detail)) return detail;
+  return (
+    `${detail} — the notification service did not finish loading. ` +
+    "Close OmniFlow completely, reopen it and tap again. If it keeps happening, " +
+    "a content blocker, VPN or Wi-Fi filter is blocking cdn.onesignal.com."
+  );
+}
+
 function registrationFailed(context: string, error?: unknown): false {
-  const detail = error instanceof Error ? error.message : error ? String(error) : "unknown error";
-  lastRegistrationError = `${context}: ${detail}`;
-  console.error("Staff push registration failed:", lastRegistrationError);
+  const message = `${context}: ${explainError(describeError(error))}`;
+  // Keep the FIRST failure of an attempt. The outer wrappers only know that
+  // they were interrupted; the innermost one knows why, and overwriting it
+  // was what reduced every failure to a generic "did not complete".
+  if (lastRegistrationError === null) lastRegistrationError = message;
+  console.error("Staff push registration failed:", message, error);
   return false;
+}
+
+// OneSignal keeps a single global instance per page. The mount-time restore
+// and the "Connect this phone" tap used to reach login()/optIn() concurrently,
+// so every SDK-touching operation is queued through here instead.
+let sdkQueue: Promise<unknown> = Promise.resolve();
+
+function serialize<T>(task: () => Promise<T>): Promise<T> {
+  const run = sdkQueue.then(task, task);
+  sdkQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
 }
 
 async function getOneSignal() {
   if (typeof window === "undefined") return null;
   if (!("serviceWorker" in navigator)) return null;
+  if (!("PushManager" in window)) return null;
+
   await withTimeout(
     navigator.serviceWorker.register("/sw.js").then(() => navigator.serviceWorker.ready),
     "Notification worker startup",
   );
   const { default: OneSignal } = await import("react-onesignal");
   const pushWindow = window as PushWindow;
-  if (!pushWindow.__omniflowOneSignalInit) {
-    pushWindow.__omniflowOneSignalInit = OneSignal.init({
+
+  let init = pushWindow.__omniflowOneSignalInit;
+  if (!init) {
+    if (debugEnabled()) OneSignal.Debug.setLogLevel("trace");
+    init = OneSignal.init({
       appId: ONESIGNAL_APP_ID,
       allowLocalhostAsSecureOrigin: true,
       // Reuse the app's own root worker — see public/sw.js. Registering a
       // second worker at '/' would evict the local-notification handler.
+      // serviceWorkerParam must match the scope we register it under, and
+      // serviceWorkerOverrideForTypical is what makes OneSignal honour a
+      // custom worker path at all when the app is set up as a typical site.
       serviceWorkerPath: "/sw.js",
+      serviceWorkerParam: { scope: "/" },
+      serviceWorkerOverrideForTypical: true,
     }).catch((error: unknown) => {
-      const detail = error instanceof Error ? error.message : String(error);
+      const detail = describeError(error);
       // The provider survives a page hot refresh even though this module's
       // local state does not. Its API is ready in that case, so continue.
       if (/already initialized/i.test(detail)) return;
+      // Only a genuinely *rejected* init is worth retrying from scratch, so
+      // this is the one place that drops the cached promise.
       delete pushWindow.__omniflowOneSignalInit;
-      registrationFailed("OneSignal could not start", error);
       throw error;
     });
+    pushWindow.__omniflowOneSignalInit = init;
   }
-  try {
-    await withTimeout(pushWindow.__omniflowOneSignalInit, "Notification service startup");
-  } catch (error) {
-    delete pushWindow.__omniflowOneSignalInit;
-    throw error;
+
+  // Deliberately does not clear __omniflowOneSignalInit when this times out:
+  // the init is still in flight. Dropping the promise made the next tap call
+  // OneSignal.init() a second time, and the SDK then rebuilt its internals
+  // from under the first call — which surfaced as a TypeError on a minified
+  // property instead of a real error, with the device never subscribed.
+  await withTimeout(init, "Notification service startup", INIT_TIMEOUT_MS);
+
+  if (typeof pushWindow.OneSignal === "undefined") {
+    throw new Error(
+      "The notification service (cdn.onesignal.com) could not be reached — a content blocker, VPN or Wi-Fi filter is the usual cause.",
+    );
   }
+
   return OneSignal;
 }
 
 function waitForSubscriptionId(OneSignal: Exclude<OneSignalClient, null>): Promise<string> {
-  const existingId = OneSignal.User.PushSubscription.id;
+  const subscription = OneSignal.User.PushSubscription;
+  const currentId = (): string | null =>
+    subscription.id && subscription.optedIn ? subscription.id : null;
+
+  const existingId = currentId();
   if (existingId) return Promise.resolve(existingId);
 
   return new Promise<string>((resolve, reject) => {
-    const subscription = OneSignal.User.PushSubscription;
-    const timer = window.setTimeout(() => {
+    let settled = false;
+
+    function cleanup() {
+      window.clearTimeout(timer);
+      window.clearInterval(poll);
       subscription.removeEventListener("change", onChange);
+    }
+
+    function finish(id: string) {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(id);
+    }
+
+    const onChange = (event: { current: { id?: string | null; optedIn?: boolean } }) => {
+      if (!event.current.id || !event.current.optedIn) return;
+      finish(event.current.id);
+    };
+
+    // react-onesignal queues addEventListener through OneSignalDeferred, so
+    // the 'change' being waited on can fire before the listener is attached.
+    // Polling the subscription closes that gap.
+    const poll = window.setInterval(() => {
+      const id = currentId();
+      if (id) finish(id);
+    }, SUBSCRIPTION_POLL_MS);
+
+    const timer = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
       reject(new Error("No device subscription was created. Close and reopen OmniFlow, then try once more."));
     }, SUBSCRIPTION_TIMEOUT_MS);
 
-    const onChange = (event: { current: { id: string | null | undefined; optedIn: boolean } }) => {
-      if (!event.current.id || !event.current.optedIn) return;
-      window.clearTimeout(timer);
-      subscription.removeEventListener("change", onChange);
-      resolve(event.current.id);
-    };
-
     subscription.addEventListener("change", onChange);
-    const currentId = subscription.id;
-    if (currentId && subscription.optedIn) {
-      window.clearTimeout(timer);
-      subscription.removeEventListener("change", onChange);
-      resolve(currentId);
-    }
   });
 }
 
@@ -144,7 +244,7 @@ async function saveSubscription(
 /** Load the SDK early so the browser doesn't swallow the subscription state. */
 export async function initPush(): Promise<void> {
   try {
-    await getOneSignal();
+    await serialize(() => getOneSignal());
   } catch {
     // non-critical
   }
@@ -179,16 +279,19 @@ export async function restoreStaffPush(
   role?: string | null,
 ): Promise<boolean> {
   if (typeof window === "undefined" || !userId || permissionState() !== "granted") return false;
-  try {
-    const OneSignal = await getOneSignal();
-    if (!OneSignal) return false;
-    await withTimeout(OneSignal.login(userId), "Staff notification sign-in");
-    const subscriptionId = OneSignal.User.PushSubscription.id;
-    if (!subscriptionId || !OneSignal.User.PushSubscription.optedIn) return false;
-    return saveSubscription(subscriptionId, role);
-  } catch (error) {
-    return registrationFailed("Existing notification setup could not be restored", error);
-  }
+  lastRegistrationError = null;
+  return serialize(async () => {
+    try {
+      const OneSignal = await getOneSignal();
+      if (!OneSignal) return false;
+      await withTimeout(OneSignal.login(userId), "Staff notification sign-in");
+      const subscriptionId = OneSignal.User.PushSubscription.id;
+      if (!subscriptionId || !OneSignal.User.PushSubscription.optedIn) return false;
+      return saveSubscription(subscriptionId, role);
+    } catch (error) {
+      return registrationFailed("Existing notification setup could not be restored", error);
+    }
+  });
 }
 
 /**
@@ -205,7 +308,6 @@ async function performStaffPushRegistration(
   role?: string | null,
 ): Promise<boolean> {
   if (typeof window === "undefined" || !userId) return false;
-  lastRegistrationError = null;
   try {
     const OneSignal = await getOneSignal();
     if (!OneSignal) return registrationFailed("Push is unavailable in this browser");
@@ -236,8 +338,9 @@ export function registerStaffPush(
 ): Promise<boolean> {
   if (registrationPromise) return registrationPromise;
 
+  lastRegistrationError = null;
   registrationPromise = withTimeout(
-    performStaffPushRegistration(userId, role),
+    serialize(() => performStaffPushRegistration(userId, role)),
     "Notification setup",
     REGISTRATION_TIMEOUT_MS,
   )
@@ -266,7 +369,7 @@ export async function setStaffPushEnabled(
   }
 
   try {
-    const OneSignal = await getOneSignal();
+    const OneSignal = await serialize(() => getOneSignal());
     const subscriptionId = OneSignal?.User.PushSubscription.id;
     if (!subscriptionId) return false;
 
