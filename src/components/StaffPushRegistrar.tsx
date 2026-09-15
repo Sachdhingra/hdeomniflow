@@ -50,6 +50,10 @@ const StaffPushRegistrar = () => {
     // Once per signed-in user per page load.
     if (attemptedFor.current === user.id) return;
     attemptedFor.current = user.id;
+      // Log if registration failed despite permission being granted
+      if (!ok && permissionState() === "granted") {
+        console.warn("Staff push registration failed despite granted browser permission. This might be a OneSignal service worker or ID generation issue.");
+      }
 
     let cancelled = false;
     (async () => {
