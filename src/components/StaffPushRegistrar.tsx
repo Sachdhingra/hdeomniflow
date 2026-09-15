@@ -1,25 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BellRing, X } from "lucide-react";
+import { BellRing, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
 import {
   initPush,
   permissionState,
   registerStaffPush,
   staffPushRegistrationError,
 } from "@/lib/push";
-
-const DISMISS_KEY = "omniflow_push_prompt_dismissed";
-const DISMISS_DAYS = 7;
-
-function dismissedRecently(): boolean {
-  try {
-    const raw = localStorage.getItem(DISMISS_KEY);
-    if (!raw) return false;
-    return Date.now() - Number(raw) < DISMISS_DAYS * 24 * 60 * 60 * 1000;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Enrols the signed-in staff member's device for push, so chat, lead and
@@ -28,21 +16,27 @@ function dismissedRecently(): boolean {
  * Notifications are on by default: the permission prompt is raised as soon as
  * someone signs in, and the device is re-registered on every app open (cheap —
  * OneSignal no-ops when already subscribed) so a cleared subscription heals
- * itself. If the browser blocked notifications, a dismissible banner explains
- * how to switch them back on instead of silently going quiet.
+ * itself. Until setup succeeds, a persistent prompt keeps the required action
+ * visible so a signed-in staff phone cannot silently miss alerts.
  */
 const StaffPushRegistrar = () => {
   const { user } = useAuth();
   const [blocked, setBlocked] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
+  const [registering, setRegistering] = useState(false);
   const attemptedFor = useRef<string | null>(null);
 
   const register = useCallback(async () => {
     if (!user) return false;
-    const ok = await registerStaffPush(user.id, user.role);
-    setSetupError(ok ? null : staffPushRegistrationError());
-    setBlocked(!ok && !dismissedRecently());
-    return ok;
+    setRegistering(true);
+    try {
+      const ok = await registerStaffPush(user.id, user.role);
+      setSetupError(ok ? null : staffPushRegistrationError());
+      setBlocked(!ok);
+      return ok;
+    } finally {
+      setRegistering(false);
+    }
   }, [user]);
 
   useEffect(() => {
@@ -57,7 +51,7 @@ const StaffPushRegistrar = () => {
       if (cancelled) return;
 
       if (permissionState() === "denied") {
-        setBlocked(!dismissedRecently());
+        setBlocked(true);
         return;
       }
 
@@ -66,7 +60,7 @@ const StaffPushRegistrar = () => {
       // Permission and registration are separate. A device can have permission
       // while the provider subscription or database save still failed.
       if (!ok) {
-        setBlocked(!dismissedRecently());
+        setBlocked(true);
         if (permissionState() === "granted") {
           console.warn(
             "Staff push registration failed despite granted browser permission.",
@@ -108,15 +102,6 @@ const StaffPushRegistrar = () => {
     if (ok) setBlocked(false);
   };
 
-  const dismiss = () => {
-    try {
-      localStorage.setItem(DISMISS_KEY, String(Date.now()));
-    } catch {
-      // ignore
-    }
-    setBlocked(false);
-  };
-
   if (!blocked) return null;
 
   const state = permissionState();
@@ -125,16 +110,8 @@ const StaffPushRegistrar = () => {
 
   return (
     <div className="fixed inset-x-0 bottom-4 z-50 mx-auto max-w-md px-4">
-      <div className="relative rounded-xl border border-warning/40 bg-card p-4 shadow-xl">
-        <button
-          onClick={dismiss}
-          aria-label="Dismiss"
-          className="absolute right-2 top-2 rounded-full p-1 text-muted-foreground hover:bg-muted"
-        >
-          <X className="w-4 h-4" />
-        </button>
-
-        <div className="flex items-start gap-3 pr-6">
+      <div className="rounded-lg border border-warning/40 bg-card p-4 shadow-xl">
+        <div className="flex items-start gap-3">
           <BellRing className="w-5 h-5 shrink-0 text-warning" />
           <div>
             <p className="text-sm font-semibold">Notifications are off</p>
@@ -148,13 +125,24 @@ const StaffPushRegistrar = () => {
             {setupError && grantedButUnregistered && (
               <p className="mt-2 text-xs text-destructive">{setupError}</p>
             )}
-            {!denied && (
-              <button
+            {denied ? (
+              <p className="mt-3 text-xs font-medium text-foreground">
+                Open this site's notification settings, choose Allow, then return to OmniFlow.
+              </p>
+            ) : (
+              <Button
                 onClick={retry}
-                className="mt-3 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground"
+                disabled={registering}
+                size="sm"
+                className="mt-3"
               >
-                {grantedButUnregistered ? "Retry device setup" : "Turn on notifications"}
-              </button>
+                {registering && <Loader2 className="animate-spin" />}
+                {registering
+                  ? "Connecting device…"
+                  : grantedButUnregistered
+                    ? "Retry device setup"
+                    : "Turn on notifications"}
+              </Button>
             )}
           </div>
         </div>
