@@ -1991,9 +1991,11 @@ export type Database = {
           message_body: string
           message_kind: string | null
           message_type: string
+          outreach_source: string
           provider_message_id: string | null
           read_at: string | null
           response_received: boolean
+          seen_at: string | null
           sent_at: string
           sentiment: string | null
           sequence_number: number | null
@@ -2017,9 +2019,11 @@ export type Database = {
           message_body: string
           message_kind?: string | null
           message_type: string
+          outreach_source?: string
           provider_message_id?: string | null
           read_at?: string | null
           response_received?: boolean
+          seen_at?: string | null
           sent_at?: string
           sentiment?: string | null
           sequence_number?: number | null
@@ -2043,9 +2047,11 @@ export type Database = {
           message_body?: string
           message_kind?: string | null
           message_type?: string
+          outreach_source?: string
           provider_message_id?: string | null
           read_at?: string | null
           response_received?: boolean
+          seen_at?: string | null
           sent_at?: string
           sentiment?: string | null
           sequence_number?: number | null
@@ -4405,6 +4411,16 @@ export type Database = {
       ensure_default_chat_channels: {
         Args: { _user: string }
         Returns: undefined
+      }
+      find_latest_lead_by_phone: {
+        Args: { p_phone: string }
+        Returns: {
+          assigned_to: string
+          conversation_message_count: number
+          created_by: string
+          customer_name: string
+          id: string
+        }[]
       }
       fn_award_anniversary_bonus: { Args: never; Returns: number }
       fn_award_welcome_points: {
