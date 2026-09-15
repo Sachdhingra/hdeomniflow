@@ -21,10 +21,14 @@ export const ONESIGNAL_APP_ID =
   import.meta.env.VITE_ONESIGNAL_STAFF_APP_ID ??
   "4e6e57c1-7555-4f05-81e2-efdb9d6e19d4";
 
-let initPromise: Promise<unknown> | null = null;
+type PushWindow = Window & {
+  __omniflowOneSignalInit?: Promise<void>;
+};
+
 // Set once OneSignal reports an active subscription for this device.
 let subscribed = false;
 let lastRegistrationError: string | null = null;
+let registrationPromise: Promise<boolean> | null = null;
 
 function registrationFailed(context: string, error?: unknown): false {
   const detail = error instanceof Error ? error.message : error ? String(error) : "unknown error";
@@ -36,20 +40,25 @@ function registrationFailed(context: string, error?: unknown): false {
 async function getOneSignal() {
   if (typeof window === "undefined") return null;
   const { default: OneSignal } = await import("react-onesignal");
-  if (!initPromise) {
-    initPromise = OneSignal.init({
+  const pushWindow = window as PushWindow;
+  if (!pushWindow.__omniflowOneSignalInit) {
+    pushWindow.__omniflowOneSignalInit = OneSignal.init({
       appId: ONESIGNAL_APP_ID,
       allowLocalhostAsSecureOrigin: true,
       // Reuse the app's own root worker — see public/sw.js. Registering a
       // second worker at '/' would evict the local-notification handler.
       serviceWorkerPath: "sw.js",
-    }).catch((error) => {
-      initPromise = null;
+    }).catch((error: unknown) => {
+      const detail = error instanceof Error ? error.message : String(error);
+      // The provider survives a page hot refresh even though this module's
+      // local state does not. Its API is ready in that case, so continue.
+      if (/already initialized/i.test(detail)) return;
+      delete pushWindow.__omniflowOneSignalInit;
       registrationFailed("OneSignal could not start", error);
       throw error;
     });
   }
-  await initPromise;
+  await pushWindow.__omniflowOneSignalInit;
   return OneSignal;
 }
 
@@ -94,7 +103,7 @@ export function staffPushRegistrationError(): string | null {
  *
  * Returns true when a subscription ID was stored.
  */
-export async function registerStaffPush(
+async function performStaffPushRegistration(
   userId: string,
   role?: string | null,
 ): Promise<boolean> {
@@ -138,6 +147,18 @@ export async function registerStaffPush(
   } catch (error) {
     return registrationFailed("Device registration did not complete", error);
   }
+}
+
+export function registerStaffPush(
+  userId: string,
+  role?: string | null,
+): Promise<boolean> {
+  if (registrationPromise) return registrationPromise;
+
+  registrationPromise = performStaffPushRegistration(userId, role).finally(() => {
+    registrationPromise = null;
+  });
+  return registrationPromise;
 }
 
 /**

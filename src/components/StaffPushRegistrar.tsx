@@ -3,7 +3,6 @@ import { BellRing, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import {
-  initPush,
   permissionState,
   registerStaffPush,
   staffPushRegistrationError,
@@ -47,9 +46,6 @@ const StaffPushRegistrar = () => {
 
     let cancelled = false;
     (async () => {
-      await initPush();
-      if (cancelled) return;
-
       if (permissionState() === "denied") {
         setBlocked(true);
         return;
