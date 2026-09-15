@@ -149,13 +149,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       localStorage.setItem("furncrm_app_version", APP_VERSION);
     }
 
-    // Unregister stale service workers
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.getRegistrations().then(regs => {
-        regs.forEach(r => r.unregister());
-      }).catch(() => {});
-    }
-
     // Auth state change listener (handles login, logout, token refresh, cross-tab)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log(`🔔 [Auth] Event: ${event}`);
