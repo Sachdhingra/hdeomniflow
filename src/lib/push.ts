@@ -24,6 +24,14 @@ export const ONESIGNAL_APP_ID =
 let initPromise: Promise<unknown> | null = null;
 // Set once OneSignal reports an active subscription for this device.
 let subscribed = false;
+let lastRegistrationError: string | null = null;
+
+function registrationFailed(context: string, error?: unknown): false {
+  const detail = error instanceof Error ? error.message : error ? String(error) : "unknown error";
+  lastRegistrationError = `${context}: ${detail}`;
+  console.error("Staff push registration failed:", lastRegistrationError);
+  return false;
+}
 
 async function getOneSignal() {
   if (typeof window === "undefined") return null;
@@ -35,8 +43,10 @@ async function getOneSignal() {
       // Reuse the app's own root worker — see public/sw.js. Registering a
       // second worker at '/' would evict the local-notification handler.
       serviceWorkerPath: "sw.js",
-    }).catch(() => {
+    }).catch((error) => {
       initPromise = null;
+      registrationFailed("OneSignal could not start", error);
+      throw error;
     });
   }
   await initPromise;
@@ -70,6 +80,11 @@ export function pushDeliversSystemNotifications(): boolean {
   return subscribed;
 }
 
+/** Last setup failure, used to distinguish permission from registration. */
+export function staffPushRegistrationError(): string | null {
+  return lastRegistrationError;
+}
+
 /**
  * Ask for notification permission, opt the device in, and store the OneSignal
  * subscription against the signed-in staff user.
@@ -84,12 +99,15 @@ export async function registerStaffPush(
   role?: string | null,
 ): Promise<boolean> {
   if (typeof window === "undefined" || !userId) return false;
+  lastRegistrationError = null;
   try {
     const OneSignal = await getOneSignal();
-    if (!OneSignal) return false;
+    if (!OneSignal) return registrationFailed("Push is unavailable in this browser");
 
     await OneSignal.Notifications.requestPermission();
-    if (!OneSignal.Notifications.permission) return false;
+    if (!OneSignal.Notifications.permission) {
+      return registrationFailed("Notification permission was not granted");
+    }
 
     await OneSignal.User.PushSubscription.optIn();
 
@@ -99,7 +117,9 @@ export async function registerStaffPush(
       await new Promise((r) => setTimeout(r, 500));
       subscriptionId = OneSignal.User.PushSubscription.id;
     }
-    if (!subscriptionId) return false;
+    if (!subscriptionId) {
+      return registrationFailed("Permission is allowed, but no device subscription was created");
+    }
 
     // Goes through the RPC rather than a direct upsert: on a shared browser
     // the subscription ID outlives the sign-in, and only a SECURITY DEFINER
@@ -110,12 +130,13 @@ export async function registerStaffPush(
       _role: role ?? null,
       _user_agent: navigator.userAgent.slice(0, 300),
     } as never);
-    if (error) return false;
+    if (error) return registrationFailed("The device subscription could not be saved", error);
 
     subscribed = true;
+    lastRegistrationError = null;
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    return registrationFailed("Device registration did not complete", error);
   }
 }
 
