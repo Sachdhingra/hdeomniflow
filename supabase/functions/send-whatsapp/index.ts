@@ -158,6 +158,9 @@ Deno.serve(async (req) => {
       template_name,
       template_body_values,
       template_id,
+      lead_message_id,
+      outreach_source,
+      message_kind,
     } = body || {};
 
     if (!phone) {
@@ -203,18 +206,27 @@ Deno.serve(async (req) => {
       sent_at: result.success ? new Date().toISOString() : null,
     });
 
-    if (lead_id && result.success) {
-      await supabase.from("lead_messages").insert({
+    if (lead_id) {
+      const leadMessage = {
         lead_id,
         message_type: "outbound",
         message_body: storedBody,
         template_used: template_name || (content_sid ? `twilio:${content_sid}` : null),
         template_id: template_id || null,
-        status: "sent",
+        status: result.success ? "sent" : "failed",
         provider_message_id: result.message_id || null,
         sent_at: new Date().toISOString(),
+        failed_at: result.success ? null : new Date().toISOString(),
+        error_message: result.error || null,
         created_by: user_id || null,
-      });
+        outreach_source: outreach_source || "manual",
+        message_kind: message_kind || null,
+      };
+      const leadMessageQuery = lead_message_id
+        ? supabase.from("lead_messages").update(leadMessage).eq("id", lead_message_id)
+        : supabase.from("lead_messages").insert(leadMessage);
+      const { error: leadMessageError } = await leadMessageQuery;
+      if (leadMessageError) console.error("[send-whatsapp] lead message log failed:", leadMessageError);
     }
 
     return new Response(

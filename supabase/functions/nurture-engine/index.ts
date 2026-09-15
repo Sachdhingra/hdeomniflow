@@ -2,6 +2,7 @@
 // Now driven by conversation context (sentiment / concern / intent / no-response timing).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 import { pickTemplateTitle } from "../_shared/conversation-analysis.ts";
+import { TWILIO_TEMPLATES } from "../_shared/twilio-templates.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -266,7 +267,21 @@ Deno.serve(async (req) => {
               const sendRes = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceKey}` },
-                body: JSON.stringify({ phone: lead.customer_phone, message: body }),
+                body: JSON.stringify({
+                  phone: lead.customer_phone,
+                  content_sid: TWILIO_TEMPLATES.followUpReengage,
+                  content_variables: {
+                    "1": (lead.customer_name || "there").trim().split(/\s+/)[0] || "there",
+                    "2": lead.liked_product || lead.product_viewed || lead.stated_need || "furniture for your home",
+                  },
+                  lead_id: lead.id,
+                  lead_message_id: inserted?.id,
+                  user_id: lead.assigned_to || lead.created_by,
+                  template_id: tpl.id,
+                  template_name: tpl.title,
+                  outreach_source: "automatic",
+                  message_kind: pick.messageKind,
+                }),
               });
               const sendJson = await sendRes.json().catch(() => ({}));
               const ok = sendRes.ok && sendJson?.success === true;
@@ -317,7 +332,7 @@ Deno.serve(async (req) => {
         }
 
         // 4. Escalation flags
-        const newUnanswered = (unanswered + (tpl ? 1 : 0));
+        const newUnanswered = unanswered;
         if (newUnanswered >= 5 && !lead.dead_lead) {
           await supabase.from("leads").update({ dead_lead: true, journey_stage: "cold", needs_personal_call: false }).eq("id", lead.id);
           summary.dead_leads_flagged++;
