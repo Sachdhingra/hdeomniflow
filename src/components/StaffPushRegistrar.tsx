@@ -28,6 +28,7 @@ const StaffPushRegistrar = () => {
 
   const register = useCallback(async () => {
     if (!user) return false;
+    setSetupError(null);
     setRegistering(true);
     try {
       const ok = await registerStaffPush(user.id, user.role);
@@ -86,7 +87,7 @@ const StaffPushRegistrar = () => {
                   ? "Permission is allowed. Tap once to finish connecting this phone."
                   : "Turn on notifications so chat messages and new lead alerts reach you even when OmniFlow is closed."}
             </p>
-            {setupError && grantedButUnregistered && (
+            {setupError && !denied && (
               <p className="mt-2 text-xs text-destructive">{setupError}</p>
             )}
             {denied ? (

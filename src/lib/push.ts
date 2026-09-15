@@ -29,6 +29,7 @@ type OneSignalClient = Awaited<ReturnType<typeof getOneSignal>>;
 
 const STEP_TIMEOUT_MS = 12_000;
 const SUBSCRIPTION_TIMEOUT_MS = 15_000;
+const REGISTRATION_TIMEOUT_MS = 35_000;
 
 // Set once OneSignal reports an active subscription for this device.
 let subscribed = false;
@@ -73,7 +74,7 @@ async function getOneSignal() {
       allowLocalhostAsSecureOrigin: true,
       // Reuse the app's own root worker — see public/sw.js. Registering a
       // second worker at '/' would evict the local-notification handler.
-      serviceWorkerPath: "sw.js",
+      serviceWorkerPath: "/sw.js",
     }).catch((error: unknown) => {
       const detail = error instanceof Error ? error.message : String(error);
       // The provider survives a page hot refresh even though this module's
@@ -235,9 +236,15 @@ export function registerStaffPush(
 ): Promise<boolean> {
   if (registrationPromise) return registrationPromise;
 
-  registrationPromise = performStaffPushRegistration(userId, role).finally(() => {
-    registrationPromise = null;
-  });
+  registrationPromise = withTimeout(
+    performStaffPushRegistration(userId, role),
+    "Notification setup",
+    REGISTRATION_TIMEOUT_MS,
+  )
+    .catch((error) => registrationFailed("Notification setup did not finish", error))
+    .finally(() => {
+      registrationPromise = null;
+    });
   return registrationPromise;
 }
 
