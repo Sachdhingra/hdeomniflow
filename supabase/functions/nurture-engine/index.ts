@@ -2,6 +2,7 @@
 // Now driven by conversation context (sentiment / concern / intent / no-response timing).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 import { pickTemplateTitle } from "../_shared/conversation-analysis.ts";
+import { TWILIO_TEMPLATES } from "../_shared/twilio-templates.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -317,7 +318,7 @@ Deno.serve(async (req) => {
         }
 
         // 4. Escalation flags
-        const newUnanswered = (unanswered + (tpl ? 1 : 0));
+        const newUnanswered = unanswered;
         if (newUnanswered >= 5 && !lead.dead_lead) {
           await supabase.from("leads").update({ dead_lead: true, journey_stage: "cold", needs_personal_call: false }).eq("id", lead.id);
           summary.dead_leads_flagged++;

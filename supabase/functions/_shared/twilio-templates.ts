@@ -9,6 +9,8 @@ export const TWILIO_TEMPLATES = {
   verificationCode: "HXad13029a82f0c6966ced9d47fb7fb888",
   // Marketing / utility templates already approved
   leadWelcome: "HXa50d2f1a512771a524583a6432c860f4",
+  // Follow-up re-engagement, {{1}} first name, {{2}} requested item
+  followUpReengage: "HX45ff618cc3947d77a96aa8aeb2741c9e",
   eliteCardWelcome: "HX2c0e7b006df9d6823059c69f9816d819",
   reviewThankYou: "HX16893586e03d1d1fd84b484f2d4a4252",
   // Generic Insider app notification mirror:

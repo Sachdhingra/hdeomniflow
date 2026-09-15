@@ -55,22 +55,21 @@ function normalizePhone(raw: string | undefined | null): string {
 async function findLeadByPhone(
   supabase: any,
   phone: string,
-): Promise<{ id: string; sequence: number } | null> {
+): Promise<{ id: string; sequence: number; assigned_to: string | null; created_by: string | null; customer_name: string } | null> {
   if (!phone) return null;
-  const last10 = phone.replace(/^\+/, "").slice(-10);
-  const { data } = await supabase
-    .from("leads")
-    .select("id, customer_phone, conversation_message_count, created_at")
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false })
-    .limit(50);
-  if (!data) return null;
-  const match = data.find((l: any) =>
-    normalizePhone(l.customer_phone).replace(/^\+/, "").slice(-10) === last10
-  );
-  return match
-    ? { id: match.id, sequence: match.conversation_message_count ?? 0 }
-    : null;
+  const { data, error } = await supabase.rpc("find_latest_lead_by_phone", { p_phone: phone });
+  if (error) {
+    console.error("[twilio-webhook] lead lookup failed:", error);
+    return null;
+  }
+  const match = data?.[0];
+  return match ? {
+    id: match.id,
+    sequence: match.conversation_message_count ?? 0,
+    assigned_to: match.assigned_to ?? null,
+    created_by: match.created_by ?? null,
+    customer_name: match.customer_name || "Customer",
+  } : null;
 }
 
 Deno.serve(async (req) => {
@@ -113,33 +112,22 @@ Deno.serve(async (req) => {
     if (STATUS_EVENTS.has(messageStatus)) {
       // recipient_id is the customer's number (the "To" when we sent, now in "To")
       // For status callbacks, "To" = customer, "From" = our Twilio number
-      const recipientPhone = normalizePhone(toRaw);
-      const lead = await findLeadByPhone(supabase, recipientPhone);
-      if (lead) {
-        const ts = new Date().toISOString();
-        const updates: Record<string, unknown> = {};
-        if (messageStatus === "delivered") {
-          updates.status = "delivered";
-          updates.delivered_at = ts;
-        } else if (messageStatus === "read") {
-          updates.status = "read";
-          updates.read_at = ts;
-        } else if (messageStatus === "failed" || messageStatus === "undelivered") {
-          updates.status = "failed";
-        }
-
-        if (Object.keys(updates).length) {
-          const { data: msgs } = await supabase
-            .from("lead_messages")
-            .select("id")
-            .eq("lead_id", lead.id)
-            .eq("message_type", "outbound")
-            .order("sent_at", { ascending: false })
-            .limit(1);
-          if (msgs?.length) {
-            await supabase.from("lead_messages").update(updates).eq("id", msgs[0].id);
-          }
-        }
+      const ts = new Date().toISOString();
+      const updates: Record<string, unknown> = {};
+      if (messageStatus === "delivered") {
+        updates.status = "delivered";
+        updates.delivered_at = ts;
+      } else if (messageStatus === "read") {
+        updates.status = "read";
+        updates.read_at = ts;
+      } else if (messageStatus === "failed" || messageStatus === "undelivered") {
+        updates.status = "failed";
+        updates.failed_at = ts;
+        updates.error_message = params["ErrorMessage"] || (params["ErrorCode"] ? `Twilio error ${params["ErrorCode"]}` : "delivery failed");
+      }
+      if (messageSid && Object.keys(updates).length) {
+        await supabase.from("lead_messages").update(updates).eq("provider_message_id", messageSid);
+        await supabase.from("message_logs").update({ status: updates.status, error_message: updates.error_message || null }).eq("provider_message_id", messageSid);
       }
 
       // Twilio expects an empty TwiML 200 OK for status callbacks
@@ -181,6 +169,8 @@ Deno.serve(async (req) => {
         concern: analysis.concern,
         length_category: analysis.length_category,
         sequence_number: seq,
+        provider_message_id: messageSid || null,
+        outreach_source: "inbound",
       });
 
       await supabase.from("leads").update({
@@ -196,6 +186,26 @@ Deno.serve(async (req) => {
           ? { barrier_addressed: false, objection_type: analysis.concern ?? "general" }
           : {}),
       }).eq("id", lead.id);
+
+      const notifyUser = lead.assigned_to || lead.created_by;
+      if (notifyUser) {
+        await supabase.from("notifications").insert({
+          user_id: notifyUser,
+          type: "whatsapp_reply",
+          message: `New WhatsApp reply from ${lead.customer_name}: ${text.slice(0, 120)}`,
+          link: "/leads",
+        });
+      }
+      const { data: existingReplyAlert } = await supabase.from("lead_alerts")
+        .select("id").eq("lead_id", lead.id).eq("alert_type", "whatsapp_reply").eq("resolved", false).limit(1);
+      if (!existingReplyAlert?.length) {
+        await supabase.from("lead_alerts").insert({
+          lead_id: lead.id,
+          alert_type: "whatsapp_reply",
+          severity: "info",
+          message: `New WhatsApp reply: ${text.slice(0, 160)}`,
+        });
+      }
 
       // Update reply_count on the last outbound variant for A/B tracking
       const { data: lastOut } = await supabase
