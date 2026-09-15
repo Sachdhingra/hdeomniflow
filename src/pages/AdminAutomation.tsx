@@ -30,6 +30,7 @@ const AdminAutomation = () => {
   const [testOpen, setTestOpen] = useState(false);
   const [testPhone, setTestPhone] = useState("");
   const [testing, setTesting] = useState(false);
+  const [lastRun, setLastRun] = useState<LogRow | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -66,6 +67,7 @@ const AdminAutomation = () => {
         .order("executed_at", { ascending: false })
         .limit(30);
       setLogs((logsData ?? []) as LogRow[]);
+      setLastRun(((logsData ?? []).find(l => l.event_type === "engine_run") as LogRow | undefined) ?? null);
 
       const { data: msgsData } = await supabase
         .from("lead_messages")
@@ -190,6 +192,11 @@ const AdminAutomation = () => {
         <div>
           <h1 className="text-2xl font-bold">Automation Monitor</h1>
           <p className="text-sm text-muted-foreground">Autonomous nurture engine — daily scoring, stage moves, and message queue.</p>
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <Badge variant="secondary">Automatic · active</Badge>
+            <span className="text-xs text-muted-foreground">Runs daily at 6:00 PM and 8:00 PM India time</span>
+            {lastRun && <span className="text-xs text-muted-foreground">· Last run {new Date(lastRun.executed_at).toLocaleString()}</span>}
+          </div>
         </div>
         <div className="flex gap-2 flex-wrap">
           <Button onClick={() => setTestOpen(true)} variant="outline" className="gap-2">

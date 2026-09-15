@@ -313,7 +313,7 @@ const LeadDetailsDrawer = ({ lead, open, onOpenChange }: Props) => {
                 {messages.map(m => (
                   <li key={m.id} className={`text-xs rounded p-2 border-l-2 ${m.message_type === "outbound" ? "border-primary bg-primary/5" : "border-success bg-success/5"}`}>
                     <div className="flex items-center justify-between mb-0.5 gap-2">
-                      <Badge variant="outline" className="text-[9px]">{m.message_type}</Badge>
+                      <Badge variant={m.message_type === "inbound" ? "secondary" : "outline"} className="text-[9px]">{m.message_type === "inbound" ? "WhatsApp reply" : "WhatsApp sent"}</Badge>
                       <div className="flex items-center gap-1">
                         {m.message_type === "outbound" && (
                           <Badge

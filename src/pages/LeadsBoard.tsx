@@ -9,7 +9,7 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Phone, MoveHorizontal, Sparkles, MessageCircle, MapPin, Zap, AlertTriangle, Snowflake, Star } from "lucide-react";
+import { Phone, MoveHorizontal, Sparkles, MessageCircle, MapPin, Zap, AlertTriangle, Snowflake, Star, Reply } from "lucide-react";
 import { toast } from "@/lib/toast";
 import LeadDetailsDrawer from "@/components/LeadDetailsDrawer";
 import SendTemplateDialog from "@/components/SendTemplateDialog";
@@ -43,6 +43,7 @@ const LeadsBoard = () => {
   const [selected, setSelected] = useState<Lead | null>(null);
   const [templateLead, setTemplateLead] = useState<Lead | null>(null);
   const [alerts, setAlerts] = useState<LeadAlert[]>([]);
+  const [unseenReplies, setUnseenReplies] = useState<Record<string, number>>({});
 
   useEffect(() => {
     let mounted = true;
@@ -52,6 +53,12 @@ const LeadsBoard = () => {
         .select("id, lead_id, alert_type, severity, message")
         .eq("resolved", false);
       if (mounted) setAlerts((data ?? []) as LeadAlert[]);
+      const { data: replies } = await supabase.from("lead_messages").select("lead_id").eq("message_type", "inbound").is("seen_at", null);
+      if (mounted) {
+        const counts: Record<string, number> = {};
+        (replies ?? []).forEach(r => { counts[r.lead_id] = (counts[r.lead_id] ?? 0) + 1; });
+        setUnseenReplies(counts);
+      }
     })();
     const ch = supabase
       .channel("lead-alerts")
@@ -114,6 +121,14 @@ const LeadsBoard = () => {
   };
 
   const handleOpenTemplates = (lead: Lead) => setTemplateLead(lead);
+  const openLead = async (lead: Lead) => {
+    setSelected(lead);
+    if ((unseenReplies[lead.id] ?? 0) > 0) {
+      await supabase.from("lead_messages").update({ seen_at: new Date().toISOString() }).eq("lead_id", lead.id).eq("message_type", "inbound").is("seen_at", null);
+      await supabase.from("lead_alerts").update({ resolved: true }).eq("lead_id", lead.id).eq("alert_type", "whatsapp_reply");
+      setUnseenReplies(prev => { const next = { ...prev }; delete next[lead.id]; return next; });
+    }
+  };
 
   const totalNeedAction = alerts.length;
 
@@ -173,7 +188,7 @@ const LeadsBoard = () => {
                     <Card
                       key={lead.id}
                       className="cursor-pointer hover:shadow-card-hover transition-shadow"
-                      onClick={() => setSelected(lead)}
+                      onClick={() => openLead(lead)}
                     >
                       <CardContent className="p-3 space-y-2">
                         {leadAlerts.length > 0 && (
@@ -191,6 +206,9 @@ const LeadsBoard = () => {
                           <div className="flex-1 min-w-0">
                             <p className="font-semibold text-sm line-clamp-1 uppercase">{lead.customer_name}</p>
                             <div className="flex flex-wrap gap-1 mt-1">
+                              {(unseenReplies[lead.id] ?? 0) > 0 && (
+                                <Badge className="text-[10px] gap-1 h-5"><Reply className="w-3 h-3" />New reply · {unseenReplies[lead.id]}</Badge>
+                              )}
                               {(l.repeat_count ?? 0) > 0 && (
                                 <RepeatBadge
                                   repeatCount={l.repeat_count}

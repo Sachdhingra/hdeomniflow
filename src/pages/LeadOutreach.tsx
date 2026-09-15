@@ -13,7 +13,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
-import { Loader2, Send, MessageSquare, Search, CheckCircle2, XCircle, Phone } from "lucide-react";
+import { Loader2, Send, MessageSquare, Search, CheckCircle2, XCircle, Phone, Eye, Reply, AlertTriangle } from "lucide-react";
 import { toast } from "@/lib/toast";
 import {
   WA_TEMPLATES, FOLLOW_UP_PREVIEW, inferInterest, firstName,
@@ -37,6 +37,8 @@ interface OutreachLead {
 }
 
 type SendState = "idle" | "sending" | "sent" | "failed";
+type Performance = { total: number; sent: number; delivered: number; read: number; replied: number; failed: number };
+type ActivityRow = { id: string; lead_id: string; message_type: string; message_body: string; status: string; sent_at: string; outreach_source: string | null };
 
 const STATUSES = ["follow_up", "negotiation", "overdue"] as const;
 
@@ -57,6 +59,9 @@ const LeadOutreach = () => {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [results, setResults] = useState<Record<string, { state: SendState; error?: string }>>({});
+  const [period, setPeriod] = useState("7");
+  const [performance, setPerformance] = useState<Performance>({ total: 0, sent: 0, delivered: 0, read: 0, replied: 0, failed: 0 });
+  const [activity, setActivity] = useState<ActivityRow[]>([]);
 
   const load = async () => {
     setLoading(true);
@@ -74,6 +79,29 @@ const LeadOutreach = () => {
   };
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    const loadPerformance = async () => {
+      const since = new Date(Date.now() - Number(period) * 86400000).toISOString();
+      const { data } = await supabase.from("lead_messages")
+        .select("id,lead_id,message_type,message_body,status,sent_at,outreach_source,response_received")
+        .gte("created_at", since)
+        .order("created_at", { ascending: false })
+        .limit(500);
+      const rows = (data ?? []) as Array<ActivityRow & { response_received?: boolean }>;
+      const outbound = rows.filter(r => r.message_type === "outbound");
+      setPerformance({
+        total: outbound.length,
+        sent: outbound.filter(r => ["sent", "delivered", "read"].includes(r.status)).length,
+        delivered: outbound.filter(r => ["delivered", "read"].includes(r.status)).length,
+        read: outbound.filter(r => r.status === "read").length,
+        replied: outbound.filter(r => r.response_received).length,
+        failed: outbound.filter(r => r.status === "failed").length,
+      });
+      setActivity(rows.filter(r => r.message_type === "inbound" || r.status === "failed").slice(0, 12));
+    };
+    loadPerformance();
+  }, [period, sending]);
 
   const categories = useMemo(() => {
     const s = new Set<string>();
@@ -136,6 +164,13 @@ const LeadOutreach = () => {
       const name = firstName(lead.customer_name);
       const interest = inferInterest(lead);
       try {
+        const since = new Date(Date.now() - 24 * 3600000).toISOString();
+        const { count: recentCount } = await supabase.from("lead_messages")
+          .select("id", { count: "exact", head: true })
+          .eq("lead_id", lead.id)
+          .eq("template_used", "hde_followup_reengage")
+          .gte("created_at", since);
+        if ((recentCount ?? 0) > 0) throw new Error("Already contacted with this follow-up in the last 24 hours");
         const { data, error } = await supabase.functions.invoke("send-whatsapp", {
           body: {
             phone: lead.customer_phone,
@@ -144,19 +179,13 @@ const LeadOutreach = () => {
             lead_id: lead.id,
             user_id: user.id,
             user_name: user.name,
+            template_name: "hde_followup_reengage",
+            outreach_source: "manual",
+            message_kind: "follow_up_reengage",
           },
         });
         if (error) throw error;
         if (!data?.success) throw new Error(data?.error || "Send failed");
-        await supabase.from("lead_messages").insert({
-          lead_id: lead.id,
-          message_type: "outbound",
-          message_body: FOLLOW_UP_PREVIEW.replace("{{1}}", name).replace("{{2}}", interest),
-          template_used: "hde_followup_reengage",
-          status: "sent",
-          sent_at: new Date().toISOString(),
-          created_by: user.id,
-        });
         ok++;
         setResults(r => ({ ...r, [lead.id]: { state: "sent" } }));
       } catch (e: any) {
@@ -203,6 +232,41 @@ const LeadOutreach = () => {
           </CardContent>
         </Card>
       </div>
+
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-semibold">WhatsApp performance</h2>
+        <Select value={period} onValueChange={setPeriod}>
+          <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+          <SelectContent><SelectItem value="7">Last 7 days</SelectItem><SelectItem value="30">Last 30 days</SelectItem></SelectContent>
+        </Select>
+      </div>
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+        {[
+          ["Sent", performance.sent, Send], ["Delivered", performance.delivered, CheckCircle2],
+          ["Read", performance.read, Eye], ["Replied", performance.replied, Reply],
+          ["Failed", performance.failed, AlertTriangle],
+          ["Reply rate", performance.total ? `${Math.round(performance.replied / performance.total * 100)}%` : "0%", MessageSquare],
+        ].map(([label, value, Icon]) => (
+          <Card key={String(label)}><CardContent className="p-3">
+            <div className="flex items-center gap-1 text-[11px] text-muted-foreground"><Icon className="w-3 h-3" />{label as string}</div>
+            <p className="text-xl font-bold">{value as any}</p>
+          </CardContent></Card>
+        ))}
+      </div>
+
+      {activity.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-base">Replies and delivery issues</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {activity.map(row => (
+              <div key={row.id} className="flex gap-2 border-b last:border-0 pb-2 text-sm">
+                {row.message_type === "inbound" ? <Reply className="w-4 h-4 text-success shrink-0 mt-0.5" /> : <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />}
+                <div className="min-w-0"><p className="line-clamp-2">{row.message_body}</p><p className="text-xs text-muted-foreground">{new Date(row.sent_at).toLocaleString()} · {row.outreach_source || "manual"}</p></div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="pb-2">
