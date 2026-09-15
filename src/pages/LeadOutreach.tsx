@@ -241,12 +241,12 @@ const LeadOutreach = () => {
         </Select>
       </div>
       <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
-        {[
+        {([
           ["Sent", performance.sent, Send], ["Delivered", performance.delivered, CheckCircle2],
           ["Read", performance.read, Eye], ["Replied", performance.replied, Reply],
           ["Failed", performance.failed, AlertTriangle],
           ["Reply rate", performance.total ? `${Math.round(performance.replied / performance.total * 100)}%` : "0%", MessageSquare],
-        ].map(([label, value, Icon]) => (
+        ] as const).map(([label, value, Icon]) => (
           <Card key={String(label)}><CardContent className="p-3">
             <div className="flex items-center gap-1 text-[11px] text-muted-foreground"><Icon className="w-3 h-3" />{label as string}</div>
             <p className="text-xl font-bold">{value as any}</p>
