@@ -2003,6 +2003,9 @@ export type Database = {
           template_id: string | null
           template_used: string | null
           variant: string | null
+          flow_step: string | null
+          quick_reply_label: string | null
+          quick_reply_payload: string | null
         }
         Insert: {
           concern?: string | null
@@ -2031,6 +2034,9 @@ export type Database = {
           template_id?: string | null
           template_used?: string | null
           variant?: string | null
+          flow_step?: string | null
+          quick_reply_label?: string | null
+          quick_reply_payload?: string | null
         }
         Update: {
           concern?: string | null
@@ -2059,6 +2065,9 @@ export type Database = {
           template_id?: string | null
           template_used?: string | null
           variant?: string | null
+          flow_step?: string | null
+          quick_reply_label?: string | null
+          quick_reply_payload?: string | null
         }
         Relationships: [
           {
@@ -2198,6 +2207,14 @@ export type Database = {
           visit_date: string | null
           visit_photo: string | null
           why_lost: string | null
+          qr_answer_count: number
+          qr_last_answer_at: string | null
+          qr_last_label: string | null
+          qr_last_payload: string | null
+          qr_opted_out: boolean
+          qr_snooze_until: string | null
+          qr_step: string | null
+          qr_step_sent_at: string | null
         }
         Insert: {
           assigned_at?: string | null
@@ -2281,6 +2298,14 @@ export type Database = {
           visit_date?: string | null
           visit_photo?: string | null
           why_lost?: string | null
+          qr_answer_count?: number
+          qr_last_answer_at?: string | null
+          qr_last_label?: string | null
+          qr_last_payload?: string | null
+          qr_opted_out?: boolean
+          qr_snooze_until?: string | null
+          qr_step?: string | null
+          qr_step_sent_at?: string | null
         }
         Update: {
           assigned_at?: string | null
@@ -2364,6 +2389,14 @@ export type Database = {
           visit_date?: string | null
           visit_photo?: string | null
           why_lost?: string | null
+          qr_answer_count?: number
+          qr_last_answer_at?: string | null
+          qr_last_label?: string | null
+          qr_last_payload?: string | null
+          qr_opted_out?: boolean
+          qr_snooze_until?: string | null
+          qr_step?: string | null
+          qr_step_sent_at?: string | null
         }
         Relationships: [
           {
@@ -4224,6 +4257,45 @@ export type Database = {
           muted_until?: string | null
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      whatsapp_quick_reply_steps: {
+        Row: {
+          content_sid: string | null
+          is_active: boolean
+          note: string | null
+          question: string
+          requires_approved_template: boolean
+          sort_order: number
+          step_key: string
+          title: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          content_sid?: string | null
+          is_active?: boolean
+          note?: string | null
+          question: string
+          requires_approved_template?: boolean
+          sort_order?: number
+          step_key: string
+          title: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          content_sid?: string | null
+          is_active?: boolean
+          note?: string | null
+          question?: string
+          requires_approved_template?: boolean
+          sort_order?: number
+          step_key?: string
+          title?: string
+          updated_at?: string
+          updated_by?: string | null
         }
         Relationships: []
       }

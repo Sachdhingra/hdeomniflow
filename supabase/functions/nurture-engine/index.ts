@@ -1,8 +1,17 @@
 // Autonomous lead nurture engine — runs daily/twice-daily.
-// Now driven by conversation context (sentiment / concern / intent / no-response timing).
+//
+// Every automated message is a WhatsApp quick-reply question: 2-3 buttons the
+// customer taps instead of typing a reply or ringing the showroom. The tap
+// comes back as an exact payload, so the board reacts to what the customer
+// actually said rather than to a guess about it.
+//
+// The older free-text template path is kept only as a fallback for steps whose
+// Twilio Content SID is not configured yet.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 import { pickTemplateTitle } from "../_shared/conversation-analysis.ts";
 import { TWILIO_TEMPLATES } from "../_shared/twilio-templates.ts";
+import { pickEntryStep } from "../_shared/quick-reply-flow.ts";
+import { sendQuickReplyStep } from "../_shared/quick-reply-send.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -46,6 +55,13 @@ interface Lead {
   conversation_message_count: number | null;
   needs_personal_call: boolean | null;
   dead_lead: boolean | null;
+  // Quick-reply flow state
+  qr_step: string | null;
+  qr_step_sent_at: string | null;
+  qr_last_payload: string | null;
+  qr_last_answer_at: string | null;
+  qr_opted_out: boolean | null;
+  qr_snooze_until: string | null;
 }
 
 const daysBetween = (iso: string | null, now: Date) => {
@@ -55,6 +71,10 @@ const daysBetween = (iso: string | null, now: Date) => {
 const minsBetween = (iso: string | null, now: Date) => {
   if (!iso) return 0;
   return Math.floor((now.getTime() - new Date(iso).getTime()) / 60000);
+};
+const hoursBetween = (iso: string | null, now: Date) => {
+  if (!iso) return Number.POSITIVE_INFINITY;
+  return (now.getTime() - new Date(iso).getTime()) / 3600000;
 };
 
 const journeyToStatus = (j: JourneyStage): Stage | null => {
@@ -128,8 +148,19 @@ Deno.serve(async (req) => {
   const summary = {
     processed: 0, scored: 0, moved_to_overdue: 0, journey_moved: 0,
     auto_sent: 0, alerts_created: 0, escalations_flagged: 0, dead_leads_flagged: 0, errors: 0,
+    // Quick-reply flow — every lead we did not message has a named reason.
+    quick_replies_sent: 0,
+    flow_awaiting_tap: 0,
+    flow_quiet: 0,
+    flow_snoozed: 0,
+    flow_opted_out: 0,
+    flow_skipped: 0,
+    flow_send_failed: 0,
+    quick_reply_templates_missing: 0,
   };
   const now = new Date();
+  // Content SIDs are the same for every lead in a run — look each one up once.
+  const sidCache = new Map<string, string | null>();
 
   try {
     // Templates indexed by title (the analyzer picks templates by title)
@@ -162,7 +193,7 @@ Deno.serve(async (req) => {
 
     const { data: leads, error: fetchErr } = await supabase
       .from("leads")
-      .select("id, customer_name, customer_phone, status, journey_stage, liked_product, product_viewed, neighborhood, budget_range, decision_timeline, family_situation, stated_need, value_in_rupees, concern_type, objection_type, barrier_addressed, response_time_minutes, last_message_at, last_response_at, last_payment_link_sent_at, stage_changed_at, journey_stage_changed_at, created_at, created_by, assigned_to, category, last_inbound_sentiment, last_inbound_concern, last_inbound_intent, unanswered_outbound_count, conversation_message_count, needs_personal_call, dead_lead")
+      .select("id, customer_name, customer_phone, status, journey_stage, liked_product, product_viewed, neighborhood, budget_range, decision_timeline, family_situation, stated_need, value_in_rupees, concern_type, objection_type, barrier_addressed, response_time_minutes, last_message_at, last_response_at, last_payment_link_sent_at, stage_changed_at, journey_stage_changed_at, created_at, created_by, assigned_to, category, last_inbound_sentiment, last_inbound_concern, last_inbound_intent, unanswered_outbound_count, conversation_message_count, needs_personal_call, dead_lead, qr_step, qr_step_sent_at, qr_last_payload, qr_last_answer_at, qr_opted_out, qr_snooze_until")
       .is("deleted_at", null)
       .not("status", "in", "(won,lost,converted)")
       .eq("dead_lead", false)
@@ -196,10 +227,90 @@ Deno.serve(async (req) => {
           summary.journey_moved++;
         }
 
-        // 3. Decide next message
+        // 3. Decide the next message.
+        //
+        // The quick-reply flow leads: a tappable question gets answered far more
+        // often than a wall of text, and the answer comes back as an exact
+        // payload we can act on. The old free-text template path stays behind it
+        // only as a fallback while the Twilio templates are still being approved.
         const daysSinceInbound = lead.last_response_at ? daysBetween(lead.last_response_at, now) : daysBetween(lead.created_at, now);
         const unanswered = lead.unanswered_outbound_count ?? 0;
         let sentThisRun = 0;
+
+        const snoozed = !!lead.qr_snooze_until && new Date(lead.qr_snooze_until) > now;
+        // A question is still on the table if it was asked but not answered yet.
+        // Give the customer 3 days to tap before asking anything else.
+        const awaitingTap = !!lead.qr_step && !!lead.qr_step_sent_at
+          && (!lead.qr_last_answer_at || new Date(lead.qr_last_answer_at) < new Date(lead.qr_step_sent_at))
+          && hoursBetween(lead.qr_step_sent_at, now) < 72;
+
+        let entryStep: string | null = null;
+        let flowResolved = false;
+
+        if (lead.qr_opted_out) {
+          flowResolved = true;
+          summary.flow_opted_out++;
+        } else if (snoozed) {
+          flowResolved = true;
+          summary.flow_snoozed++;
+        } else if (awaitingTap) {
+          flowResolved = true;
+          summary.flow_awaiting_tap++;
+        } else {
+          entryStep = pickEntryStep({
+            journeyStage: newJourney,
+            unansweredCount: unanswered,
+            daysSinceLastInbound: daysSinceInbound,
+            hasEverAnswered: !!lead.last_response_at,
+            // The customer tapped "Send price & offers" and a human took over.
+            // Two days on, ask whether that price worked — one tap, no call.
+            awaitingQuoteFeedback: lead.qr_last_payload === "QR_WANT_PRICE"
+              && daysBetween(lead.qr_last_answer_at, now) >= 2,
+          });
+
+          if (!entryStep) {
+            // Nothing to ask. Staying quiet is a valid, deliberate outcome.
+            flowResolved = true;
+            summary.flow_quiet++;
+          } else {
+            const result = await sendQuickReplyStep({
+              supabase,
+              supabaseUrl,
+              serviceKey,
+              lead,
+              stepKey: entryStep,
+              source: "automatic",
+              now,
+              sidCache,
+            });
+
+            if (result.sent) {
+              flowResolved = true;
+              sentThisRun = 1;
+              summary.auto_sent++;
+              summary.quick_replies_sent++;
+              await supabase.from("leads").update({
+                unanswered_outbound_count: unanswered + 1,
+                last_recommended_message_type: `quick_reply_${entryStep.replace(/^qr_/, "")}`,
+              }).eq("id", lead.id);
+            } else if (result.skipped === "template_not_configured") {
+              // Fall through to the legacy path so follow-ups keep going out
+              // until an admin pastes the approved Twilio Content SID.
+              summary.quick_reply_templates_missing++;
+            } else if (result.skipped) {
+              // A guard did its job (opted out, snoozed, quiet hours, daily cap,
+              // same question already asked today) — do not talk around it.
+              flowResolved = true;
+              summary.flow_skipped++;
+            } else {
+              // Twilio rejected the send. sendQuickReplyStep already logged it;
+              // do not fall through, or the lead gets messaged twice.
+              flowResolved = true;
+              summary.flow_send_failed++;
+            }
+          }
+        }
+
         const pick = pickTemplateTitle({
           journeyStage: newJourney,
           concern: (lead.last_inbound_concern as any) ?? null,
@@ -208,9 +319,9 @@ Deno.serve(async (req) => {
           unansweredCount: unanswered,
         });
 
-        let tpl = pick.title ? templatesByTitle.get(pick.title) : undefined;
+        let tpl = flowResolved ? undefined : (pick.title ? templatesByTitle.get(pick.title) : undefined);
         // Fallback to first stage template
-        if (!tpl) {
+        if (!flowResolved && !tpl) {
           const stageList = templatesByStage.get(newJourney) ?? [];
           if (stageList.length) {
             const first = stageList[0];

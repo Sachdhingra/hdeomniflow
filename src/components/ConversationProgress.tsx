@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Phone, AlertTriangle, TrendingUp, MessageSquare, Sparkles } from "lucide-react";
+import { Phone, AlertTriangle, TrendingUp, MessageSquare, Sparkles, Hand } from "lucide-react";
+import { ANSWER_TONE_CLASS, answerTone, stepTitle } from "@/lib/quickReplyFlow";
 
 interface Message {
   id: string;
@@ -13,6 +14,10 @@ interface Message {
   sequence_number?: number | null;
   sent_at: string;
   message_body: string;
+  /** Quick-reply flow: which question this message asked or answered. */
+  flow_step?: string | null;
+  quick_reply_label?: string | null;
+  quick_reply_payload?: string | null;
 }
 
 interface Props {
@@ -126,9 +131,18 @@ export const ConversationProgress = ({
                   {m.sequence_number}
                 </span>
                 <Badge variant="outline" className="text-[9px] capitalize">{m.message_type}</Badge>
-                {m.message_kind && (
+                {m.quick_reply_label ? (
+                  <Badge
+                    variant="outline"
+                    className={`text-[9px] gap-1 ${ANSWER_TONE_CLASS[answerTone(m.quick_reply_payload)]}`}
+                  >
+                    <Hand className="w-2.5 h-2.5" />Tapped: {m.quick_reply_label}
+                  </Badge>
+                ) : m.flow_step && m.message_type === "outbound" ? (
+                  <span className="text-muted-foreground truncate">Asked: {stepTitle(m.flow_step)}</span>
+                ) : m.message_kind ? (
                   <span className="text-muted-foreground truncate">{KIND_LABEL[m.message_kind] ?? m.message_kind}</span>
-                )}
+                ) : null}
                 {m.sentiment && (
                   <Badge variant="outline" className={`text-[9px] ${SENTIMENT_COLOR[m.sentiment] ?? ""}`}>
                     {m.sentiment}

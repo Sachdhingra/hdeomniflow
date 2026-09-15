@@ -9,13 +9,14 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Phone, MoveHorizontal, Sparkles, MessageCircle, MapPin, Zap, AlertTriangle, Snowflake, Star, Reply } from "lucide-react";
+import { Phone, MoveHorizontal, Sparkles, MessageCircle, MapPin, Zap, AlertTriangle, Snowflake, Star, Reply, Hand, Hourglass, BellOff, Moon, Check } from "lucide-react";
 import { toast } from "@/lib/toast";
 import LeadDetailsDrawer from "@/components/LeadDetailsDrawer";
 import SendTemplateDialog from "@/components/SendTemplateDialog";
 import RepeatBadge from "@/components/RepeatBadge";
 import { neighborhoodColor, responseTimeColor, formatRelativeTime, PREFERRED_STYLES, BUDGET_RANGES } from "@/lib/leadConstants";
 import { type JourneyStage, statusToStage } from "@/lib/messageTemplates";
+import { ANSWER_TONE_CLASS, answerTone, describeAnswer, handoffTask, stepTitle } from "@/lib/quickReplyFlow";
 
 type LeadAlert = { id: string; lead_id: string; alert_type: string; severity: string; message: string };
 
@@ -35,6 +36,48 @@ const probColor = (p: number) => p >= 70 ? "bg-success/10 text-success" : p >= 4
 const daysSince = (iso?: string | null) => {
   if (!iso) return 0;
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+};
+
+type FlowState =
+  | { kind: "answered"; label: string; tone: string; task: string | null; at: string | null }
+  | { kind: "waiting"; question: string | null; at: string | null }
+  | { kind: "opted_out" }
+  | { kind: "snoozed"; until: string }
+  | null;
+
+/** Quick-reply columns the board reads off a lead row. */
+type LeadFlowFields = {
+  qr_opted_out?: boolean | null;
+  qr_snooze_until?: string | null;
+  qr_step?: string | null;
+  qr_step_sent_at?: string | null;
+  qr_last_answer_at?: string | null;
+  qr_last_payload?: string | null;
+};
+
+/** What the quick-reply conversation is doing for this lead right now. */
+const flowStateOf = (l: LeadFlowFields): FlowState => {
+  if (l.qr_opted_out) return { kind: "opted_out" };
+  if (l.qr_snooze_until && new Date(l.qr_snooze_until) > new Date()) {
+    return { kind: "snoozed", until: l.qr_snooze_until };
+  }
+  const answeredAfterAsking =
+    l.qr_last_answer_at &&
+    (!l.qr_step_sent_at || new Date(l.qr_last_answer_at) >= new Date(l.qr_step_sent_at));
+  if (l.qr_step && l.qr_step_sent_at && !answeredAfterAsking) {
+    return { kind: "waiting", question: stepTitle(l.qr_step), at: l.qr_step_sent_at };
+  }
+  const label = describeAnswer(l.qr_last_payload);
+  if (label) {
+    return {
+      kind: "answered",
+      label,
+      tone: ANSWER_TONE_CLASS[answerTone(l.qr_last_payload)],
+      task: handoffTask(l.qr_last_payload),
+      at: l.qr_last_answer_at,
+    };
+  }
+  return null;
 };
 
 const LeadsBoard = () => {
@@ -120,6 +163,18 @@ const LeadsBoard = () => {
     }
   };
 
+  // Quick-reply taps raise a named job ("ring them back today"). Staff clear it
+  // here when the job is done — opening the lead is not the same as doing it.
+  const resolveAlert = async (alertId: string) => {
+    const previous = alerts;
+    setAlerts(prev => prev.filter(a => a.id !== alertId));
+    const { error } = await supabase.from("lead_alerts").update({ resolved: true }).eq("id", alertId);
+    if (error) {
+      setAlerts(previous);
+      toast.error(error.message || "Could not clear this task");
+    }
+  };
+
   const handleOpenTemplates = (lead: Lead) => setTemplateLead(lead);
   const openLead = async (lead: Lead) => {
     setSelected(lead);
@@ -184,6 +239,7 @@ const LeadsBoard = () => {
                   const categoryLabel = LEAD_CATEGORIES.find(c => c.value === lead.category)?.label;
                   const respMins = l.response_time_minutes;
                   const leadAlerts = alertsByLead.get(lead.id) ?? [];
+                  const flow = flowStateOf(l);
                   return (
                     <Card
                       key={lead.id}
@@ -196,7 +252,16 @@ const LeadsBoard = () => {
                             {leadAlerts.slice(0, 2).map(a => (
                               <div key={a.id} className={`flex items-start gap-1 text-[10px] rounded px-1.5 py-0.5 ${a.severity === "critical" ? "bg-destructive/10 text-destructive" : a.severity === "warning" ? "bg-warning/10 text-warning" : "bg-muted text-muted-foreground"}`}>
                                 <AlertTriangle className="w-2.5 h-2.5 mt-0.5 shrink-0" />
-                                <span className="line-clamp-2">{a.message}</span>
+                                <span className="line-clamp-2 flex-1">{a.message}</span>
+                                <button
+                                  type="button"
+                                  aria-label="Mark done"
+                                  title="Mark done"
+                                  className="shrink-0 rounded p-0.5 hover:bg-background/60"
+                                  onClick={e => { e.stopPropagation(); resolveAlert(a.id); }}
+                                >
+                                  <Check className="w-2.5 h-2.5" />
+                                </button>
                               </div>
                             ))}
                           </div>
@@ -287,6 +352,41 @@ const LeadsBoard = () => {
                             </div>
                           )}
                         </div>
+
+                        {flow && (
+                          <div className="space-y-1">
+                            {flow.kind === "answered" && (
+                              <>
+                                <Badge variant="outline" className={`${flow.tone} text-[10px] gap-1 h-5 max-w-full`}>
+                                  <Hand className="w-2.5 h-2.5 shrink-0" />
+                                  <span className="truncate">Tapped: {flow.label}</span>
+                                </Badge>
+                                {flow.task && (
+                                  <p className="text-[10px] text-warning line-clamp-2">→ {flow.task}</p>
+                                )}
+                              </>
+                            )}
+                            {flow.kind === "waiting" && (
+                              <Badge variant="outline" className="text-[10px] gap-1 h-5 text-muted-foreground max-w-full">
+                                <Hourglass className="w-2.5 h-2.5 shrink-0" />
+                                <span className="truncate">
+                                  Awaiting tap{flow.question ? ` · ${flow.question}` : ""}
+                                </span>
+                              </Badge>
+                            )}
+                            {flow.kind === "opted_out" && (
+                              <Badge variant="outline" className="text-[10px] gap-1 h-5 text-muted-foreground">
+                                <BellOff className="w-2.5 h-2.5" />Opted out of WhatsApp
+                              </Badge>
+                            )}
+                            {flow.kind === "snoozed" && (
+                              <Badge variant="outline" className="text-[10px] gap-1 h-5 text-muted-foreground">
+                                <Moon className="w-2.5 h-2.5" />
+                                Snoozed till {new Date(flow.until).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
 
                         <div className="flex items-center gap-1.5 pt-1" onClick={e => e.stopPropagation()}>
                           <Button

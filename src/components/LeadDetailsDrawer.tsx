@@ -30,6 +30,9 @@ interface LeadMessage {
   concern?: string | null;
   variant?: string | null;
   sequence_number?: number | null;
+  flow_step?: string | null;
+  quick_reply_label?: string | null;
+  quick_reply_payload?: string | null;
 }
 
 interface StageHistoryRow {
@@ -85,7 +88,7 @@ const LeadDetailsDrawer = ({ lead, open, onOpenChange }: Props) => {
           .order("changed_at", { ascending: false }),
         supabase.rpc("calculate_conversion_probability", { _lead_id: lead.id }),
         supabase.from("lead_messages")
-          .select("id, message_type, message_body, status, sent_at, delivered_at, read_at, failed_at, error_message, template_used, message_kind, sentiment, intent, concern, variant, sequence_number")
+          .select("id, message_type, message_body, status, sent_at, delivered_at, read_at, failed_at, error_message, template_used, message_kind, sentiment, intent, concern, variant, sequence_number, flow_step, quick_reply_label, quick_reply_payload")
           .eq("lead_id", lead.id)
           .order("sent_at", { ascending: false })
           .limit(20),

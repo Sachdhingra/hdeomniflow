@@ -161,6 +161,10 @@ Deno.serve(async (req) => {
       lead_message_id,
       outreach_source,
       message_kind,
+      // Quick-reply flow: which step this message asks, and the readable
+      // preview of the rendered template so staff see the real question.
+      flow_step,
+      message_body,
     } = body || {};
 
     if (!phone) {
@@ -187,11 +191,15 @@ Deno.serve(async (req) => {
       result = await sendViaTwilio({ phone, message, content_sid, content_variables });
     }
 
-    const storedBody = content_sid
-      ? `[twilio-template:${content_sid}] ${JSON.stringify(content_variables || {})}`
-      : template_name
-        ? `[template:${template_name}] ${(template_body_values || []).join(" | ")}`.trim()
-        : (message as string);
+    // Prefer the caller's rendered preview — "[twilio-template:HX...]" tells a
+    // salesperson nothing about what the customer actually received.
+    const storedBody = (typeof message_body === "string" && message_body.trim())
+      ? message_body.trim()
+      : content_sid
+        ? `[twilio-template:${content_sid}] ${JSON.stringify(content_variables || {})}`
+        : template_name
+          ? `[template:${template_name}] ${(template_body_values || []).join(" | ")}`.trim()
+          : (message as string);
 
     await supabase.from("message_logs").insert({
       phone: result.phone,
@@ -221,6 +229,7 @@ Deno.serve(async (req) => {
         created_by: user_id || null,
         outreach_source: outreach_source || "manual",
         message_kind: message_kind || null,
+        flow_step: flow_step || null,
       };
       const leadMessageQuery = lead_message_id
         ? supabase.from("lead_messages").update(leadMessage).eq("id", lead_message_id)

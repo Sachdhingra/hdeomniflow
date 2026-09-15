@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/lib/toast";
+import QuickReplyFlowCard from "@/components/QuickReplyFlowCard";
 
 type StageRow = { stage: string; count: number; avg_days: number };
 type LogRow = { id: string; event_type: string; success: boolean; details: any; error_message: string | null; executed_at: string; lead_id: string | null };
@@ -128,7 +129,16 @@ const AdminAutomation = () => {
     try {
       const { data, error } = await supabase.functions.invoke("nurture-engine");
       if (error) throw error;
-      toast.success(`Engine ran: ${data?.auto_sent ?? 0} sent, ${data?.scored ?? 0} scored, ${data?.moved_to_overdue ?? 0} → overdue`);
+      toast.success(
+        `Engine ran: ${data?.auto_sent ?? 0} sent (${data?.quick_replies_sent ?? 0} quick replies), ` +
+        `${data?.flow_awaiting_tap ?? 0} awaiting a tap, ${data?.scored ?? 0} scored`,
+      );
+      if (data?.quick_reply_templates_missing) {
+        toast.error(
+          `${data.quick_reply_templates_missing} lead(s) fell back to plain text — ` +
+          `paste the missing Twilio Content SIDs below.`,
+        );
+      }
       await load();
     } catch (e: any) {
       toast.error(e.message || "Engine failed");
@@ -233,6 +243,8 @@ const AdminAutomation = () => {
           <p className="text-2xl font-bold mt-1 text-destructive">{counts.failed_today}</p>
         </CardContent></Card>
       </div>
+
+      <QuickReplyFlowCard isAdmin={user?.role === "admin"} />
 
       <Card>
         <CardHeader><CardTitle className="text-base">Leads by stage</CardTitle></CardHeader>
