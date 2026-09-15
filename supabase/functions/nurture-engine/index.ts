@@ -199,6 +199,7 @@ Deno.serve(async (req) => {
         // 3. Decide next message
         const daysSinceInbound = lead.last_response_at ? daysBetween(lead.last_response_at, now) : daysBetween(lead.created_at, now);
         const unanswered = lead.unanswered_outbound_count ?? 0;
+        let sentThisRun = 0;
         const pick = pickTemplateTitle({
           journeyStage: newJourney,
           concern: (lead.last_inbound_concern as any) ?? null,
@@ -293,6 +294,7 @@ Deno.serve(async (req) => {
                 }).eq("id", inserted.id);
               }
               if (ok) {
+                sentThisRun = 1;
                 summary.auto_sent++;
                 if (variantId) await supabase.rpc("bump_variant_sent", { _variant_id: variantId });
                 await supabase.from("leads").update({
@@ -332,7 +334,7 @@ Deno.serve(async (req) => {
         }
 
         // 4. Escalation flags
-        const newUnanswered = unanswered;
+        const newUnanswered = unanswered + sentThisRun;
         if (newUnanswered >= 5 && !lead.dead_lead) {
           await supabase.from("leads").update({ dead_lead: true, journey_stage: "cold", needs_personal_call: false }).eq("id", lead.id);
           summary.dead_leads_flagged++;

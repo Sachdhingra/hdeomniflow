@@ -1,7 +1,7 @@
 # Roadmap
-- [ ] Unify WhatsApp send records and exact delivery status matching
-- [ ] Capture and surface inbound replies reliably
-- [ ] Add lead-board reply indicators and read handling
-- [ ] Add outreach performance, filters, replies, and failures
-- [ ] Add automation schedule/status visibility and safe template sending
-- [ ] Deploy functions and verify database, tests, build, and mobile UI
+- [x] Unify WhatsApp send records and exact delivery status matching
+- [x] Capture and surface inbound replies reliably
+- [x] Add lead-board reply indicators and read handling
+- [x] Add outreach performance, filters, replies, and failures
+- [x] Add automation schedule/status visibility and safe template sending
+- [x] Deploy functions and verify database, build, and public route behavior

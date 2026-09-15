@@ -67,7 +67,7 @@ const AdminAutomation = () => {
         .order("executed_at", { ascending: false })
         .limit(30);
       setLogs((logsData ?? []) as LogRow[]);
-      setLastRun(((logsData ?? []).find(l => l.event_type === "engine_run") as LogRow | undefined) ?? null);
+      setLastRun(((logsData ?? []).find(l => l.event_type === "engine_run" && l.success) as LogRow | undefined) ?? null);
 
       const { data: msgsData } = await supabase
         .from("lead_messages")
