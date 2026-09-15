@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CheckCircle2, AlertTriangle, Hand, Loader2, MessageSquareReply } from "lucide-react";
 import { toast } from "@/lib/toast";
-import { QUICK_REPLY_STEPS } from "@/lib/quickReplyFlow";
+import { QUICK_REPLY_STEPS, type QuickReplyStep } from "@/lib/quickReplyFlow";
 
 type StepRow = {
   step_key: string;
@@ -46,8 +46,11 @@ const QuickReplyFlowCard = ({ isAdmin }: { isAdmin: boolean }) => {
 
   useEffect(() => { load(); }, []);
 
-  const buttonsByStep = useMemo(
-    () => Object.fromEntries(QUICK_REPLY_STEPS.map(s => [s.key, s.buttons])),
+  // Button labels, template name and Meta category all come from the flow code,
+  // not the database — they are what gets submitted to Meta, so there is only
+  // ever one copy of them.
+  const stepsByKey = useMemo(
+    () => Object.fromEntries(QUICK_REPLY_STEPS.map(s => [s.key, s])) as Record<string, QuickReplyStep>,
     [],
   );
 
@@ -86,7 +89,9 @@ const QuickReplyFlowCard = ({ isAdmin }: { isAdmin: boolean }) => {
             </CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
               Customers answer by tapping a button instead of typing or calling back. Each
-              question needs its Twilio Content SID pasted in once.
+              question needs its Twilio Content SID pasted in once — or run{" "}
+              <code className="text-[11px]">npm run wa:templates -- create --confirm</code> to
+              create them all from the flow definition.
             </p>
           </div>
           <Badge variant={configured === rows.length && rows.length > 0 ? "secondary" : "destructive"}>
@@ -105,7 +110,8 @@ const QuickReplyFlowCard = ({ isAdmin }: { isAdmin: boolean }) => {
         )}
         {rows.map(row => {
           const live = !!row.content_sid?.trim();
-          const buttons = buttonsByStep[row.step_key] ?? [];
+          const step = stepsByKey[row.step_key];
+          const buttons = step?.buttons ?? [];
           return (
             <div key={row.step_key} className="rounded-lg border p-3 space-y-2">
               <div className="flex items-start justify-between gap-2 flex-wrap">
@@ -118,9 +124,16 @@ const QuickReplyFlowCard = ({ isAdmin }: { isAdmin: boolean }) => {
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">{row.question}</p>
                 </div>
-                <Badge variant="outline" className="text-[10px] shrink-0">
-                  {row.requires_approved_template ? "Needs Meta approval" : "Sent inside 24h window"}
-                </Badge>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <Badge variant="outline" className="text-[10px]">
+                    {row.requires_approved_template
+                      ? `Meta approval · ${step?.metaCategory ?? ""}`
+                      : "Sent inside 24h window"}
+                  </Badge>
+                  {step && (
+                    <code className="text-[10px] text-muted-foreground">{step.templateName}</code>
+                  )}
+                </div>
               </div>
 
               <div className="flex flex-wrap gap-1">

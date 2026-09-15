@@ -42,19 +42,26 @@ template.
 
 ## Setting it up (one time)
 
-1. In the **Twilio Console → Content Template Builder**, create one template per
-   step below. Choose content type **`twilio/quick-reply`**.
-2. Copy the body text exactly, including the `{{1}}`, `{{2}}`, `{{3}}`
-   placeholders in the order listed.
-3. Add the buttons exactly as listed. **The button ID / payload must match
-   character for character** — that string is what the board acts on. A mismatch
-   means the tap arrives as unrecognised free text.
-4. Submit the templates marked *Submit to Meta for approval*. The rest work
-   without approval.
-5. Copy each approved template's Content SID (`HX…`) and paste it into
-   **Admin → Automation Monitor → Quick-reply conversation**.
+```bash
+export TWILIO_ACCOUNT_SID=AC…
+export TWILIO_AUTH_TOKEN=…
 
-Until a SID is pasted, the engine will not send that question. It logs
+npm run wa:templates -- create --confirm   # build all 8 templates in Twilio
+npm run wa:templates -- submit --confirm   # send the 4 openers to Meta
+npm run wa:templates -- status            # approval state
+npm run wa:templates -- sql               # SIDs, ready to store
+```
+
+The script builds every template from the flow definition above, so the button
+id Meta approves is byte-for-byte the payload the webhook matches on. Doing it
+by hand in the Twilio console works too — **`WHATSAPP_TEMPLATE_SUBMISSIONS.md`
+has every field written out** — but a button id with a stray trailing space
+looks correct in the console and arrives here as unrecognised free text.
+
+Then store each Content SID (`HX…`), either with the SQL the script prints or
+by pasting it into **Admin → Automation Monitor → Quick-reply conversation**.
+
+Until a SID is stored, the engine will not send that question. It logs
 `quick_reply_template_missing` and falls back to the old plain-text follow-up,
 so outreach never silently stops.
 

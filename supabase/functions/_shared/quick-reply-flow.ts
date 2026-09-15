@@ -82,8 +82,22 @@ export interface QuickReplyButton {
 /** Ordered meaning of the template's {{1}}, {{2}}, ... variables. */
 export type QuickReplyVariable = "first_name" | "interest" | "showroom";
 
+/**
+ * Meta's template category. It decides throttling, not just paperwork: a
+ * MARKETING template to many recipients gets rate-limited (Twilio 63049), which
+ * is why the account's notification template was moved to UTILITY.
+ */
+export type MetaCategory = "MARKETING" | "UTILITY";
+
 export interface QuickReplyStep {
   key: string;
+  /**
+   * Template name as registered with Twilio/Meta. Meta only allows lowercase
+   * letters, digits and underscores.
+   */
+  templateName: string;
+  /** Category submitted to Meta. Only meaningful when approval is required. */
+  metaCategory: MetaCategory;
   /** Internal name shown to staff in the admin flow view. */
   title: string;
   /** Preview of the rendered question, for staff and for template submission. */
@@ -116,6 +130,8 @@ const STOP_BUTTON: QuickReplyButton = {
 export const QUICK_REPLY_STEPS: QuickReplyStep[] = [
   {
     key: "qr_reengage",
+    templateName: "hde_qr_still_looking",
+    metaCategory: "MARKETING",
     title: "Re-engage — still looking?",
     question:
       "Hi {{1}}! Home Decor Enterprises here (authorised Godrej Interio, {{3}}). " +
@@ -157,6 +173,8 @@ export const QUICK_REPLY_STEPS: QuickReplyStep[] = [
   },
   {
     key: "qr_what_helps",
+    templateName: "hde_qr_what_helps",
+    metaCategory: "UTILITY",
     title: "What helps most?",
     question: "Great! What would help you most right now, {{1}}?",
     variables: ["first_name"],
@@ -204,6 +222,8 @@ export const QUICK_REPLY_STEPS: QuickReplyStep[] = [
   },
   {
     key: "qr_offer_catalogue",
+    templateName: "hde_qr_offer_catalogue",
+    metaCategory: "MARKETING",
     title: "Offer catalogue",
     question:
       "No problem, {{1}}. Would you like our latest catalogue and this month's offers on {{2}}?",
@@ -238,6 +258,8 @@ export const QUICK_REPLY_STEPS: QuickReplyStep[] = [
   },
   {
     key: "qr_visit_when",
+    templateName: "hde_qr_visit_when",
+    metaCategory: "UTILITY",
     title: "Showroom visit timing",
     question: "Lovely — when would you like to visit our {{1}} showroom?",
     variables: ["showroom"],
@@ -284,6 +306,8 @@ export const QUICK_REPLY_STEPS: QuickReplyStep[] = [
   },
   {
     key: "qr_price_feedback",
+    templateName: "hde_qr_price_feedback",
+    metaCategory: "UTILITY",
     title: "Price feedback",
     question: "Hi {{1}}, did the price we shared for {{2}} work for you?",
     variables: ["first_name", "interest"],
@@ -328,6 +352,8 @@ export const QUICK_REPLY_STEPS: QuickReplyStep[] = [
   },
   {
     key: "qr_emi_offer",
+    templateName: "hde_qr_emi_offer",
+    metaCategory: "MARKETING",
     title: "EMI / offer rescue",
     question:
       "Understood, {{1}}. We have easy EMI and seasonal offers on {{2}}. Should I check the best option for you?",
@@ -363,6 +389,8 @@ export const QUICK_REPLY_STEPS: QuickReplyStep[] = [
   },
   {
     key: "qr_post_visit",
+    templateName: "hde_qr_post_visit",
+    metaCategory: "UTILITY",
     title: "After showroom visit",
     question: "Thanks for visiting us, {{1}}! Did you find what you were looking for?",
     variables: ["first_name"],
@@ -409,6 +437,8 @@ export const QUICK_REPLY_STEPS: QuickReplyStep[] = [
   },
   {
     key: "qr_nudge",
+    templateName: "hde_qr_keep_enquiry_open",
+    metaCategory: "MARKETING",
     title: "Silent lead nudge",
     question:
       "Hi {{1}}, one tap is all we need — should we keep your enquiry for {{2}} open?",
@@ -561,4 +591,52 @@ export function describeAnswer(payload: string | null | undefined): string | nul
     if (b) return b.label;
   }
   return null;
+}
+
+/**
+ * Sample values submitted to Meta with each template. Meta requires a realistic
+ * example for every placeholder, and rejects samples that look like markup.
+ */
+export const TEMPLATE_SAMPLE: Record<QuickReplyVariable, string> = {
+  first_name: "Rahul",
+  interest: "a 3-seater fabric sofa",
+  showroom: "Dehradun",
+};
+
+export interface ContentApiPayload {
+  friendly_name: string;
+  language: string;
+  variables: Record<string, string>;
+  types: {
+    "twilio/quick-reply": {
+      body: string;
+      actions: { title: string; id: string }[];
+    };
+  };
+}
+
+/**
+ * Request body for POST https://content.twilio.com/v1/Content.
+ *
+ * Generating this from the flow is the point: the button `id` sent to Meta is
+ * the same string the webhook matches on, so a template can never be approved
+ * with payloads the lead board does not recognise.
+ */
+export function buildContentApiPayload(step: QuickReplyStep): ContentApiPayload {
+  return {
+    friendly_name: step.templateName,
+    language: "en",
+    variables: buildContentVariables(step, TEMPLATE_SAMPLE),
+    types: {
+      "twilio/quick-reply": {
+        body: step.question,
+        actions: step.buttons.map((b) => ({ title: b.label, id: b.payload })),
+      },
+    },
+  };
+}
+
+/** Steps that must be approved by Meta before they can open a conversation. */
+export function stepsNeedingApproval(): QuickReplyStep[] {
+  return QUICK_REPLY_STEPS.filter((s) => s.requiresApprovedTemplate);
 }

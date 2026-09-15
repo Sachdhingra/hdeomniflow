@@ -7,6 +7,8 @@ import {
   getQuickReplyStep,
   pickEntryStep,
   resolveQuickReply,
+  buildContentApiPayload,
+  stepsNeedingApproval,
 } from "@/lib/quickReplyFlow";
 import { findAnswer, answerTone, handoffTask, stepTitle } from "@/lib/quickReplyFlow";
 import { readFileSync } from "node:fs";
@@ -248,5 +250,66 @@ describe("database seed matches the flow", () => {
         step.requiresApprovedTemplate,
       );
     }
+  });
+});
+
+describe("Meta template submission rules", () => {
+  it("uses template names Meta accepts", () => {
+    for (const step of QUICK_REPLY_STEPS) {
+      expect(step.templateName, step.key).toMatch(/^[a-z0-9_]+$/);
+      expect(step.templateName.length, step.key).toBeLessThanOrEqual(512);
+    }
+    const names = QUICK_REPLY_STEPS.map((s) => s.templateName);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it("never starts or ends the body with a placeholder", () => {
+    // Meta rejects both outright.
+    for (const step of QUICK_REPLY_STEPS) {
+      expect(step.question.trimStart().startsWith("{{"), step.key).toBe(false);
+      expect(step.question.trimEnd().endsWith("}}"), step.key).toBe(false);
+    }
+  });
+
+  it("never places two placeholders next to each other", () => {
+    for (const step of QUICK_REPLY_STEPS) {
+      expect(/\{\{\s*\d+\s*\}\}\s*\{\{/.test(step.question), step.key).toBe(false);
+    }
+  });
+
+  it("keeps the body inside Meta's 1024-character limit", () => {
+    for (const step of QUICK_REPLY_STEPS) {
+      expect(step.question.length, step.key).toBeLessThanOrEqual(1024);
+    }
+  });
+
+  it("does not repeat a button label within one message", () => {
+    for (const step of QUICK_REPLY_STEPS) {
+      const labels = step.buttons.map((b) => b.label);
+      expect(new Set(labels).size, step.key).toBe(labels.length);
+    }
+  });
+
+  it("builds a Twilio Content payload whose button ids are the flow's payloads", () => {
+    for (const step of QUICK_REPLY_STEPS) {
+      const payload = buildContentApiPayload(step);
+      expect(payload.friendly_name).toBe(step.templateName);
+      expect(payload.types["twilio/quick-reply"].body).toBe(step.question);
+      expect(payload.types["twilio/quick-reply"].actions).toEqual(
+        step.buttons.map((b) => ({ title: b.label, id: b.payload })),
+      );
+      // A sample for every placeholder, or Meta rejects the submission.
+      expect(Object.keys(payload.variables).length).toBe(step.variables.length);
+      for (const v of Object.values(payload.variables)) expect(v.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("only asks Meta to approve the questions that open a conversation", () => {
+    expect(stepsNeedingApproval().map((s) => s.key)).toEqual([
+      "qr_reengage",
+      "qr_price_feedback",
+      "qr_post_visit",
+      "qr_nudge",
+    ]);
   });
 });
