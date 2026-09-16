@@ -178,7 +178,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
 
   return (
     <div className="min-h-screen flex bg-background">
-      <StaffPushRegistrar />
+      {user.role === "admin" && <StaffPushRegistrar />}
       <ChatNotifier />
       <LeadNotifier />
       <OrderNotifier />
