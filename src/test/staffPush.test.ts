@@ -57,9 +57,13 @@ async function loadPush() {
   return import("@/lib/push");
 }
 
+const STAFF_APP_ID = "11111111-2222-3333-4444-555555555555";
+const INSIDER_CUSTOMER_APP_ID = "4e6e57c1-7555-4f05-81e2-efdb9d6e19d4";
+
 beforeEach(() => {
   vi.useFakeTimers();
   vi.clearAllMocks();
+  vi.stubEnv("VITE_ONESIGNAL_STAFF_APP_ID", STAFF_APP_ID);
 
   subscription.id = null;
   subscription.optedIn = false;
@@ -89,6 +93,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllEnvs();
 });
 
 describe("registerStaffPush", () => {
@@ -150,6 +155,48 @@ describe("registerStaffPush", () => {
 
     expect(await second).toBe(true);
     expect(oneSignal.init).toHaveBeenCalledTimes(2);
+  });
+
+  it("initialises against the configured staff app", async () => {
+    subscription.optIn.mockImplementation(async () => {
+      subscription.id = "player-123";
+      subscription.optedIn = true;
+    });
+
+    const push = await loadPush();
+    const result = push.registerStaffPush("user-1", "sales");
+    await vi.runAllTimersAsync();
+
+    expect(await result).toBe(true);
+    expect(oneSignal.init).toHaveBeenCalledWith(
+      expect.objectContaining({ appId: STAFF_APP_ID }),
+    );
+  });
+
+  it("refuses to start against the Insider customer app", async () => {
+    // Its web push is bound to another origin, so no staff device can ever
+    // subscribe — the SDK used to crash opaquely instead of saying so.
+    vi.stubEnv("VITE_ONESIGNAL_STAFF_APP_ID", INSIDER_CUSTOMER_APP_ID);
+
+    const push = await loadPush();
+    const result = push.registerStaffPush("user-1", "sales");
+    await vi.runAllTimersAsync();
+
+    expect(await result).toBe(false);
+    expect(push.staffPushRegistrationError()).toMatch(/Insider customer app/);
+    expect(oneSignal.init).not.toHaveBeenCalled();
+  });
+
+  it("says so when no staff app is configured at all", async () => {
+    vi.stubEnv("VITE_ONESIGNAL_STAFF_APP_ID", "");
+
+    const push = await loadPush();
+    const result = push.registerStaffPush("user-1", "sales");
+    await vi.runAllTimersAsync();
+
+    expect(await result).toBe(false);
+    expect(push.staffPushRegistrationError()).toMatch(/not configured/);
+    expect(oneSignal.init).not.toHaveBeenCalled();
   });
 
   it("explains the opaque crash thrown inside the OneSignal bundle", async () => {

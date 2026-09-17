@@ -31,13 +31,20 @@ const INTERNAL_SECRET   = Deno.env.get("LOYALTY_CRON_SECRET") ?? "";
 
 // Staff run on their own OneSignal app — OneSignal binds one site origin per
 // web-push app, and the Insider app's is homedecorinsider.lovable.app, so it
-// cannot deliver from OmniFlow's domain. The app ID matches the client default
-// in src/lib/push.ts and is public. The API key is not: there is deliberately
-// no fallback to ONESIGNAL_API_KEY, because pairing the Insider key with the
-// staff app ID just draws a confusing 400 from OneSignal. Unset means the
-// "not configured" 503 below.
-const ONESIGNAL_APP_ID  = Deno.env.get("ONESIGNAL_STAFF_APP_ID")
-  ?? "4e6e57c1-7555-4f05-81e2-efdb9d6e19d4";
+// cannot deliver from OmniFlow's domain. This must match
+// VITE_ONESIGNAL_STAFF_APP_ID in the app bundle: a device subscribes against
+// the client's app, so a mismatch here means every send targets player IDs
+// that app has never heard of and OneSignal returns "invalid_player_ids".
+//
+// There is deliberately no default. The Insider app ID used to be one, against
+// the reasoning above, and it is rejected by name so it cannot come back
+// through the env var either. The API key is not public and has no fallback to
+// ONESIGNAL_API_KEY, because pairing the Insider key with a different app ID
+// just draws a confusing 400. Either unset means the "not configured" 503.
+const INSIDER_CUSTOMER_APP_ID = "4e6e57c1-7555-4f05-81e2-efdb9d6e19d4";
+
+const CONFIGURED_APP_ID = (Deno.env.get("ONESIGNAL_STAFF_APP_ID") ?? "").trim();
+const ONESIGNAL_APP_ID  = CONFIGURED_APP_ID === INSIDER_CUSTOMER_APP_ID ? "" : CONFIGURED_APP_ID;
 const ONESIGNAL_API_KEY = Deno.env.get("ONESIGNAL_STAFF_API_KEY") ?? "";
 
 const ONESIGNAL_URL = "https://onesignal.com/api/v1/notifications";
@@ -108,7 +115,11 @@ Deno.serve(async (req: Request) => {
   }
 
   if (!ONESIGNAL_APP_ID || !ONESIGNAL_API_KEY) {
-    return json({ error: "Push service is not configured yet." }, 503);
+    return json({
+      error: CONFIGURED_APP_ID === INSIDER_CUSTOMER_APP_ID
+        ? "Push service is misconfigured: ONESIGNAL_STAFF_APP_ID is the Insider customer app, which cannot deliver staff push. Set it to the staff app, matching VITE_ONESIGNAL_STAFF_APP_ID in the app bundle."
+        : "Push service is not configured yet: set ONESIGNAL_STAFF_APP_ID and ONESIGNAL_STAFF_API_KEY.",
+    }, 503);
   }
 
   // Reach probe for the dashboard badge.

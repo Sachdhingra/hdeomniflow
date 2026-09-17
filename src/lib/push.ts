@@ -9,17 +9,48 @@ import { supabase } from "@/integrations/supabase/client";
  * closed, which is what the database triggers on notifications/chat_messages
  * depend on.
  *
- * OneSignal app for the OmniFlow staff app. Separate from the Insider app
- * because OneSignal binds one site origin per web-push app, and Insider's is
- * https://homedecorinsider.lovable.app — staff push cannot be delivered from
- * OmniFlow's domain on that app ID. VITE_ONESIGNAL_STAFF_APP_ID overrides it
- * for a different deployment; the app ID is public and ships in the bundle,
- * so hardcoding the default is safe (the REST API key is not, and lives only
- * in the ONESIGNAL_STAFF_API_KEY edge-function secret).
+ * The staff app needs its OWN OneSignal app. OneSignal binds one site origin
+ * per web-push app, so an app whose origin is another site cannot subscribe a
+ * device on OmniFlow's origin — the SDK fetches that app's config, finds the
+ * origin does not match the page, and never builds its subscription
+ * internals. Every later login()/optIn() then dies inside the minified CDN
+ * bundle on a property that no longer exists, which is what staff phones saw
+ * as "Cannot read properties of undefined (reading 'Qe')".
+ *
+ * Set VITE_ONESIGNAL_STAFF_APP_ID to the OneSignal app whose web push origin
+ * is this site. The app ID is public and ships in the bundle; the REST API key
+ * is not, and lives only in the ONESIGNAL_STAFF_API_KEY edge-function secret,
+ * which must belong to the same app.
  */
+
+// The Insider CUSTOMER app (named "insider" in OneSignal), bound to
+// https://homedecorinsider.lovable.app. It shipped here as the staff default
+// by mistake, against the reasoning directly above, so it is rejected by name
+// rather than silently producing an unsubscribable SDK.
+const INSIDER_CUSTOMER_APP_ID = "4e6e57c1-7555-4f05-81e2-efdb9d6e19d4";
+
+const configuredAppId = (import.meta.env.VITE_ONESIGNAL_STAFF_APP_ID ?? "").trim();
+
 export const ONESIGNAL_APP_ID =
-  import.meta.env.VITE_ONESIGNAL_STAFF_APP_ID ??
-  "4e6e57c1-7555-4f05-81e2-efdb9d6e19d4";
+  configuredAppId === INSIDER_CUSTOMER_APP_ID ? "" : configuredAppId;
+
+/** Why staff push cannot start, or null when the app ID looks usable. */
+export function staffPushConfigError(): string | null {
+  if (configuredAppId === INSIDER_CUSTOMER_APP_ID) {
+    return (
+      "Staff push is pointed at the Insider customer app, whose web push is bound to " +
+      "another site, so no staff device can subscribe. Set VITE_ONESIGNAL_STAFF_APP_ID " +
+      "to the OneSignal app whose web push origin is this site."
+    );
+  }
+  if (!ONESIGNAL_APP_ID) {
+    return (
+      "Staff push is not configured: set VITE_ONESIGNAL_STAFF_APP_ID to the OneSignal " +
+      "app whose web push origin is this site."
+    );
+  }
+  return null;
+}
 
 type PushWindow = Window & {
   __omniflowOneSignalInit?: Promise<void>;
@@ -128,6 +159,9 @@ async function getOneSignal() {
     navigator.serviceWorker.register("/sw.js").then(() => navigator.serviceWorker.ready),
     "Notification worker startup",
   );
+  const configError = staffPushConfigError();
+  if (configError) throw new Error(configError);
+
   const { default: OneSignal } = await import("react-onesignal");
   const pushWindow = window as PushWindow;
 
