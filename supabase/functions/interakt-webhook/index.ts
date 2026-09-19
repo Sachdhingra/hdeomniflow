@@ -194,6 +194,25 @@ Deno.serve(async (req) => {
                   message: binaryReply === "yes" ? "Interested — reply now" : binaryReply === "no" ? "Customer said no — ask the reason" : `New WhatsApp reply: ${String(text).slice(0, 160)}`,
                 });
               }
+              if (binaryReply === "no") {
+                const { data: priorReason } = await supabase.from("lead_messages").select("id")
+                  .eq("lead_id", lead.id).eq("message_kind", "negative_reason_request")
+                  .gte("created_at", new Date(Date.now() - 24 * 3600000).toISOString()).limit(1);
+                if (!priorReason?.length) {
+                  await fetch(`${supabaseUrl}/functions/v1/send-whatsapp`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceRoleKey}` },
+                    body: JSON.stringify({
+                      phone,
+                      message: "Thank you for letting us know. What is the main reason — price, timing, or the product? Reply with one option and your salesperson will help accordingly.",
+                      lead_id: lead.id,
+                      user_id: notifyUser,
+                      outreach_source: "automatic",
+                      message_kind: "negative_reason_request",
+                    }),
+                  }).catch((error) => console.error("[interakt-webhook] reason request failed:", error));
+                }
+              }
 
               // Increment reply_count on the most recent outbound variant (A/B tracking)
               const { data: lastOut } = await supabase
