@@ -187,7 +187,7 @@ Deno.serve(async (req) => {
           ? { barrier_addressed: false, objection_type: analysis.concern ?? "general" }
           : {}),
       };
-      if (["interested", "ready_to_buy", "question"].includes(analysis.intent)) {
+      if (["interested", "ready_to_buy"].includes(analysis.intent)) {
         leadUpdates.needs_personal_call = false;
         leadUpdates.dead_lead = false;
         leadUpdates.automation_paused = false;

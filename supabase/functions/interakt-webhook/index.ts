@@ -163,7 +163,7 @@ Deno.serve(async (req) => {
                 leadUpdate.automation_paused = true;
               }
               // Only clear dead_lead / needs_personal_call on positive engagement
-              if (analysis.intent === "interested" || analysis.intent === "ready_to_buy" || analysis.intent === "question") {
+              if (analysis.intent === "interested" || analysis.intent === "ready_to_buy") {
                 leadUpdate.dead_lead = false;
                 leadUpdate.needs_personal_call = false;
               }
