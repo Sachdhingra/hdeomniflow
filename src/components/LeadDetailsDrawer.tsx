@@ -351,6 +351,7 @@ const LeadDetailsDrawer = ({ lead, open, onOpenChange }: Props) => {
             lastInboundSentiment={(l.last_inbound_sentiment as string) ?? null}
             lastInboundConcern={(l.last_inbound_concern as string) ?? null}
             lastRecommendedKind={(l.last_recommended_message_type as string) ?? null}
+            lastInboundIntent={(l.last_inbound_intent as string) ?? null}
           />
 
           {(products.length > 0 || lead.liked_product || lead.price_sensitivity) && (

@@ -6,3 +6,7 @@
 - [x] Add automation schedule/status visibility and safe template sending
 - [x] Deploy functions and verify database, build, and public route behavior
 - [x] Make staff notification activation a bounded one-click flow
+- [ ] Add exact Yes/No follow-up intent handling and pause after No
+- [ ] Route interested replies to the assigned salesperson with priority app/push alerts
+- [ ] Prioritize interested and reason-requested replies on the Kanban board
+- [ ] Deploy, test, and verify the reply-led follow-up workflow

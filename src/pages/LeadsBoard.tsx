@@ -9,7 +9,7 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Phone, MoveHorizontal, Sparkles, MessageCircle, MapPin, Zap, AlertTriangle, Snowflake, Star, Reply } from "lucide-react";
+import { Phone, MoveHorizontal, Sparkles, MessageCircle, MapPin, Zap, AlertTriangle, Snowflake, Star, Reply, Flame } from "lucide-react";
 import { toast } from "@/lib/toast";
 import LeadDetailsDrawer from "@/components/LeadDetailsDrawer";
 import SendTemplateDialog from "@/components/SendTemplateDialog";
@@ -99,6 +99,14 @@ const LeadsBoard = () => {
       const s = journeyOf(l);
       if (map[s]) map[s].push(l);
     }
+    for (const stage of Object.keys(map)) {
+      map[stage].sort((a, b) => {
+        const rank = (lead: Lead) => (lead as any).follow_up_reply_state === "interested" ? 2 : (lead as any).follow_up_reply_state === "reason_requested" ? 1 : 0;
+        const priority = rank(b) - rank(a);
+        if (priority !== 0) return priority;
+        return new Date((b as any).follow_up_reply_at || b.updated_at || b.created_at).getTime() - new Date((a as any).follow_up_reply_at || a.updated_at || a.created_at).getTime();
+      });
+    }
     return map;
   }, [visibleLeads]);
 
@@ -125,7 +133,7 @@ const LeadsBoard = () => {
     setSelected(lead);
     if ((unseenReplies[lead.id] ?? 0) > 0) {
       await supabase.from("lead_messages").update({ seen_at: new Date().toISOString() }).eq("lead_id", lead.id).eq("message_type", "inbound").is("seen_at", null);
-      await supabase.from("lead_alerts").update({ resolved: true }).eq("lead_id", lead.id).eq("alert_type", "whatsapp_reply");
+      await supabase.from("lead_alerts").update({ resolved: true }).eq("lead_id", lead.id).in("alert_type", ["whatsapp_reply", "whatsapp_interested", "whatsapp_reason_requested"]);
       setUnseenReplies(prev => { const next = { ...prev }; delete next[lead.id]; return next; });
     }
   };
@@ -206,6 +214,12 @@ const LeadsBoard = () => {
                           <div className="flex-1 min-w-0">
                             <p className="font-semibold text-sm line-clamp-1 uppercase">{lead.customer_name}</p>
                             <div className="flex flex-wrap gap-1 mt-1">
+                              {l.follow_up_reply_state === "interested" && (
+                                <Badge className="text-[10px] gap-1 h-5 bg-success text-success-foreground"><Flame className="w-3 h-3" />Interested — reply now</Badge>
+                              )}
+                              {l.follow_up_reply_state === "reason_requested" && (
+                                <Badge variant="outline" className="text-[10px] gap-1 h-5 border-warning text-warning"><MessageCircle className="w-3 h-3" />Reason requested</Badge>
+                              )}
                               {(unseenReplies[lead.id] ?? 0) > 0 && (
                                 <Badge className="text-[10px] gap-1 h-5"><Reply className="w-3 h-3" />New reply · {unseenReplies[lead.id]}</Badge>
                               )}

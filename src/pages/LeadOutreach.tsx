@@ -16,7 +16,7 @@ import {
 import { Loader2, Send, MessageSquare, Search, CheckCircle2, XCircle, Phone, Eye, Reply, AlertTriangle } from "lucide-react";
 import { toast } from "@/lib/toast";
 import {
-  WA_TEMPLATES, FOLLOW_UP_PREVIEW, inferInterest, firstName,
+  WA_TEMPLATES, YES_NO_FOLLOW_UP_PREVIEW, inferInterest, firstName,
 } from "@/lib/whatsappTemplates";
 
 interface OutreachLead {
@@ -408,7 +408,7 @@ const LeadOutreach = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-md bg-muted p-3 text-sm whitespace-pre-wrap">
-            {FOLLOW_UP_PREVIEW
+            {YES_NO_FOLLOW_UP_PREVIEW
               .replace("{{1}}", firstName(selectedLeads[0]?.customer_name) || "Name")
               .replace("{{2}}", selectedLeads[0] ? inferInterest(selectedLeads[0]) : "their item")}
           </div>
