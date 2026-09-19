@@ -9,7 +9,7 @@
 //   TWILIO_AUTH_TOKEN  — used to validate X-Twilio-Signature (optional but recommended)
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
-import { analyzeInbound } from "../_shared/conversation-analysis.ts";
+import { analyzeInbound, detectBinaryReply } from "../_shared/conversation-analysis.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -141,7 +141,8 @@ Deno.serve(async (req) => {
     const phone = normalizePhone(fromRaw);
     const numMedia = parseInt(params["NumMedia"] || "0", 10);
 
-    let text = body.trim();
+    const buttonReply = (params["ButtonPayload"] || params["ButtonText"] || "").trim();
+    let text = buttonReply || body.trim();
     if (!text && numMedia > 0) {
       const mediaType = (params["MediaContentType0"] || "").split("/")[0];
       text = mediaType === "image" ? "[image]"
@@ -155,14 +156,16 @@ Deno.serve(async (req) => {
 
     if (lead) {
       const analysis = analyzeInbound(text);
+      const binaryReply = detectBinaryReply(text);
       const seq = (lead.sequence ?? 0) + 1;
+      const now = new Date().toISOString();
 
       await supabase.from("lead_messages").insert({
         lead_id: lead.id,
         message_type: "inbound",
         message_body: text.slice(0, 4000),
         status: "delivered",
-        sent_at: new Date().toISOString(),
+        sent_at: now,
         response_received: true,
         sentiment: analysis.sentiment,
         intent: analysis.intent,
@@ -173,38 +176,76 @@ Deno.serve(async (req) => {
         outreach_source: "inbound",
       });
 
-      await supabase.from("leads").update({
+      const leadUpdates: Record<string, unknown> = {
         last_inbound_sentiment: analysis.sentiment,
         last_inbound_concern: analysis.concern,
         last_inbound_intent: analysis.intent,
         conversation_message_count: seq,
         unanswered_outbound_count: 0,
-        needs_personal_call: false,
-        dead_lead: false,
         concern_type: analysis.concern ?? undefined,
         ...(analysis.intent === "objection"
           ? { barrier_addressed: false, objection_type: analysis.concern ?? "general" }
           : {}),
-      }).eq("id", lead.id);
+      };
+      if (["interested", "ready_to_buy", "question"].includes(analysis.intent)) {
+        leadUpdates.needs_personal_call = false;
+        leadUpdates.dead_lead = false;
+        leadUpdates.automation_paused = false;
+      }
+      if (binaryReply === "yes") {
+        leadUpdates.follow_up_reply_state = "interested";
+        leadUpdates.follow_up_reply_at = now;
+      } else if (binaryReply === "no") {
+        leadUpdates.follow_up_reply_state = "reason_requested";
+        leadUpdates.follow_up_reply_at = now;
+        leadUpdates.automation_paused = true;
+      }
+      await supabase.from("leads").update(leadUpdates).eq("id", lead.id);
 
       const notifyUser = lead.assigned_to || lead.created_by;
       if (notifyUser) {
+        const notificationMessage = binaryReply === "yes"
+          ? `🔥 ${lead.customer_name} is interested — reply now`
+          : binaryReply === "no"
+            ? `${lead.customer_name} said no — reason requested for salesperson review`
+            : `New WhatsApp reply from ${lead.customer_name}: ${text.slice(0, 120)}`;
         await supabase.from("notifications").insert({
           user_id: notifyUser,
-          type: "whatsapp_reply",
-          message: `New WhatsApp reply from ${lead.customer_name}: ${text.slice(0, 120)}`,
+          type: binaryReply === "yes" ? "whatsapp_interested" : binaryReply === "no" ? "whatsapp_reason_requested" : "whatsapp_reply",
+          message: notificationMessage,
           link: "/leads",
         });
       }
+      const replyAlertType = binaryReply === "yes" ? "whatsapp_interested" : binaryReply === "no" ? "whatsapp_reason_requested" : "whatsapp_reply";
       const { data: existingReplyAlert } = await supabase.from("lead_alerts")
-        .select("id").eq("lead_id", lead.id).eq("alert_type", "whatsapp_reply").eq("resolved", false).limit(1);
+        .select("id").eq("lead_id", lead.id).eq("alert_type", replyAlertType).eq("resolved", false).limit(1);
       if (!existingReplyAlert?.length) {
         await supabase.from("lead_alerts").insert({
           lead_id: lead.id,
-          alert_type: "whatsapp_reply",
-          severity: "info",
-          message: `New WhatsApp reply: ${text.slice(0, 160)}`,
+          alert_type: replyAlertType,
+          severity: binaryReply === "yes" ? "critical" : binaryReply === "no" ? "warning" : "info",
+          message: binaryReply === "yes" ? `Interested — reply now: ${text.slice(0, 120)}` : binaryReply === "no" ? "Customer said no — reason requested" : `New WhatsApp reply: ${text.slice(0, 160)}`,
         });
+      }
+
+      if (binaryReply === "no") {
+        const { data: priorReason } = await supabase.from("lead_messages")
+          .select("id").eq("lead_id", lead.id).eq("message_kind", "negative_reason_request")
+          .gte("created_at", new Date(Date.now() - 24 * 3600000).toISOString()).limit(1);
+        if (!priorReason?.length) {
+          await fetch(`${supabaseUrl}/functions/v1/send-whatsapp`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceRoleKey}` },
+            body: JSON.stringify({
+              phone,
+              message: "Thank you for letting us know. What is the main reason — price, timing, or the product? Reply with one option and your salesperson will help accordingly.",
+              lead_id: lead.id,
+              user_id: notifyUser,
+              outreach_source: "automatic",
+              message_kind: "negative_reason_request",
+            }),
+          }).catch((error) => console.error("[twilio-webhook] reason request failed:", error));
+        }
       }
 
       // Update reply_count on the last outbound variant for A/B tracking

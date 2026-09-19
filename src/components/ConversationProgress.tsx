@@ -23,6 +23,7 @@ interface Props {
   lastInboundSentiment: string | null;
   lastInboundConcern: string | null;
   lastRecommendedKind: string | null;
+  lastInboundIntent?: string | null;
 }
 
 const KIND_LABEL: Record<string, string> = {
@@ -50,7 +51,7 @@ const SENTIMENT_COLOR: Record<string, string> = {
 
 export const ConversationProgress = ({
   messages, unansweredCount, needsPersonalCall, deadLead,
-  lastInboundSentiment, lastInboundConcern, lastRecommendedKind,
+  lastInboundSentiment, lastInboundConcern, lastRecommendedKind, lastInboundIntent,
 }: Props) => {
   const sequenced = [...messages]
     .filter(m => m.sequence_number != null)
@@ -81,6 +82,12 @@ export const ConversationProgress = ({
       )}
 
       {/* Snapshot */}
+      {lastInboundIntent === "interested" && (
+        <Card className="border-success/40 bg-success/5"><CardContent className="p-2.5 text-xs font-semibold text-success">Interested — reply now</CardContent></Card>
+      )}
+      {lastInboundIntent === "not_interested" && (
+        <Card className="border-warning/40 bg-warning/5"><CardContent className="p-2.5 text-xs font-semibold text-warning">Reason requested — automation paused</CardContent></Card>
+      )}
       <div className="grid grid-cols-3 gap-2 text-xs">
         <div className="bg-muted rounded p-2">
           <p className="text-[10px] text-muted-foreground">Last sentiment</p>
