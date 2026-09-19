@@ -7,6 +7,8 @@ export const WA_TEMPLATES = {
   followUpReengage: "HX45ff618cc3947d77a96aa8aeb2741c9e",
   /** hde_lead_welcome — {{1}} customer first name */
   leadWelcome: "HXa50d2f1a512771a524583a6432c860f4",
+  /** hde_followup_yes_no_v1 — pending WhatsApp approval; keep fallback active until approved */
+  followUpYesNoPending: "HX59e08fd435765137618001db1cb3c91e",
 } as const;
 
 export const FOLLOW_UP_PREVIEW =
@@ -15,6 +17,10 @@ export const FOLLOW_UP_PREVIEW =
   "new designs and special seasonal pricing available on it.\n\n" +
   "Would you like us to share the latest price and options? Simply reply to this message and our " +
   "team will assist you right away.";
+
+export const YES_NO_FOLLOW_UP_PREVIEW =
+  "Hi {{1}}! Are you still interested in {{2}}?\n\n" +
+  "Please reply YES and we’ll have your salesperson assist you, or reply NO and tell us if it is because of price, timing, or the product.";
 
 const CATEGORY_LABEL: Record<string, string> = {
   sofa: "a new sofa",

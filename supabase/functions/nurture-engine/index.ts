@@ -46,6 +46,7 @@ interface Lead {
   conversation_message_count: number | null;
   needs_personal_call: boolean | null;
   dead_lead: boolean | null;
+  automation_paused: boolean | null;
 }
 
 const daysBetween = (iso: string | null, now: Date) => {
@@ -162,10 +163,11 @@ Deno.serve(async (req) => {
 
     const { data: leads, error: fetchErr } = await supabase
       .from("leads")
-      .select("id, customer_name, customer_phone, status, journey_stage, liked_product, product_viewed, neighborhood, budget_range, decision_timeline, family_situation, stated_need, value_in_rupees, concern_type, objection_type, barrier_addressed, response_time_minutes, last_message_at, last_response_at, last_payment_link_sent_at, stage_changed_at, journey_stage_changed_at, created_at, created_by, assigned_to, category, last_inbound_sentiment, last_inbound_concern, last_inbound_intent, unanswered_outbound_count, conversation_message_count, needs_personal_call, dead_lead")
+      .select("id, customer_name, customer_phone, status, journey_stage, liked_product, product_viewed, neighborhood, budget_range, decision_timeline, family_situation, stated_need, value_in_rupees, concern_type, objection_type, barrier_addressed, response_time_minutes, last_message_at, last_response_at, last_payment_link_sent_at, stage_changed_at, journey_stage_changed_at, created_at, created_by, assigned_to, category, last_inbound_sentiment, last_inbound_concern, last_inbound_intent, unanswered_outbound_count, conversation_message_count, needs_personal_call, dead_lead, automation_paused")
       .is("deleted_at", null)
       .not("status", "in", "(won,lost,converted)")
       .eq("dead_lead", false)
+      .eq("automation_paused", false)
       .limit(2000);
 
     if (fetchErr) throw fetchErr;
