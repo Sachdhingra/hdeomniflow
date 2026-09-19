@@ -9,4 +9,4 @@
 - [x] Add exact Yes/No follow-up intent handling and pause after No
 - [x] Route interested replies to the assigned salesperson with priority app/push alerts
 - [x] Prioritize interested and reason-requested replies on the Kanban board
-- [ ] Deploy, test, and verify the reply-led follow-up workflow
+- [x] Deploy, test, and verify the reply-led follow-up workflow
