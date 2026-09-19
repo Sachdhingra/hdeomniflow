@@ -2120,6 +2120,7 @@ export type Database = {
           assigned_at: string | null
           assigned_to: string | null
           assignment_notes: string | null
+          automation_paused: boolean
           barrier_addressed: boolean
           budget_range: string | null
           category: Database["public"]["Enums"]["lead_category"]
@@ -2150,6 +2151,8 @@ export type Database = {
           family_visit_date: string | null
           feedback_score: number | null
           first_purchase_date: string | null
+          follow_up_reply_at: string | null
+          follow_up_reply_state: string | null
           has_family: boolean | null
           id: string
           journey_stage: string | null
@@ -2203,6 +2206,7 @@ export type Database = {
           assigned_at?: string | null
           assigned_to?: string | null
           assignment_notes?: string | null
+          automation_paused?: boolean
           barrier_addressed?: boolean
           budget_range?: string | null
           category: Database["public"]["Enums"]["lead_category"]
@@ -2233,6 +2237,8 @@ export type Database = {
           family_visit_date?: string | null
           feedback_score?: number | null
           first_purchase_date?: string | null
+          follow_up_reply_at?: string | null
+          follow_up_reply_state?: string | null
           has_family?: boolean | null
           id?: string
           journey_stage?: string | null
@@ -2286,6 +2292,7 @@ export type Database = {
           assigned_at?: string | null
           assigned_to?: string | null
           assignment_notes?: string | null
+          automation_paused?: boolean
           barrier_addressed?: boolean
           budget_range?: string | null
           category?: Database["public"]["Enums"]["lead_category"]
@@ -2316,6 +2323,8 @@ export type Database = {
           family_visit_date?: string | null
           feedback_score?: number | null
           first_purchase_date?: string | null
+          follow_up_reply_at?: string | null
+          follow_up_reply_state?: string | null
           has_family?: boolean | null
           id?: string
           journey_stage?: string | null
