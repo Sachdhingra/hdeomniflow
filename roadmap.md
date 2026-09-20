@@ -13,3 +13,5 @@
 - [x] Activate the Meta-approved YES/NO template for automatic and manual follow-ups
 - [x] Tailor follow-up product wording and enforce one send per customer per 24 hours
 - [x] Deploy and verify the daily follow-up engine
+- [x] Diagnose Twilio test delivery and switch the test to an approved WhatsApp template
+- [x] Report the test's final delivered or failed status instead of Twilio submission alone
