@@ -11,8 +11,8 @@ export const TWILIO_TEMPLATES = {
   leadWelcome: "HXa50d2f1a512771a524583a6432c860f4",
   // Follow-up re-engagement, {{1}} first name, {{2}} requested item
   followUpReengage: "HX45ff618cc3947d77a96aa8aeb2741c9e",
-  // Quick-reply YES/NO follow-up. Submitted 2026-09-19; do not send until approved.
-  followUpYesNoPending: "HX59e08fd435765137618001db1cb3c91e",
+  // hde_followup_yes_no_v1 — Meta approved 2026-09-20.
+  followUpYesNo: "HX59e08fd435765137618001db1cb3c91e",
   eliteCardWelcome: "HX2c0e7b006df9d6823059c69f9816d819",
   reviewThankYou: "HX16893586e03d1d1fd84b484f2d4a4252",
   // Generic Insider app notification mirror:

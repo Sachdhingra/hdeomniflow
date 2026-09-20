@@ -194,6 +194,7 @@ const AdminAutomation = () => {
           <p className="text-sm text-muted-foreground">Autonomous nurture engine — daily scoring, stage moves, and message queue.</p>
           <div className="flex items-center gap-2 mt-2 flex-wrap">
             <Badge variant="secondary">Automatic · active</Badge>
+            <Badge variant="outline">YES/NO template · Meta approved</Badge>
             <span className="text-xs text-muted-foreground">Runs daily at 6:00 PM and 8:00 PM India time</span>
             {lastRun && <span className="text-xs text-muted-foreground">· Last run {new Date(lastRun.executed_at).toLocaleString()}</span>}
           </div>
