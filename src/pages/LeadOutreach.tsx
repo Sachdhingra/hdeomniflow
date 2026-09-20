@@ -170,20 +170,20 @@ const LeadOutreach = () => {
         const { count: recentCount } = await supabase.from("lead_messages")
           .select("id", { count: "exact", head: true })
           .eq("lead_id", lead.id)
-          .eq("template_used", "hde_followup_reengage")
+          .eq("message_kind", "follow_up_yes_no")
           .gte("created_at", since);
         if ((recentCount ?? 0) > 0) throw new Error("Already contacted with this follow-up in the last 24 hours");
         const { data, error } = await supabase.functions.invoke("send-whatsapp", {
           body: {
             phone: lead.customer_phone,
-            content_sid: WA_TEMPLATES.followUpReengage,
+            content_sid: WA_TEMPLATES.followUpYesNo,
             content_variables: { "1": name, "2": interest },
             lead_id: lead.id,
             user_id: user.id,
             user_name: user.name,
-            template_name: "hde_followup_reengage",
+            template_name: "hde_followup_yes_no_v1",
             outreach_source: "manual",
-            message_kind: "follow_up_reengage",
+            message_kind: "follow_up_yes_no",
           },
         });
         if (error) throw error;

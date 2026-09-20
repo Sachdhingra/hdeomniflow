@@ -10,3 +10,6 @@
 - [x] Route interested replies to the assigned salesperson with priority app/push alerts
 - [x] Prioritize interested and reason-requested replies on the Kanban board
 - [x] Deploy, test, and verify the reply-led follow-up workflow
+- [x] Activate the Meta-approved YES/NO template for automatic and manual follow-ups
+- [x] Tailor follow-up product wording and enforce one send per customer per 24 hours
+- [x] Deploy and verify the daily follow-up engine

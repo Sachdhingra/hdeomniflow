@@ -3,6 +3,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 import { pickTemplateTitle } from "../_shared/conversation-analysis.ts";
 import { TWILIO_TEMPLATES } from "../_shared/twilio-templates.ts";
+import { followUpProduct } from "../_shared/follow-up-product.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -234,17 +235,20 @@ Deno.serve(async (req) => {
           }
           const body = fillVars(bodySource, lead);
 
-          // Skip if this template already sent in last 24h
+          // One reply-led follow-up per customer in 24h, even though the engine
+          // checks twice daily. This protects against duplicate evening sends.
           const { data: recentSent } = await supabase
             .from("lead_messages")
             .select("id")
             .eq("lead_id", lead.id)
-            .eq("template_id", tpl.id)
+            .eq("message_kind", "follow_up_yes_no")
             .gte("created_at", new Date(now.getTime() - 24 * 3600 * 1000).toISOString())
             .limit(1);
 
-          // Only send if journey changed OR concern detected OR escalation due
-          const shouldSend = journeyChanged
+          // Follow-up, negotiation and overdue leads receive a daily reply-led
+          // question; other stages retain the conversation-driven rules.
+          const isDailyFollowUp = lead.status === "follow_up" || lead.status === "negotiation" || lead.status === "overdue";
+          const shouldSend = isDailyFollowUp || journeyChanged
             || pick.messageKind.startsWith("no_response")
             || pick.messageKind.startsWith("objection")
             || pick.messageKind.startsWith("concern")
@@ -272,10 +276,10 @@ Deno.serve(async (req) => {
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceKey}` },
                 body: JSON.stringify({
                   phone: lead.customer_phone,
-                  content_sid: TWILIO_TEMPLATES.followUpReengage,
+                  content_sid: TWILIO_TEMPLATES.followUpYesNo,
                   content_variables: {
                     "1": (lead.customer_name || "there").trim().split(/\s+/)[0] || "there",
-                    "2": lead.liked_product || lead.product_viewed || lead.stated_need || "furniture for your home",
+                    "2": followUpProduct(lead),
                   },
                   lead_id: lead.id,
                   lead_message_id: inserted?.id,
@@ -283,7 +287,7 @@ Deno.serve(async (req) => {
                   template_id: tpl.id,
                   template_name: tpl.title,
                   outreach_source: "automatic",
-                  message_kind: pick.messageKind,
+                  message_kind: "follow_up_yes_no",
                 }),
               });
               const sendJson = await sendRes.json().catch(() => ({}));
