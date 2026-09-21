@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/table";
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from "recharts";
 import { Loader2, RefreshCw, Star, AlertTriangle, TrendingUp, TrendingDown, Trash2, ExternalLink } from "lucide-react";
+import MonthlyDrawPanel from "@/components/feedback/MonthlyDrawPanel";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/lib/toast";
 import { Link } from "react-router-dom";
@@ -31,6 +32,7 @@ interface Feedback {
   overall_rating: number;
   staff_rating: number;
   needs_attention: boolean;
+  reviewed_on_google: boolean;
   lead_created: boolean;
   lead_id: string | null;
   salesperson_name: string | null;
@@ -68,6 +70,21 @@ const FeedbackAnalyticsDashboard = () => {
     if (error) return toast.error(error.message);
     toast.success("Feedback deleted");
     setItems((prev) => prev.filter((i) => i.id !== id));
+  };
+
+  // Marking a review here also creates that customer's entry in the month's
+  // lucky draw, so it is the same path the kiosk button uses.
+  const markReviewed = async (f: Feedback) => {
+    if (f.reviewed_on_google) return;
+    const { error } = await (supabase as any).rpc("record_google_review", {
+      p_feedback_id: f.id,
+      p_source: "admin",
+    });
+    if (error) return toast.error(error.message);
+    toast.success(`${f.customer_name} entered into this month's draw`);
+    setItems((prev) =>
+      prev.map((i) => (i.id === f.id ? { ...i, reviewed_on_google: true } : i)),
+    );
   };
 
   useEffect(() => {
@@ -263,6 +280,11 @@ const FeedbackAnalyticsDashboard = () => {
         </Card>
       </div>
 
+      <div>
+        <h2 className="text-lg font-semibold mb-3">Monthly lucky draw</h2>
+        <MonthlyDrawPanel />
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle>Recent feedback</CardTitle>
@@ -278,6 +300,7 @@ const FeedbackAnalyticsDashboard = () => {
                   <TableHead>Overall</TableHead>
                   <TableHead>Staff</TableHead>
                   <TableHead>Comments</TableHead>
+                  <TableHead>Google review</TableHead>
                   <TableHead>Lead</TableHead>
                   <TableHead>When</TableHead>
                   <TableHead></TableHead>
@@ -310,6 +333,15 @@ const FeedbackAnalyticsDashboard = () => {
                       {f.comments || "—"}
                     </TableCell>
                     <TableCell>
+                      {f.reviewed_on_google ? (
+                        <Badge variant="secondary">⭐ In draw</Badge>
+                      ) : (
+                        <Button size="sm" variant="outline" onClick={() => markReviewed(f)}>
+                          Mark reviewed
+                        </Button>
+                      )}
+                    </TableCell>
+                    <TableCell>
                       {f.lead_id ? (
                         <Link to="/leads/board" className="inline-flex items-center gap-1 text-primary hover:underline text-xs">
                           {f.lead_created ? <Badge variant="secondary">✅ New</Badge> : <Badge variant="outline">Updated</Badge>}
@@ -329,7 +361,7 @@ const FeedbackAnalyticsDashboard = () => {
                 ))}
                 {items.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                       No feedback yet.
                     </TableCell>
                   </TableRow>

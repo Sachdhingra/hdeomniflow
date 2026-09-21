@@ -6,11 +6,19 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/lib/toast";
-import { Loader2, Maximize2 } from "lucide-react";
+import { Check, Loader2, Maximize2, MessageCircle } from "lucide-react";
 import GoogleReviewQRCode from "@/components/GoogleReviewQRCode";
 import KioskScreensaver from "@/components/kiosk/KioskScreensaver";
 
 type Step = 1 | 2 | 3 | 4;
+
+/** Matches REVIEW_ASK_MIN_RATING in supabase/functions/_shared/kiosk-messages.ts */
+const REVIEW_ASK_MIN_RATING = 4;
+
+const firstNameOf = (full: string) => {
+  const part = full.trim().split(/\s+/)[0] || "";
+  return part ? part.charAt(0).toUpperCase() + part.slice(1) : "there";
+};
 
 const EMOJIS_OVERALL = ["😢", "😕", "😐", "😊", "🤩"];
 const EMOJIS_STAFF = ["😢", "😕", "😐", "😊", "⭐"];
@@ -18,6 +26,9 @@ const LABELS = ["Poor", "OK", "Good", "Great", "Amazing"];
 const SALESPEOPLE = ["Shivam", "Nisha", "Reena", "Amit", "Saurabh", "Swati"];
 
 const AUTO_RESET_SECONDS = 60;
+// Writing a Google review takes longer than reading a thank-you screen, so the
+// review step gets more room before the kiosk resets for the next customer.
+const REVIEW_RESET_SECONDS = 180;
 
 const EmojiRow = ({
   emojis,
@@ -64,18 +75,37 @@ const FeedbackKiosk = () => {
   const [submitting, setSubmitting] = useState(false);
   const [reviewUrl, setReviewUrl] = useState<string>("");
   const [businessPhone, setBusinessPhone] = useState<string>("");
+  const [drawEnabled, setDrawEnabled] = useState(true);
+  const [drawPrize, setDrawPrize] = useState<string>("");
+  const [minDrawEntries, setMinDrawEntries] = useState<number>(50);
+  const [feedbackId, setFeedbackId] = useState<string | null>(null);
+  const [reviewConfirmed, setReviewConfirmed] = useState(false);
+  const [confirmingReview, setConfirmingReview] = useState(false);
   const [countdown, setCountdown] = useState<number>(AUTO_RESET_SECONDS);
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const remainingRef = useRef<number>(AUTO_RESET_SECONDS);
 
   useEffect(() => {
     supabase
       .from("app_settings")
       .select("key,value")
-      .in("key", ["google_review_url", "business_phone"])
+      .in("key", [
+        "google_review_url",
+        "business_phone",
+        "monthly_draw_enabled",
+        "monthly_draw_min_entries",
+        "monthly_draw_prize",
+      ])
       .then(({ data }) => {
         data?.forEach((r: any) => {
           if (r.key === "google_review_url") setReviewUrl(r.value);
           if (r.key === "business_phone") setBusinessPhone(r.value);
+          if (r.key === "monthly_draw_enabled") setDrawEnabled(String(r.value).toLowerCase() !== "false");
+          if (r.key === "monthly_draw_prize") setDrawPrize(r.value);
+          if (r.key === "monthly_draw_min_entries") {
+            const n = parseInt(r.value, 10);
+            if (Number.isFinite(n) && n > 0) setMinDrawEntries(n);
+          }
         });
       });
   }, []);
@@ -89,6 +119,9 @@ const FeedbackKiosk = () => {
     setPhone("");
     setSalesperson("");
     setComments("");
+    setFeedbackId(null);
+    setReviewConfirmed(false);
+    setConfirmingReview(false);
     setCountdown(AUTO_RESET_SECONDS);
   };
 
@@ -136,39 +169,74 @@ const FeedbackKiosk = () => {
     if (overall == null || staff == null) return;
 
     setSubmitting(true);
-    const { error } = await supabase.from("customer_feedback").insert({
-      customer_name: name.trim(),
-      customer_phone: phone,
-      salesperson_name: salesperson,
-      comments: comments.trim() || null,
-      overall_rating: overall,
-      staff_rating: staff,
+    // The insert trigger queues the personalised WhatsApp thank-you and pokes
+    // the feedback-whatsapp function, so the message lands on the customer's
+    // phone within seconds of them tapping Submit.
+    const { data, error } = await (supabase as any).rpc("submit_kiosk_feedback", {
+      p_customer_name: name.trim(),
+      p_customer_phone: phone,
+      p_overall_rating: overall,
+      p_staff_rating: staff,
+      p_salesperson_name: salesperson,
+      p_comments: comments.trim() || null,
     });
     setSubmitting(false);
     if (error) {
       toast.error("Could not submit. " + error.message);
       return;
     }
+    setFeedbackId((data as string) ?? null);
     setStep(4);
 
     // Start countdown for auto-reset
-    const seconds = AUTO_RESET_SECONDS;
+    const seconds = overall >= REVIEW_ASK_MIN_RATING ? REVIEW_RESET_SECONDS : AUTO_RESET_SECONDS;
     setCountdown(seconds);
-    let remaining = seconds;
+    remainingRef.current = seconds;
     if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
     countdownTimerRef.current = setInterval(() => {
-      remaining -= 1;
-      setCountdown(remaining);
-      if (remaining <= 0) {
+      remainingRef.current -= 1;
+      setCountdown(remainingRef.current);
+      if (remainingRef.current <= 0) {
         if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
         reset();
       }
     }, 1000);
   };
 
+  // Someone still tapping around the thank-you screen is not finished with it —
+  // give them the full countdown back rather than resetting under their hands.
+  useEffect(() => {
+    if (step !== 4) return;
+    const bump = () => {
+      const seconds =
+        (overall ?? 0) >= REVIEW_ASK_MIN_RATING ? REVIEW_RESET_SECONDS : AUTO_RESET_SECONDS;
+      remainingRef.current = seconds;
+      setCountdown(seconds);
+    };
+    const events = ["pointerdown", "keydown", "touchstart"];
+    events.forEach((e) => window.addEventListener(e, bump, { passive: true }));
+    return () => events.forEach((e) => window.removeEventListener(e, bump));
+  }, [step, overall]);
+
   useEffect(() => () => {
     if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
   }, []);
+
+  const confirmReview = async () => {
+    if (!feedbackId) return;
+    setConfirmingReview(true);
+    const { error } = await (supabase as any).rpc("record_google_review", {
+      p_feedback_id: feedbackId,
+      p_source: "kiosk",
+    });
+    setConfirmingReview(false);
+    if (error) {
+      toast.error("Could not record that. " + error.message);
+      return;
+    }
+    setReviewConfirmed(true);
+    toast.success("You're entered into this month's lucky draw!");
+  };
 
   const resultEmoji = useMemo(() => {
     if (overall === 5) return "🌟";
@@ -277,24 +345,66 @@ const FeedbackKiosk = () => {
         {step === 4 && overall != null && (
           <section className="w-full flex flex-col items-center gap-5 text-center text-white animate-fade-in">
             <div className="text-6xl">{resultEmoji}</div>
-            {overall >= 4 ? (
+            {overall >= REVIEW_ASK_MIN_RATING ? (
               <div className="w-full max-w-md mx-auto flex flex-col items-center gap-3">
                 <h2 className="text-xl sm:text-2xl font-bold">
-                  Great having you onboard, {name}!
+                  Thank you for visiting, {firstNameOf(name)}!
                 </h2>
                 <p className="text-white/90 text-sm sm:text-base">
-                  🎁 You are eligible for a <span className="font-bold">lucky draw</span>!
+                  We wish to serve you better each day 💙
                 </p>
-                {reviewUrl ? (
-                  <GoogleReviewQRCode url={reviewUrl} size={180} />
+
+                {reviewConfirmed ? (
+                  <div className="w-full rounded-2xl bg-white/15 backdrop-blur border border-white/30 p-4 flex flex-col items-center gap-2">
+                    <Check className="w-8 h-8" />
+                    <p className="font-semibold">You're in this month's lucky draw! 🎁</p>
+                    <p className="text-white/80 text-xs">
+                      We'll announce the winner on WhatsApp in the first week of next month.
+                    </p>
+                  </div>
+                ) : reviewUrl ? (
+                  <>
+                    <p className="text-white/90 text-sm">
+                      ⭐ Would you take 30 seconds to leave us a Google review? Scan below.
+                    </p>
+                    <GoogleReviewQRCode url={reviewUrl} size={180} />
+                    {drawEnabled && (
+                      <p className="text-white/80 text-xs max-w-xs">
+                        🎁 Every Google review enters you into our monthly lucky draw
+                        {drawPrize ? ` — winner gets ${drawPrize}` : ""}. One winner is drawn in the
+                        first week of each month, in any month with at least {minDrawEntries} review
+                        entries.
+                      </p>
+                    )}
+                    <Button
+                      variant="secondary"
+                      onClick={confirmReview}
+                      disabled={confirmingReview || !feedbackId}
+                      className="gap-2"
+                    >
+                      {confirmingReview ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Check className="w-4 h-4" />
+                      )}
+                      I've left my review
+                    </Button>
+                    <button
+                      onClick={confirmReview}
+                      disabled={confirmingReview || !feedbackId}
+                      className="text-white/70 text-xs underline underline-offset-2"
+                    >
+                      I had already reviewed you earlier
+                    </button>
+                  </>
                 ) : (
                   <p className="text-white/80">Review link not configured yet.</p>
                 )}
               </div>
             ) : overall === 3 ? (
               <>
-                <h2 className="text-2xl font-bold">Thank you for visiting!</h2>
-                <p className="text-white/90">Your feedback helps us improve 😊</p>
+                <h2 className="text-2xl font-bold">Thank you for visiting, {firstNameOf(name)}!</h2>
+                <p className="text-white/90">Your feedback helps us serve you better 😊</p>
               </>
             ) : (
               <>
@@ -307,6 +417,11 @@ const FeedbackKiosk = () => {
                 )}
               </>
             )}
+
+            <p className="text-white/80 text-xs flex items-center gap-1.5">
+              <MessageCircle className="w-3.5 h-3.5" />
+              A thank-you message is on its way to your WhatsApp
+            </p>
 
             <div className="mt-2 flex flex-col items-center gap-2">
               <div className="text-white/90 text-sm">

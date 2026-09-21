@@ -15,3 +15,7 @@
 - [x] Deploy and verify the daily follow-up engine
 - [x] Diagnose Twilio test delivery and switch the test to an approved WhatsApp template
 - [x] Report the test's final delivered or failed status instead of Twilio submission alone
+- [x] Send a personalised WhatsApp thank-you the moment a kiosk customer enters their name and number
+- [x] Ask happy customers for a Google review with a live QR, and skip the ask for those who already reviewed
+- [x] Run a monthly lucky draw among review entries, only in months with at least 50 entries
+- [x] Announce the winner on WhatsApp and surface draws in the admin Customer Feedback tab
