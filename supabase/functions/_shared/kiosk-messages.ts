@@ -74,6 +74,21 @@ function drawParagraph(
 }
 
 /**
+ * Which of the four welcome messages a visit earns. Each one is a different
+ * promise to the customer, so each needs its OWN approved WhatsApp template —
+ * sending the review-ask template to a one-star visitor would be exactly the
+ * mistake the wording is designed to avoid.
+ */
+export type WelcomeVariant = "recovery" | "thanks" | "already_reviewed" | "review_ask";
+
+export function welcomeVariant(input: WelcomeMessageInput): WelcomeVariant {
+  if (input.overallRating <= 2) return "recovery";
+  if (input.overallRating < REVIEW_ASK_MIN_RATING) return "thanks";
+  if (input.alreadyReviewed) return "already_reviewed";
+  return (input.reviewUrl || "").trim() ? "review_ask" : "thanks";
+}
+
+/**
  * The message that goes out the moment a customer enters their name and number
  * at the kiosk. Personalised, and tuned to what they just told us:
  *   • 1–2 stars  → apology and a callback offer, no review ask. Asking an
@@ -90,9 +105,10 @@ export function buildKioskWelcomeMessage(input: WelcomeMessageInput): string {
   const minEntries = input.minDrawEntries ?? DEFAULT_MIN_DRAW_ENTRIES;
   const prize = (input.drawPrize || "").trim() || `a special gift from ${business}`;
   const drawEnabled = input.drawEnabled !== false;
+  const variant = welcomeVariant(input);
   const parts: string[] = [];
 
-  if (input.overallRating <= 2) {
+  if (variant === "recovery") {
     parts.push(`Hi ${name},`);
     parts.push(
       `Thank you for visiting ${business} today, and thank you for being honest with us. ` +
@@ -117,14 +133,14 @@ export function buildKioskWelcomeMessage(input: WelcomeMessageInput): string {
   );
   parts.push("We read every single response, and we promise to serve you better each day. 💙");
 
-  if (input.overallRating < REVIEW_ASK_MIN_RATING) {
+  if (variant === "thanks") {
     parts.push(
       "Is there anything we could have done better today? Just reply to this message — it goes straight to our team.",
     );
-  } else if (input.alreadyReviewed) {
+  } else if (variant === "already_reviewed") {
     parts.push("⭐ Thank you for the Google review you left us earlier — it means a lot to our team.");
     if (drawEnabled) parts.push(drawParagraph(prize, minEntries, true));
-  } else if (reviewUrl) {
+  } else {
     parts.push(
       `⭐ Could you spare 30 seconds to leave us a Google review? For a family-run showroom like ours ` +
         `it makes a real difference:\n${reviewUrl}`,

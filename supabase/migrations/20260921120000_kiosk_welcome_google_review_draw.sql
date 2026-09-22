@@ -25,10 +25,16 @@ INSERT INTO public.app_settings (key, value) VALUES
   -- Twilio Content (template) SIDs. WhatsApp blocks free text outside the 24h
   -- session window (error 63016), so set these to approved templates once Meta
   -- has approved them. Empty = send as free text.
-  --   kiosk_welcome_content_sid  vars: {{1}} first name, {{2}} review URL
-  --   draw_winner_content_sid    vars: {{1}} first name, {{2}} month, {{3}} prize
-  ('kiosk_welcome_content_sid', ''),
-  ('draw_winner_content_sid',   '')
+  -- One per message variant: a one-star visitor must never receive the
+  -- review-ask template. Submit them with scripts/submit-whatsapp-templates.mjs.
+  --   kiosk_welcome_content_sid   review ask   {{1}} first name, {{2}} review URL
+  --   kiosk_feedback_content_sid  plain thanks {{1}} first name
+  --   kiosk_recovery_content_sid  1–2 star     {{1}} first name
+  --   draw_winner_content_sid     winner       {{1}} first name, {{2}} month, {{3}} prize
+  ('kiosk_welcome_content_sid',  ''),
+  ('kiosk_feedback_content_sid', ''),
+  ('kiosk_recovery_content_sid', ''),
+  ('draw_winner_content_sid',    '')
 ON CONFLICT (key) DO NOTHING;
 
 -- The kiosk runs signed-out, so it needs to read the draw copy it shows.

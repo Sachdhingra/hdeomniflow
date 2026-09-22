@@ -4,6 +4,7 @@ import {
   buildKioskWelcomeMessage,
   firstName,
   monthLabel,
+  welcomeVariant,
 } from "../../supabase/functions/_shared/kiosk-messages";
 import {
   currentDrawMonth,
@@ -84,6 +85,47 @@ describe("kiosk welcome message", () => {
     const msg = welcome({ drawEnabled: false });
     expect(msg).toContain(REVIEW_URL);
     expect(msg).not.toContain("lucky draw");
+  });
+});
+
+describe("welcome variant routing", () => {
+  // Each variant maps to its own approved WhatsApp template, so getting this
+  // wrong would send "please leave us a Google review" to a one-star visitor.
+  const variant = (over: Parameters<typeof welcomeVariant>[0]) => welcomeVariant(over);
+
+  it("routes unhappy visits to service recovery", () => {
+    expect(variant({ customerName: "A", overallRating: 1, reviewUrl: REVIEW_URL })).toBe("recovery");
+    expect(variant({ customerName: "A", overallRating: 2, reviewUrl: REVIEW_URL })).toBe("recovery");
+  });
+
+  it("routes a middling visit to plain thanks", () => {
+    expect(variant({ customerName: "A", overallRating: 3, reviewUrl: REVIEW_URL })).toBe("thanks");
+  });
+
+  it("routes a happy new reviewer to the review ask", () => {
+    expect(variant({ customerName: "A", overallRating: 4, reviewUrl: REVIEW_URL })).toBe("review_ask");
+    expect(variant({ customerName: "A", overallRating: 5, reviewUrl: REVIEW_URL })).toBe("review_ask");
+  });
+
+  it("routes a happy repeat reviewer away from the ask", () => {
+    expect(
+      variant({ customerName: "A", overallRating: 5, reviewUrl: REVIEW_URL, alreadyReviewed: true }),
+    ).toBe("already_reviewed");
+  });
+
+  it("falls back to plain thanks when no review link is configured", () => {
+    expect(variant({ customerName: "A", overallRating: 5, reviewUrl: "" })).toBe("thanks");
+  });
+
+  it("agrees with the message the builder actually produces", () => {
+    for (const rating of [1, 2, 3, 4, 5]) {
+      const msg = welcome({ overallRating: rating });
+      const asksForReview = msg.includes(REVIEW_URL);
+      expect(asksForReview).toBe(
+        variant({ customerName: "rahul", overallRating: rating, reviewUrl: REVIEW_URL }) ===
+          "review_ask",
+      );
+    }
   });
 });
 

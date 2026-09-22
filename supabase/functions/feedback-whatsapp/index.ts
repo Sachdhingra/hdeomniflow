@@ -23,6 +23,8 @@ import {
   buildDrawWinnerMessage,
   buildKioskWelcomeMessage,
   firstName,
+  welcomeVariant,
+  type WelcomeVariant,
 } from "../_shared/kiosk-messages.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -66,7 +68,8 @@ interface Settings {
   drawEnabled: boolean;
   drawPrize: string;
   minDrawEntries: number;
-  welcomeContentSid: string;
+  /** One approved template per welcome variant — see kiosk-messages.ts. */
+  welcomeContentSids: Record<WelcomeVariant, string>;
   winnerContentSid: string;
 }
 
@@ -82,6 +85,8 @@ async function loadSettings(): Promise<Settings> {
       "monthly_draw_min_entries",
       "monthly_draw_prize",
       "kiosk_welcome_content_sid",
+      "kiosk_feedback_content_sid",
+      "kiosk_recovery_content_sid",
       "draw_winner_content_sid",
     ]);
 
@@ -100,7 +105,14 @@ async function loadSettings(): Promise<Settings> {
     drawEnabled: (map.get("monthly_draw_enabled") || "true").toLowerCase() !== "false",
     drawPrize: map.get("monthly_draw_prize") || "",
     minDrawEntries: Number.isFinite(min) && min > 0 ? min : 50,
-    welcomeContentSid: map.get("kiosk_welcome_content_sid") || "",
+    welcomeContentSids: {
+      // The review ask is the only welcome that carries the review link, so it
+      // is the only one whose template takes a second variable.
+      review_ask: map.get("kiosk_welcome_content_sid") || "",
+      thanks: map.get("kiosk_feedback_content_sid") || "",
+      already_reviewed: map.get("kiosk_feedback_content_sid") || "",
+      recovery: map.get("kiosk_recovery_content_sid") || "",
+    },
     winnerContentSid: map.get("draw_winner_content_sid") || "",
   };
 }
@@ -138,7 +150,7 @@ async function composeWelcome(row: QueueRow, settings: Settings): Promise<Compos
     fb.reviewed_on_google === true ||
     (await hasReviewedBefore(fb.customer_phone, fb.id));
 
-  const message = buildKioskWelcomeMessage({
+  const input = {
     customerName: fb.customer_name,
     businessName: settings.businessName,
     businessPhone: settings.businessPhone,
@@ -148,14 +160,18 @@ async function composeWelcome(row: QueueRow, settings: Settings): Promise<Compos
     drawEnabled: settings.drawEnabled,
     drawPrize: settings.drawPrize,
     minDrawEntries: settings.minDrawEntries,
-  });
+  };
+  const variant = welcomeVariant(input);
+  const contentSid = settings.welcomeContentSids[variant] || "";
 
   return {
-    message,
+    message: buildKioskWelcomeMessage(input),
     recipientName: fb.customer_name,
-    contentSid: settings.welcomeContentSid || undefined,
-    contentVariables: settings.welcomeContentSid
-      ? { "1": firstName(fb.customer_name), "2": settings.reviewUrl }
+    contentSid: contentSid || undefined,
+    contentVariables: contentSid
+      ? variant === "review_ask"
+        ? { "1": firstName(fb.customer_name), "2": settings.reviewUrl }
+        : { "1": firstName(fb.customer_name) }
       : undefined,
   };
 }

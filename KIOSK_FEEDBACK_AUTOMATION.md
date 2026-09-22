@@ -46,8 +46,14 @@ by `src/test/kioskMessages.test.ts` — edit it there, not in SQL.
 | `monthly_draw_enabled` | `false` switches the draw off; review asks continue. |
 | `monthly_draw_min_entries` | Entries needed before a month is drawn. Default `50`. |
 | `monthly_draw_prize` | Prize wording shown on the kiosk and in both messages. |
-| `kiosk_welcome_content_sid` | Twilio Content SID for the welcome — vars `{{1}}` first name, `{{2}}` review URL. |
-| `draw_winner_content_sid` | Twilio Content SID for the winner — vars `{{1}}` first name, `{{2}}` month, `{{3}}` prize. |
+| `kiosk_welcome_content_sid` | Template for the **review ask** — vars `{{1}}` first name, `{{2}}` review URL. |
+| `kiosk_feedback_content_sid` | Template for **plain thanks** (3★, or already reviewed) — var `{{1}}` first name. |
+| `kiosk_recovery_content_sid` | Template for **1–2★ service recovery** — var `{{1}}` first name. |
+| `draw_winner_content_sid` | Template for the **winner** — vars `{{1}}` first name, `{{2}}` month, `{{3}}` prize. |
+
+One template per variant is deliberate. A single template for all welcomes
+would send "please leave us a Google review" to the customer who just rated the
+visit one star.
 
 ## To go live
 
@@ -62,11 +68,35 @@ by `src/test/kioskMessages.test.ts` — edit it there, not in SQL.
 4. **WhatsApp templates.** Meta blocks business-initiated free text outside the
    24-hour session window (Twilio error 63016). Until approved templates are in
    place the welcome will only reach customers who have messaged the business in
-   the last 24 hours. Get the two templates approved, then paste their Content
-   SIDs into the settings above — the function switches to templates
-   automatically and keeps the free-text body as the log record.
+   the last 24 hours. Submit all four with:
+
+   ```
+   export TWILIO_ACCOUNT_SID=... TWILIO_AUTH_TOKEN=...
+   node scripts/submit-whatsapp-templates.mjs            # dry run, prints the bodies
+   node scripts/submit-whatsapp-templates.mjs --submit    # creates them and sends to Meta
+   node scripts/submit-whatsapp-templates.mjs --status    # approved? rejected? why?
+   ```
+
+   Paste each approved ContentSid into the setting the script names. The
+   function switches to templates automatically — no redeploy — and keeps the
+   full free-text body as the log record.
+
+   Two of the four go in as **MARKETING**: a review request and a prize draw are
+   promotional however politely they are worded, and labelling them UTILITY
+   invites rejection or a quality strike. Marketing templates are also the ones
+   Meta throttles (Twilio 63049 — this business has been hit by that before), so
+   watch delivery in `message_logs` for the first week.
 5. Set `monthly_draw_prize` to the actual prize before announcing the scheme in
    the showroom.
+
+## If templates are rejected or throttled
+
+There is a path that needs no template at all: get the customer to message the
+business first, which opens the 24-hour window and makes free text legal. Put a
+`wa.me` click-to-chat QR on the kiosk ("scan to get your review link on
+WhatsApp") with a prefilled message; the existing `twilio-webhook` sees the
+inbound message and the welcome can go out as ordinary text. It costs the
+customer one extra tap and sidesteps both 63016 and the marketing throttle.
 
 ## Fairness rules built in
 
