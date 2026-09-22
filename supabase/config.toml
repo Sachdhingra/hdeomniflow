@@ -25,3 +25,8 @@ verify_jwt = false
 # Called by Supabase Auth SMS hook (no user JWT)
 [functions.whatsapp-otp]
 verify_jwt = false
+
+# Called by pg_cron / the customer_feedback trigger via pg_net (no user JWT);
+# it checks x-internal-secret itself.
+[functions.feedback-whatsapp]
+verify_jwt = false
