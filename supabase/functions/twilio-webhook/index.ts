@@ -10,6 +10,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 import { analyzeInbound, detectBinaryReply } from "../_shared/conversation-analysis.ts";
+import { normalizeIndianPhone } from "../_shared/indian-phone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,15 +20,14 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN");
-
 // Twilio signature: HMAC-SHA1( authToken, url + sorted-params )
 async function verifyTwilioSignature(
   rawUrl: string,
   params: Record<string, string>,
   signature: string | null,
 ): Promise<boolean> {
-  if (!TWILIO_AUTH_TOKEN) return true; // skip when not configured
+  const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
+  if (!authToken) return false;
   if (!signature) return false;
 
   // Sort params alphabetically and concatenate key+value
@@ -36,7 +36,7 @@ async function verifyTwilioSignature(
 
   const key = await crypto.subtle.importKey(
     "raw",
-    new TextEncoder().encode(TWILIO_AUTH_TOKEN),
+    new TextEncoder().encode(authToken),
     { name: "HMAC", hash: "SHA-1" },
     false,
     ["sign"],
@@ -47,9 +47,7 @@ async function verifyTwilioSignature(
 }
 
 function normalizePhone(raw: string | undefined | null): string {
-  // Strip "whatsapp:" prefix and any non-digit chars except leading +
-  const s = (raw || "").replace(/^whatsapp:/i, "").trim();
-  return s.replace(/[^\d+]/g, "");
+  return normalizeIndianPhone(raw);
 }
 
 async function findLeadByPhone(
@@ -88,16 +86,25 @@ Deno.serve(async (req) => {
     const rawBody = await req.text();
     const params = Object.fromEntries(new URLSearchParams(rawBody).entries());
 
-    // Verify Twilio signature when auth token is configured
-    if (TWILIO_AUTH_TOKEN) {
-      const sig = req.headers.get("x-twilio-signature");
-      const reqUrl = req.url;
-      if (!(await verifyTwilioSignature(reqUrl, params, sig))) {
-        return new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+    // Twilio signs the public callback URL, while the edge runtime can expose a
+    // rewritten request URL. Validate both canonical forms without weakening auth.
+    const sig = req.headers.get("x-twilio-signature");
+    const callbackUrls = [
+      `${supabaseUrl}/functions/v1/twilio-webhook`,
+      req.url,
+    ];
+    const signatureValid = (await Promise.all(
+      [...new Set(callbackUrls)].map((url) => verifyTwilioSignature(url, params, sig)),
+    )).some(Boolean);
+    if (!signatureValid) {
+      console.error("[twilio-webhook] invalid signature", {
+        hasSignature: Boolean(sig),
+        messageSid: params["MessageSid"] || params["SmsSid"] || null,
+      });
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const messageSid = params["MessageSid"] || "";
@@ -105,6 +112,12 @@ Deno.serve(async (req) => {
     const fromRaw = params["From"] || ""; // e.g. "whatsapp:+919876543210"
     const toRaw = params["To"] || "";     // e.g. "whatsapp:+14155238886"
     const body = params["Body"] || "";
+    console.log("[twilio-webhook] callback", {
+      messageSid: messageSid || null,
+      direction: params["Direction"] || "inbound",
+      status: messageStatus || null,
+      hasBody: Boolean(body),
+    });
 
     // ── Delivery/read status update ──────────────────────────────────────────
     // Twilio fires this when MessageStatus is sent/delivered/read/failed/undelivered

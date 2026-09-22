@@ -2,6 +2,7 @@
 // Reads secrets fresh per-request so updates apply immediately.
 // Same input contract so all existing callers (nurture-engine, SendTemplateDialog, etc.) keep working.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
+import { normalizeIndianPhone } from "../_shared/indian-phone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -31,10 +32,7 @@ interface SendResult {
 
 // Normalize a phone string into E.164 form. Default country code is 91 (India).
 function normalizePhone(raw: string): { e164: string } {
-  const digits = (raw || "").replace(/\D/g, "");
-  if (!digits) return { e164: "" };
-  if (digits.length > 10) return { e164: `+${digits}` };
-  return { e164: `+91${digits}` };
+  return { e164: normalizeIndianPhone(raw) };
 }
 
 async function sendViaTwilio(params: {

@@ -11,13 +11,13 @@ export function extractTenDigits(raw: string | null | undefined): string {
 
 /** Validate that the value is exactly 10 digits. */
 export function isValidIndianMobile(raw: string | null | undefined): boolean {
-  return /^\d{10}$/.test(extractTenDigits(raw));
+  return /^[6-9]\d{9}$/.test(extractTenDigits(raw));
 }
 
 /** Convert any input to canonical storage form: "+91XXXXXXXXXX". Returns "" if invalid. */
 export function toCanonicalPhone(raw: string | null | undefined): string {
   const ten = extractTenDigits(raw);
-  return ten.length === 10 ? `+91${ten}` : "";
+  return /^[6-9]\d{9}$/.test(ten) ? `+91${ten}` : "";
 }
 
 /** Format for display: "+91 XXXXX XXXXX". Accepts either canonical or 10-digit input. */
