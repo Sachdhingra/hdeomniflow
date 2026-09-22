@@ -21,3 +21,6 @@
 - [x] Announce the winner on WhatsApp and surface draws in the admin Customer Feedback tab
 - [x] Confirm Meta approval and repair duplicate +91 WhatsApp number formatting
 - [x] Restore signed Twilio inbound and delivery callbacks
+- [ ] Normalize every Twilio Indian-number send path
+- [ ] Recover the seven missed YES/NO replies and salesperson alerts
+- [ ] Deploy and verify the repaired WhatsApp circuit
