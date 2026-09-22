@@ -110,20 +110,22 @@ Deno.serve(async (req) => {
       leadMsgUpdate.error_message = errorMessage || (errorCode ? `Twilio error ${errorCode}` : "delivery failed");
     }
 
-    const { error: lmErr } = await supabase
+    const { data: updatedLeadMessages, error: lmErr } = await supabase
       .from("lead_messages")
       .update(leadMsgUpdate)
-      .eq("provider_message_id", sid);
+      .eq("provider_message_id", sid)
+      .select("id");
     if (lmErr) console.error("[twilio-status] lead_messages update:", lmErr);
 
     const logUpdate: Record<string, unknown> = { status };
     if (status === "failed") logUpdate.error_message = errorMessage || (errorCode ? `Twilio error ${errorCode}` : "delivery failed");
     if (status === "sent" || status === "delivered") logUpdate.sent_at = now;
 
-    const { error: mlErr } = await supabase
+    const { data: updatedMessageLogs, error: mlErr } = await supabase
       .from("message_logs")
       .update(logUpdate)
-      .eq("provider_message_id", sid);
+      .eq("provider_message_id", sid)
+      .select("id");
     if (mlErr) console.error("[twilio-status] message_logs update:", mlErr);
 
     // also update auto_nurture_messages by twilio_message_sid
@@ -132,6 +134,13 @@ Deno.serve(async (req) => {
       .update({ status, ...(status === "sent" ? { sent_at: now } : {}), ...(status === "failed" ? { error_message: errorMessage || null } : {}) })
       .eq("twilio_message_sid", sid);
     if (anErr) console.error("[twilio-status] auto_nurture_messages update:", anErr);
+
+    console.log("[twilio-status] stored", {
+      sid,
+      status,
+      leadMessages: updatedLeadMessages?.length ?? 0,
+      messageLogs: updatedMessageLogs?.length ?? 0,
+    });
 
     return new Response("ok", { status: 200, headers: corsHeaders });
   } catch (e) {
