@@ -19,3 +19,5 @@
 - [x] Ask happy customers for a Google review with a live QR, and skip the ask for those who already reviewed
 - [x] Run a monthly lucky draw among review entries, only in months with at least 50 entries
 - [x] Announce the winner on WhatsApp and surface draws in the admin Customer Feedback tab
+- [x] Confirm Meta approval and repair duplicate +91 WhatsApp number formatting
+- [x] Restore signed Twilio inbound and delivery callbacks

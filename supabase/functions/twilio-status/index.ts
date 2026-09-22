@@ -77,9 +77,12 @@ Deno.serve(async (req) => {
       params = new URLSearchParams(rawBody);
     }
 
-    const callbackUrl = `${supabaseUrl}/functions/v1/twilio-status`;
     const signature = req.headers.get("X-Twilio-Signature") || req.headers.get("x-twilio-signature");
-    if (!(await verifyTwilioSignature(callbackUrl, params, signature))) {
+    const callbackUrls = [`${supabaseUrl}/functions/v1/twilio-status`, req.url];
+    const signatureValid = (await Promise.all(
+      [...new Set(callbackUrls)].map((url) => verifyTwilioSignature(url, params, signature)),
+    )).some(Boolean);
+    if (!signatureValid) {
       console.error("[twilio-status] invalid signature — rejected");
       return new Response("invalid signature", { status: 403, headers: corsHeaders });
     }
