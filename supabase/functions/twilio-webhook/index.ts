@@ -139,8 +139,10 @@ Deno.serve(async (req) => {
         updates.error_message = params["ErrorMessage"] || (params["ErrorCode"] ? `Twilio error ${params["ErrorCode"]}` : "delivery failed");
       }
       if (messageSid && Object.keys(updates).length) {
-        await supabase.from("lead_messages").update(updates).eq("provider_message_id", messageSid);
-        await supabase.from("message_logs").update({ status: updates.status, error_message: updates.error_message || null }).eq("provider_message_id", messageSid);
+        const { error: leadStatusError } = await supabase.from("lead_messages").update(updates).eq("provider_message_id", messageSid);
+        if (leadStatusError) console.error("[twilio-webhook] lead status update failed:", leadStatusError);
+        const { error: messageLogError } = await supabase.from("message_logs").update({ status: updates.status, error_message: updates.error_message || null }).eq("provider_message_id", messageSid);
+        if (messageLogError) console.error("[twilio-webhook] message log update failed:", messageLogError);
       }
 
       // Twilio expects an empty TwiML 200 OK for status callbacks
@@ -168,12 +170,31 @@ Deno.serve(async (req) => {
     const lead = await findLeadByPhone(supabase, phone);
 
     if (lead) {
+      if (messageSid) {
+        const { data: existingInbound, error: existingInboundError } = await supabase
+          .from("lead_messages")
+          .select("id")
+          .eq("provider_message_id", messageSid)
+          .limit(1);
+        if (existingInboundError) {
+          console.error("[twilio-webhook] inbound duplicate check failed:", existingInboundError);
+          throw existingInboundError;
+        }
+        if (existingInbound?.length) {
+          console.log("[twilio-webhook] duplicate inbound accepted", { messageSid });
+          return new Response("<Response/>", {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "text/xml" },
+          });
+        }
+      }
+
       const analysis = analyzeInbound(text);
       const binaryReply = detectBinaryReply(text);
       const seq = (lead.sequence ?? 0) + 1;
       const now = new Date().toISOString();
 
-      await supabase.from("lead_messages").insert({
+      const { error: inboundInsertError } = await supabase.from("lead_messages").insert({
         lead_id: lead.id,
         message_type: "inbound",
         message_body: text.slice(0, 4000),
@@ -188,6 +209,10 @@ Deno.serve(async (req) => {
         provider_message_id: messageSid || null,
         outreach_source: "inbound",
       });
+      if (inboundInsertError) {
+        console.error("[twilio-webhook] inbound insert failed:", inboundInsertError);
+        throw inboundInsertError;
+      }
 
       const leadUpdates: Record<string, unknown> = {
         last_inbound_sentiment: analysis.sentiment,
@@ -213,7 +238,8 @@ Deno.serve(async (req) => {
         leadUpdates.follow_up_reply_at = now;
         leadUpdates.automation_paused = true;
       }
-      await supabase.from("leads").update(leadUpdates).eq("id", lead.id);
+      const { error: leadUpdateError } = await supabase.from("leads").update(leadUpdates).eq("id", lead.id);
+      if (leadUpdateError) console.error("[twilio-webhook] lead reply update failed:", leadUpdateError);
 
       const notifyUser = lead.assigned_to || lead.created_by;
       if (notifyUser) {
@@ -222,23 +248,25 @@ Deno.serve(async (req) => {
           : binaryReply === "no"
             ? `${lead.customer_name} said no — reason requested for salesperson review`
             : `New WhatsApp reply from ${lead.customer_name}: ${text.slice(0, 120)}`;
-        await supabase.from("notifications").insert({
+        const { error: notificationError } = await supabase.from("notifications").insert({
           user_id: notifyUser,
           type: binaryReply === "yes" ? "whatsapp_interested" : binaryReply === "no" ? "whatsapp_reason_requested" : "whatsapp_reply",
           message: notificationMessage,
           link: "/leads",
         });
+        if (notificationError) console.error("[twilio-webhook] salesperson notification failed:", notificationError);
       }
       const replyAlertType = binaryReply === "yes" ? "whatsapp_interested" : binaryReply === "no" ? "whatsapp_reason_requested" : "whatsapp_reply";
       const { data: existingReplyAlert } = await supabase.from("lead_alerts")
         .select("id").eq("lead_id", lead.id).eq("alert_type", replyAlertType).eq("resolved", false).limit(1);
       if (!existingReplyAlert?.length) {
-        await supabase.from("lead_alerts").insert({
+        const { error: alertError } = await supabase.from("lead_alerts").insert({
           lead_id: lead.id,
           alert_type: replyAlertType,
           severity: binaryReply === "yes" ? "critical" : binaryReply === "no" ? "warning" : "info",
           message: binaryReply === "yes" ? `Interested — reply now: ${text.slice(0, 120)}` : binaryReply === "no" ? "Customer said no — reason requested" : `New WhatsApp reply: ${text.slice(0, 160)}`,
         });
+        if (alertError) console.error("[twilio-webhook] lead alert failed:", alertError);
       }
 
       if (binaryReply === "no") {
