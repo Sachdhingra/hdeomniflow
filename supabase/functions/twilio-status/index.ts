@@ -34,6 +34,16 @@ function mapStatus(twilioStatus: string): string {
   }
 }
 
+/** Never let a late, lower-priority callback overwrite a terminal status. */
+function protectTerminalStatus<T>(query: T & {
+  not: (column: string, operator: string, value: string) => T;
+}, status: string): T {
+  if (status === "queued") return query.not("status", "in", "(sent,delivered,read,failed)");
+  if (status === "sent") return query.not("status", "in", "(delivered,read,failed)");
+  if (status === "delivered") return query.not("status", "in", "(read,failed)");
+  return query;
+}
+
 // Validate Twilio's X-Twilio-Signature: base64(HMAC-SHA1(authToken,
 // fullUrl + sorted key/value pairs)). Fails closed when unconfigured.
 async function verifyTwilioSignature(url: string, params: URLSearchParams, signature: string | null): Promise<boolean> {
@@ -110,10 +120,11 @@ Deno.serve(async (req) => {
       leadMsgUpdate.error_message = errorMessage || (errorCode ? `Twilio error ${errorCode}` : "delivery failed");
     }
 
-    const { data: updatedLeadMessages, error: lmErr } = await supabase
+    const leadMessageQuery = supabase
       .from("lead_messages")
       .update(leadMsgUpdate)
-      .eq("provider_message_id", sid)
+      .eq("provider_message_id", sid);
+    const { data: updatedLeadMessages, error: lmErr } = await protectTerminalStatus(leadMessageQuery, status)
       .select("id");
     if (lmErr) console.error("[twilio-status] lead_messages update:", lmErr);
 
@@ -121,18 +132,20 @@ Deno.serve(async (req) => {
     if (status === "failed") logUpdate.error_message = errorMessage || (errorCode ? `Twilio error ${errorCode}` : "delivery failed");
     if (status === "sent" || status === "delivered") logUpdate.sent_at = now;
 
-    const { data: updatedMessageLogs, error: mlErr } = await supabase
+    const messageLogQuery = supabase
       .from("message_logs")
       .update(logUpdate)
-      .eq("provider_message_id", sid)
+      .eq("provider_message_id", sid);
+    const { data: updatedMessageLogs, error: mlErr } = await protectTerminalStatus(messageLogQuery, status)
       .select("id");
     if (mlErr) console.error("[twilio-status] message_logs update:", mlErr);
 
     // also update auto_nurture_messages by twilio_message_sid
-    const { error: anErr } = await supabase
+    const nurtureQuery = supabase
       .from("auto_nurture_messages")
       .update({ status, ...(status === "sent" ? { sent_at: now } : {}), ...(status === "failed" ? { error_message: errorMessage || null } : {}) })
       .eq("twilio_message_sid", sid);
+    const { error: anErr } = await protectTerminalStatus(nurtureQuery, status);
     if (anErr) console.error("[twilio-status] auto_nurture_messages update:", anErr);
 
     console.log("[twilio-status] stored", {
