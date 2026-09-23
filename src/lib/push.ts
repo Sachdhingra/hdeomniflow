@@ -90,8 +90,9 @@ function explainError(detail: string): string {
   if (!SDK_INTERNAL_CRASH.test(detail)) return detail;
   return (
     `${detail} — the notification service did not finish loading. ` +
-    "Close OmniFlow completely, reopen it and tap again. If it keeps happening, " +
-    "a content blocker, VPN or Wi-Fi filter is blocking cdn.onesignal.com."
+    "Close OmniFlow completely, reopen it and tap again. If it keeps happening, check that " +
+    `the Site URL of OneSignal app ${ONESIGNAL_APP_ID} is exactly ${window.location.origin}, ` +
+    "and that no content blocker, VPN or Wi-Fi filter is blocking cdn.onesignal.com."
   );
 }
 
@@ -119,6 +120,65 @@ function serialize<T>(task: () => Promise<T>): Promise<T> {
   return run;
 }
 
+// OneSignal binds each web-push app to ONE site URL. When the page runs on any
+// other origin, the v16 SDK logs "can only be used on …", lets init() resolve
+// anyway, and the next API call (login) dereferences internals it never built
+// — the opaque "Cannot read properties of undefined (reading 'Qe')". Reading
+// the same public app config the SDK reads lets us say which URL is wrong.
+const APP_CONFIG_URL = `https://api.onesignal.com/sync/${ONESIGNAL_APP_ID}/web`;
+const APP_CONFIG_TIMEOUT_MS = 6_000;
+
+type OneSignalAppConfig = {
+  success?: boolean;
+  features?: { restrict_origin?: { enable?: boolean } };
+  config?: { origin?: string; siteInfo?: { origin?: string } };
+};
+
+function siteKey(origin: string): string | null {
+  try {
+    return new URL(origin).hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+let siteCheck: Promise<string | null> | null = null;
+
+/** Resolves to a problem description, or null when the config looks right or can't be read. */
+function checkOneSignalSite(): Promise<string | null> {
+  siteCheck ??= (async () => {
+    try {
+      const response = await withTimeout(
+        fetch(APP_CONFIG_URL, { cache: "no-store" }),
+        "OneSignal app config",
+        APP_CONFIG_TIMEOUT_MS,
+      );
+      if (!response.ok) return null;
+      const appConfig = (await response.json()) as OneSignalAppConfig;
+      if (appConfig.success === false || !appConfig.config) {
+        return (
+          `OneSignal app ${ONESIGNAL_APP_ID} has no Web push platform set up. ` +
+          "In OneSignal open that app → Settings → Push & In-App → Web, choose Typical Site and enter this site's URL: " +
+          window.location.origin
+        );
+      }
+      if (appConfig.features?.restrict_origin?.enable === false) return null;
+      const configured = appConfig.config.origin ?? appConfig.config.siteInfo?.origin;
+      if (!configured) return null;
+      if (siteKey(configured) === siteKey(window.location.origin)) return null;
+      return (
+        `OneSignal app ${ONESIGNAL_APP_ID} is set up for ${configured}, but OmniFlow is running on ` +
+        `${window.location.origin}. In OneSignal open that app → Settings → Push & In-App → Web and change ` +
+        `the Site URL to ${window.location.origin}, save, then reopen OmniFlow.`
+      );
+    } catch {
+      // Unreachable or not CORS-readable: let the SDK try and report its own error.
+      return null;
+    }
+  })();
+  return siteCheck;
+}
+
 async function getOneSignal() {
   if (typeof window === "undefined") return null;
   if (!("serviceWorker" in navigator)) return null;
@@ -128,6 +188,9 @@ async function getOneSignal() {
     navigator.serviceWorker.register("/sw.js").then(() => navigator.serviceWorker.ready),
     "Notification worker startup",
   );
+  const siteProblem = await checkOneSignalSite();
+  if (siteProblem) throw new Error(siteProblem);
+
   const { default: OneSignal } = await import("react-onesignal");
   const pushWindow = window as PushWindow;
 
