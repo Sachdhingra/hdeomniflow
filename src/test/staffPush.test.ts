@@ -79,6 +79,7 @@ beforeEach(() => {
   Object.defineProperty(navigator, "serviceWorker", {
     value: {
       register: vi.fn().mockResolvedValue({}),
+      getRegistration: vi.fn().mockResolvedValue(undefined),
       ready: Promise.resolve({}),
     },
     configurable: true,

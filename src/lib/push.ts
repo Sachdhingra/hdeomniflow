@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { ensureAppWorker } from "@/lib/appWorker";
 
 /**
  * Staff web push for the OmniFlow app.
@@ -184,10 +185,7 @@ async function getOneSignal() {
   if (!("serviceWorker" in navigator)) return null;
   if (!("PushManager" in window)) return null;
 
-  await withTimeout(
-    navigator.serviceWorker.register("/sw.js").then(() => navigator.serviceWorker.ready),
-    "Notification worker startup",
-  );
+  await withTimeout(ensureAppWorker(), "Notification worker startup");
   const siteProblem = await checkOneSignalSite();
   if (siteProblem) throw new Error(siteProblem);
 
