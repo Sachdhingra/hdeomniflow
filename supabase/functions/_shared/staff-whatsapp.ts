@@ -6,6 +6,10 @@
 // admin staff broadcasts. Chat messages stay push-only: they are frequent,
 // and every business-initiated WhatsApp message is billed by Meta.
 //
+// Only desk roles get WhatsApp: sales, service_head and accounts. Field and
+// site agents keep push only. STAFF_WHATSAPP_ROLES (comma-separated app_role
+// values) overrides the list without a code change.
+//
 // The template SID comes from TWILIO_STAFF_ALERT_TEMPLATE_SID, set once Meta
 // has approved the template. Until then, and whenever Twilio is not
 // configured, mirroring is skipped. Like the Insider mirror it is
@@ -19,6 +23,17 @@ const MAX_CONCURRENCY = 5;
 export function isWhatsAppWorthyStaffAlert(type: string | null | undefined): boolean {
   const t = (type || "").toLowerCase();
   return t === "lead_assigned" || t.startsWith("order_") || t.startsWith("broadcast_");
+}
+
+export const DEFAULT_STAFF_WHATSAPP_ROLES = ["sales", "service_head", "accounts"] as const;
+
+/** app_role values whose holders receive WhatsApp alerts. */
+export function staffWhatsAppRoles(raw = Deno.env.get("STAFF_WHATSAPP_ROLES")): string[] {
+  const configured = (raw || "")
+    .split(",")
+    .map((r) => r.trim().toLowerCase())
+    .filter(Boolean);
+  return configured.length ? configured : [...DEFAULT_STAFF_WHATSAPP_ROLES];
 }
 
 export function staffWhatsAppEnabled(): boolean {
@@ -106,8 +121,8 @@ export async function mirrorStaffAlertToWhatsApp(
   alert: { type: string; title: string; message: string },
 ): Promise<number> {
   if (!isWhatsAppWorthyStaffAlert(alert.type) || !staffWhatsAppEnabled()) return 0;
-  const ids = [...new Set(userIds.filter(Boolean))];
-  if (ids.length === 0) return 0;
+  const requested = [...new Set(userIds.filter(Boolean))];
+  if (requested.length === 0) return 0;
 
   const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
   const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
@@ -117,6 +132,19 @@ export async function mirrorStaffAlertToWhatsApp(
     return 0;
   }
   const from = whatsappFrom();
+
+  // Keep only people holding a WhatsApp role (field/site agents drop out).
+  const { data: roleRows, error: roleErr } = await supabase
+    .from("user_roles")
+    .select("user_id")
+    .in("user_id", requested)
+    .in("role", staffWhatsAppRoles());
+  if (roleErr) {
+    console.error("[staff-whatsapp] role lookup failed:", roleErr.message);
+    return 0;
+  }
+  const ids = [...new Set((roleRows ?? []).map((r: { user_id: string }) => r.user_id))];
+  if (ids.length === 0) return 0;
 
   const { data: profiles, error } = await supabase
     .from("profiles")

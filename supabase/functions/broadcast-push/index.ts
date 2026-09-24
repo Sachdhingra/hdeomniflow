@@ -209,7 +209,8 @@ Deno.serve(async (req: Request) => {
   type Recipient = { customer_id: string | null; onesignal_player_id: string };
   let recipients: Recipient[] = [];
 
-  // A staff broadcast also goes to every staff member's WhatsApp — including
+  // A staff broadcast also goes to WhatsApp for the desk roles (sales,
+  // service_head, accounts — see staff-whatsapp.ts), including
   // those who never connected a phone for push. Runs alongside the push.
   let staffWhatsApp: Promise<number> = Promise.resolve(0);
   if (audience === "staff") {
