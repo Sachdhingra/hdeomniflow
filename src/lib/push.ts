@@ -88,6 +88,78 @@ function describeError(error: unknown): string {
 // building them, so say something the person holding the phone can act on.
 const SDK_INTERNAL_CRASH = /cannot read propert(?:y|ies) of (?:undefined|null)/i;
 
+// --- Diagnostics -----------------------------------------------------------
+// The SDK's minified crash says nothing about its cause, and staff phones have
+// no dev tools. Record which setup step was running and what OneSignal itself
+// logged (it always prints its errors, even with logging off), so the message
+// on screen carries the real reason.
+let currentStep = "starting";
+const sdkLog: string[] = [];
+const SDK_LOG_LIMIT = 4;
+let capturingSdkLog = false;
+
+function stringifyLogArg(arg: unknown): string {
+  if (arg instanceof Error) return `${arg.name}: ${arg.message}`;
+  if (typeof arg === "string") return arg;
+  try {
+    return JSON.stringify(arg);
+  } catch {
+    return String(arg);
+  }
+}
+
+if (typeof window !== "undefined" && typeof console !== "undefined") {
+  for (const level of ["error", "warn"] as const) {
+    const original = console[level].bind(console);
+    console[level] = (...args: unknown[]) => {
+      if (capturingSdkLog) {
+        const line = args.map(stringifyLogArg).join(" ").replace(/\s+/g, " ").slice(0, 200);
+        if (line && !line.startsWith("Staff push registration failed")) {
+          sdkLog.push(line);
+          if (sdkLog.length > SDK_LOG_LIMIT) sdkLog.shift();
+        }
+      }
+      original(...args);
+    };
+  }
+}
+
+function beginDiagnostics() {
+  currentStep = "starting";
+  sdkLog.length = 0;
+  capturingSdkLog = true;
+}
+
+function endDiagnostics() {
+  capturingSdkLog = false;
+}
+
+/** Where the minified crash came from — the file name carries the SDK build. */
+function crashLocation(error: unknown): string | null {
+  if (!(error instanceof Error) || !error.stack) return null;
+  const frame = error.stack.split("\n").find((line) => /https?:\/\//.test(line));
+  const match = frame?.match(/https?:\/\/[^\s)]+/);
+  return match ? match[0].replace(/^https?:\/\//, "").slice(0, 120) : null;
+}
+
+function describeSdkState(): string {
+  const sdk = (window as PushWindow).OneSignal as
+    | { config?: { appId?: string } | null; User?: { PushSubscription?: { id?: string | null } } }
+    | undefined;
+  if (!sdk) return "SDK not loaded";
+  const configured = sdk.config?.appId ? "config loaded" : "config missing";
+  const subscriptionId = sdk.User?.PushSubscription?.id ? "has subscription" : "no subscription";
+  return `${configured}, ${subscriptionId}`;
+}
+
+function diagnostics(error: unknown): string {
+  const parts = [`step: ${currentStep}`, describeSdkState()];
+  const where = crashLocation(error);
+  if (where) parts.push(`at ${where}`);
+  const logged = sdkLog.length ? ` | OneSignal said: ${sdkLog.join(" / ")}` : "";
+  return ` [Details — ${parts.join("; ")}${logged}]`;
+}
+
 function explainError(detail: string): string {
   if (!SDK_INTERNAL_CRASH.test(detail)) return detail;
   return (
@@ -117,7 +189,10 @@ function repairAfterSdkCrash(error: unknown): boolean {
 }
 
 function registrationFailed(context: string, error?: unknown): false {
-  const message = `${context}: ${explainError(describeError(error))}`;
+  const detail = describeError(error);
+  const message =
+    `${context}: ${explainError(detail)}` +
+    (SDK_INTERNAL_CRASH.test(detail) || /timed out/i.test(detail) ? diagnostics(error) : "");
   // Keep the FIRST failure of an attempt. The outer wrappers only know that
   // they were interrupted; the innermost one knows why, and overwriting it
   // was what reduced every failure to a generic "did not complete".
@@ -204,7 +279,9 @@ async function getOneSignal() {
   if (!("serviceWorker" in navigator)) return null;
   if (!("PushManager" in window)) return null;
 
+  currentStep = "service worker";
   await withTimeout(ensureAppWorker(), "Notification worker startup");
+  currentStep = "site URL check";
   const siteProblem = await checkOneSignalSite();
   if (siteProblem) throw new Error(siteProblem);
 
@@ -213,6 +290,7 @@ async function getOneSignal() {
 
   let init = pushWindow.__omniflowOneSignalInit;
   if (!init) {
+    currentStep = "storage check";
     const storageProblem = await ensureOneSignalStorage();
     if (storageProblem) throw new Error(storageProblem);
     if (debugEnabled()) OneSignal.Debug.setLogLevel("trace");
@@ -245,6 +323,7 @@ async function getOneSignal() {
   // OneSignal.init() a second time, and the SDK then rebuilt its internals
   // from under the first call — which surfaced as a TypeError on a minified
   // property instead of a real error, with the device never subscribed.
+  currentStep = "OneSignal init";
   await withTimeout(init, "Notification service startup", INIT_TIMEOUT_MS);
 
   if (typeof pushWindow.OneSignal === "undefined") {
@@ -364,15 +443,20 @@ export async function restoreStaffPush(
   lastRegistrationError = null;
   return serialize(async () => {
     try {
+      beginDiagnostics();
       const OneSignal = await getOneSignal();
       if (!OneSignal) return false;
+      currentStep = "login";
       await withTimeout(OneSignal.login(userId), "Staff notification sign-in");
+      currentStep = "read subscription";
       const subscriptionId = OneSignal.User.PushSubscription.id;
       if (!subscriptionId || !OneSignal.User.PushSubscription.optedIn) return false;
       return saveSubscription(subscriptionId, role);
     } catch (error) {
       if (repairAfterSdkCrash(error)) return false;
       return registrationFailed("Existing notification setup could not be restored", error);
+    } finally {
+      endDiagnostics();
     }
   });
 }
@@ -391,19 +475,25 @@ async function performStaffPushRegistration(
   role?: string | null,
 ): Promise<boolean> {
   if (typeof window === "undefined" || !userId) return false;
+  beginDiagnostics();
   try {
     const OneSignal = await getOneSignal();
     if (!OneSignal) return registrationFailed("Push is unavailable in this browser");
 
+    currentStep = "login";
     await withTimeout(OneSignal.login(userId), "Staff notification sign-in");
 
+    currentStep = "permission";
     await withTimeout(OneSignal.Notifications.requestPermission(), "Notification permission request");
     if (!OneSignal.Notifications.permission) {
       return registrationFailed("Notification permission was not granted");
     }
 
+    currentStep = "opt in";
     await withTimeout(OneSignal.User.PushSubscription.optIn(), "Device subscription");
+    currentStep = "wait for subscription";
     const subscriptionId = await waitForSubscriptionId(OneSignal);
+    currentStep = "save device";
 
     // Goes through the RPC rather than a direct upsert: on a shared browser
     // the subscription ID outlives the sign-in, and only a SECURITY DEFINER
@@ -418,6 +508,8 @@ async function performStaffPushRegistration(
       );
     }
     return registrationFailed("Device registration did not complete", error);
+  } finally {
+    endDiagnostics();
   }
 }
 
