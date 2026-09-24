@@ -249,6 +249,23 @@ describe("registerStaffPush", () => {
     expect(oneSignal.init).toHaveBeenCalledTimes(1);
   });
 
+  it("shows the failing step and what OneSignal logged alongside its crash", async () => {
+    sessionStorage.setItem("omniflow_onesignal_repaired", "1");
+    oneSignal.login.mockImplementation(async () => {
+      console.error("IndexedDB unavailable, close & reopen the page to retry init");
+      throw new TypeError("Cannot read properties of undefined (reading 'Qe')");
+    });
+
+    const push = await loadPush();
+    const result = push.registerStaffPush("user-1", "sales");
+    await vi.runAllTimersAsync();
+
+    expect(await result).toBe(false);
+    const message = push.staffPushRegistrationError() ?? "";
+    expect(message).toContain("step: login");
+    expect(message).toContain("IndexedDB unavailable");
+  });
+
   it("reports that the SDK never loaded rather than crashing later", async () => {
     delete (window as { OneSignal?: unknown }).OneSignal;
 
