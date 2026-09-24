@@ -69,6 +69,7 @@ beforeEach(() => {
   oneSignal.Notifications.permission = true;
   oneSignal.Notifications.requestPermission.mockResolvedValue(undefined);
   rpc.mockResolvedValue({ error: null });
+  sessionStorage.clear();
   // No OneSignal app config by default, so the site check stands aside.
   vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
 
@@ -156,7 +157,38 @@ describe("registerStaffPush", () => {
     expect(oneSignal.init).toHaveBeenCalledTimes(2);
   });
 
+  it("resets OneSignal's storage and reloads after its first internal crash", async () => {
+    const deleteDatabase = vi.fn(() => {
+      const request = {} as { onsuccess?: () => void };
+      queueMicrotask(() => request.onsuccess?.());
+      return request;
+    });
+    // A healthy database for the pre-init probe; the crash comes later.
+    const open = vi.fn(() => {
+      const request = {
+        result: { version: 7, close: vi.fn() },
+      } as unknown as { onsuccess?: () => void };
+      queueMicrotask(() => request.onsuccess?.());
+      return request;
+    });
+    vi.stubGlobal("indexedDB", { open, deleteDatabase });
+    oneSignal.login.mockRejectedValue(
+      new TypeError("Cannot read properties of undefined (reading 'Qe')"),
+    );
+
+    const push = await loadPush();
+    const result = push.registerStaffPush("user-1", "sales");
+    await vi.runAllTimersAsync();
+
+    expect(await result).toBe(false);
+    expect(deleteDatabase).toHaveBeenCalledWith("ONE_SIGNAL_SDK_DB");
+    expect(sessionStorage.getItem("omniflow_onesignal_repaired")).toBe("1");
+    expect(push.staffPushRegistrationError()).toContain("reload");
+  });
+
   it("explains the opaque crash thrown inside the OneSignal bundle", async () => {
+    // Already reset once this session, so the crash is reported, not retried.
+    sessionStorage.setItem("omniflow_onesignal_repaired", "1");
     oneSignal.login.mockRejectedValue(
       new TypeError("Cannot read properties of undefined (reading 'Qe')"),
     );

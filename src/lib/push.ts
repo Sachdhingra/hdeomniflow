@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { ensureAppWorker } from "@/lib/appWorker";
+import { deleteOneSignalDatabase, ensureOneSignalStorage } from "@/lib/oneSignalStorage";
 
 /**
  * Staff web push for the OmniFlow app.
@@ -95,6 +96,24 @@ function explainError(detail: string): string {
     `the Site URL of OneSignal app ${ONESIGNAL_APP_ID} is exactly ${window.location.origin}, ` +
     "and that no content blocker, VPN or Wi-Fi filter is blocking cdn.onesignal.com."
   );
+}
+
+// Once per tab session: after the SDK has crashed on its own internals, wipe
+// its database and reload so the next init starts from a clean slate. init()
+// cannot be re-run on the same page, so a reload is the only way to retry.
+const SDK_REPAIR_FLAG = "omniflow_onesignal_repaired";
+
+function repairAfterSdkCrash(error: unknown): boolean {
+  if (!SDK_INTERNAL_CRASH.test(describeError(error))) return false;
+  try {
+    if (sessionStorage.getItem(SDK_REPAIR_FLAG)) return false;
+    sessionStorage.setItem(SDK_REPAIR_FLAG, "1");
+  } catch {
+    return false;
+  }
+  console.warn("OneSignal crashed during setup; resetting its storage and reloading.");
+  void deleteOneSignalDatabase().finally(() => window.location.reload());
+  return true;
 }
 
 function registrationFailed(context: string, error?: unknown): false {
@@ -194,6 +213,8 @@ async function getOneSignal() {
 
   let init = pushWindow.__omniflowOneSignalInit;
   if (!init) {
+    const storageProblem = await ensureOneSignalStorage();
+    if (storageProblem) throw new Error(storageProblem);
     if (debugEnabled()) OneSignal.Debug.setLogLevel("trace");
     init = OneSignal.init({
       appId: ONESIGNAL_APP_ID,
@@ -350,6 +371,7 @@ export async function restoreStaffPush(
       if (!subscriptionId || !OneSignal.User.PushSubscription.optedIn) return false;
       return saveSubscription(subscriptionId, role);
     } catch (error) {
+      if (repairAfterSdkCrash(error)) return false;
       return registrationFailed("Existing notification setup could not be restored", error);
     }
   });
@@ -389,6 +411,12 @@ async function performStaffPushRegistration(
     // the second person's alerts would keep going to the first.
     return saveSubscription(subscriptionId, role);
   } catch (error) {
+    if (repairAfterSdkCrash(error)) {
+      return registrationFailed(
+        "Repairing notification storage",
+        "OmniFlow will reload in a moment — then tap Connect this phone once more.",
+      );
+    }
     return registrationFailed("Device registration did not complete", error);
   }
 }
