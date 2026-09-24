@@ -26,6 +26,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 import { mirrorToWhatsApp } from "../_shared/whatsapp-mirror.ts";
+import { mirrorStaffAlertToWhatsApp } from "../_shared/staff-whatsapp.ts";
 
 const SUPABASE_URL      = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE      = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -208,6 +209,25 @@ Deno.serve(async (req: Request) => {
   type Recipient = { customer_id: string | null; onesignal_player_id: string };
   let recipients: Recipient[] = [];
 
+  // A staff broadcast also goes to WhatsApp for the desk roles (sales,
+  // service_head, accounts — see staff-whatsapp.ts), including
+  // those who never connected a phone for push. Runs alongside the push.
+  let staffWhatsApp: Promise<number> = Promise.resolve(0);
+  if (audience === "staff") {
+    staffWhatsApp = (async () => {
+      const { data: staffRows, error: staffErr } = await supabase.from("user_roles").select("user_id");
+      if (staffErr) throw new Error(staffErr.message);
+      return mirrorStaffAlertToWhatsApp(
+        supabase,
+        (staffRows ?? []).map((r) => r.user_id as string),
+        { type: `broadcast_${campaign_type}`, title, message },
+      );
+    })().catch((e) => {
+      console.error("Staff WhatsApp broadcast failed:", String(e));
+      return 0;
+    });
+  }
+
   if (audience === "staff") {
     const { data, error: recErr } = await supabase
       .from("staff_push_devices")
@@ -345,7 +365,11 @@ Deno.serve(async (req: Request) => {
   if (targets.length === 0) {
     const err = "No staff device is registered for push yet. Staff must sign in to OmniFlow and allow notifications first.";
     await failCampaign(campaign.id, err);
-    return json({ campaign_id: campaign.id, targeted: 0, sent: 0, error: err }, 502);
+    const whatsappSent = await staffWhatsApp;
+    return json(
+      { campaign_id: campaign.id, targeted: 0, sent: 0, whatsapp_sent: whatsappSent, error: err },
+      whatsappSent > 0 ? 200 : 502,
+    );
   }
 
   for (let i = 0; i < targets.length; i += BATCH_SIZE) {
@@ -442,12 +466,14 @@ Deno.serve(async (req: Request) => {
     })
     .eq("id", campaign.id);
 
+  const whatsappSent = await staffWhatsApp;
   return json({
-    campaign_id: campaign.id,
-    targeted:    targets.length,
-    sent:        sentCount,
+    campaign_id:   campaign.id,
+    targeted:      targets.length,
+    sent:          sentCount,
+    ...(audience === "staff" ? { whatsapp_sent: whatsappSent } : {}),
     ...(lastError ? { error: lastError } : {}),
-  }, status === "failed" ? 502 : 200);
+  }, status === "failed" && whatsappSent === 0 ? 502 : 200);
 });
 
 async function failCampaign(id: string, error: string): Promise<void> {
