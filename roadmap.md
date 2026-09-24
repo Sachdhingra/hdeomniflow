@@ -26,4 +26,4 @@
 - [x] Deploy and verify the repaired WhatsApp circuit
 - [x] Add WhatsApp mirroring to staff push and staff broadcasts
 - [x] Create and submit the hde_staff_alert Utility template to Meta
-- [ ] Confirm Meta approval and verify a live staff WhatsApp alert
+- [x] Confirm Meta approval and verify a live staff WhatsApp alert
