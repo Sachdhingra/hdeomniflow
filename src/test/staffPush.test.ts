@@ -69,6 +69,8 @@ beforeEach(() => {
   oneSignal.Notifications.permission = true;
   oneSignal.Notifications.requestPermission.mockResolvedValue(undefined);
   rpc.mockResolvedValue({ error: null });
+  // No OneSignal app config by default, so the site check stands aside.
+  vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
 
   delete (window as { __omniflowOneSignalInit?: unknown }).__omniflowOneSignalInit;
   // Stands in for the CDN bundle having executed.
@@ -89,6 +91,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe("registerStaffPush", () => {
@@ -165,6 +168,52 @@ describe("registerStaffPush", () => {
     const message = push.staffPushRegistrationError() ?? "";
     expect(message).toContain("reading 'Qe'");
     expect(message).toContain("cdn.onesignal.com");
+  });
+
+  it("names the wrong Site URL instead of letting the SDK crash on it", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          success: true,
+          features: { restrict_origin: { enable: true } },
+          config: { origin: "https://homedecorinsider.lovable.app" },
+        }),
+      }),
+    );
+
+    const push = await loadPush();
+    const result = push.registerStaffPush("user-1", "sales");
+    await vi.runAllTimersAsync();
+
+    expect(await result).toBe(false);
+    expect(oneSignal.init).not.toHaveBeenCalled();
+    const message = push.staffPushRegistrationError() ?? "";
+    expect(message).toContain("https://homedecorinsider.lovable.app");
+    expect(message).toContain(window.location.origin);
+    expect(message).toContain("Site URL");
+  });
+
+  it("carries on when the configured Site URL matches this origin", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: true, config: { origin: window.location.origin } }),
+      }),
+    );
+    subscription.optIn.mockImplementation(async () => {
+      subscription.id = "player-9";
+      subscription.optedIn = true;
+    });
+
+    const push = await loadPush();
+    const result = push.registerStaffPush("user-1", "sales");
+    await vi.runAllTimersAsync();
+
+    expect(await result).toBe(true);
+    expect(oneSignal.init).toHaveBeenCalledTimes(1);
   });
 
   it("reports that the SDK never loaded rather than crashing later", async () => {
