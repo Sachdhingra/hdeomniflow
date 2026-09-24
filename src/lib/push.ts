@@ -124,6 +124,16 @@ if (typeof window !== "undefined" && typeof console !== "undefined") {
   }
 }
 
+if (typeof window !== "undefined") {
+  // A Content-Security-Policy block is reported by the browser, not through
+  // console.error, and fails silently from the SDK's side — capture it too.
+  window.addEventListener("securitypolicyviolation", (event) => {
+    if (!capturingSdkLog) return;
+    sdkLog.push(`blocked by CSP ${event.effectiveDirective}: ${event.blockedURI}`.slice(0, 200));
+    if (sdkLog.length > SDK_LOG_LIMIT) sdkLog.shift();
+  });
+}
+
 function beginDiagnostics() {
   currentStep = "starting";
   sdkLog.length = 0;
