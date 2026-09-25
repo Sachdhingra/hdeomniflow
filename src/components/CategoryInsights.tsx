@@ -38,6 +38,10 @@ interface CategoryRow {
 
 const N = 6;
 
+// Enum values that exist in the DB but aren't in LEAD_CATEGORIES (lead forms).
+// Without these, leads in such categories silently vanish from the table.
+const EXTRA_CATEGORY_LABELS: Record<string, string> = { kiosk: "Kiosk" };
+
 const COLORS = [
   "#6366f1", "#f59e0b", "#10b981", "#ef4444", "#3b82f6",
   "#ec4899", "#14b8a6", "#f97316", "#8b5cf6", "#84cc16",
@@ -68,13 +72,15 @@ const CategoryInsights = () => {
   const monthKeys = useMemo(() => buildMonthKeys(N), []);
   const [raw, setRaw] = useState<RawLead[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const since = new Date();
-    since.setMonth(since.getMonth() - N);
-    since.setDate(1);
-    since.setHours(0, 0, 0, 0);
+    setLoadError(null);
+    // Start of the oldest displayed month — must match monthKeys exactly,
+    // otherwise totals / Win% / Value include an extra hidden month.
+    const now = new Date();
+    const since = new Date(now.getFullYear(), now.getMonth() - (N - 1), 1);
 
     // Paginate in 1000-row batches — Supabase caps single responses at 1000
     const PAGE = 1000;
@@ -86,8 +92,15 @@ const CategoryInsights = () => {
         .select("category, status, value_in_rupees, created_at")
         .gte("created_at", since.toISOString())
         .is("deleted_at", null)
+        // Stable ordering is required for range pagination; without it
+        // Postgres may return overlapping/missing rows across pages.
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
         .range(page * PAGE, (page + 1) * PAGE - 1);
-      if (error) break;
+      if (error) {
+        setLoadError(error.message);
+        break;
+      }
       all.push(...(data as unknown as RawLead[]));
       if (!data || data.length < PAGE) break;
       page++;
@@ -99,7 +112,18 @@ const CategoryInsights = () => {
   useEffect(() => { load(); }, [load]);
 
   const rows = useMemo((): CategoryRow[] => {
-    return LEAD_CATEGORIES.map(cat => {
+    const known = new Set(LEAD_CATEGORIES.map(c => c.value as string));
+    const extras = [...new Set(raw.map(l => l.category))]
+      .filter(c => c && !known.has(c))
+      .map(c => ({ value: c, label: EXTRA_CATEGORY_LABELS[c] ?? c }));
+    const categories: { value: string; label: string }[] = [...LEAD_CATEGORIES, ...extras];
+
+    // Current month is partial: compare it with the same number of days
+    // of the previous month, not the whole previous month.
+    const now = new Date();
+    const dayOfMonth = now.getDate();
+
+    return categories.map(cat => {
       const catLeads = raw.filter(l => l.category === cat.value);
 
       const months: Record<string, MonthCell> = Object.fromEntries(
@@ -124,7 +148,10 @@ const CategoryInsights = () => {
       const currMk = monthKeys.at(-1)!;
       const prevMk = monthKeys.at(-2)!;
       const curr = months[currMk].count;
-      const prev = months[prevMk].count;
+      const prev = catLeads.filter(l => {
+        const d = new Date(l.created_at);
+        return toMonthKey(l.created_at) === prevMk && d.getDate() <= dayOfMonth;
+      }).length;
       let trend: "up" | "down" | "flat" = "flat";
       let trendPct = 0;
       if (prev > 0) {
@@ -182,6 +209,12 @@ const CategoryInsights = () => {
         </Button>
       </CardHeader>
       <CardContent className="space-y-5">
+
+        {loadError && (
+          <p className="text-xs text-destructive">
+            Could not load all leads ({loadError}) — figures below may be incomplete.
+          </p>
+        )}
 
         {/* Needs Attention */}
         {attentionRows.length > 0 && (
@@ -328,7 +361,7 @@ const CategoryInsights = () => {
         <p className="text-[10px] text-muted-foreground leading-relaxed">
           Hover any month cell to see Won / Lost / ₹ Value breakdown.
           Green = higher than prev month · Red = lower · Bold = current month.
-          Trend compares current month vs previous month.
+          Trend compares current month-to-date vs the same days of the previous month.
         </p>
       </CardContent>
     </Card>
