@@ -14,6 +14,7 @@ interface RawLead {
   status: string;
   value_in_rupees: number | null;
   created_at: string;
+  source: string | null;
 }
 
 interface MonthCell {
@@ -37,6 +38,10 @@ interface CategoryRow {
 }
 
 const N = 6;
+
+// Bulk CSV uploads get created_at = upload time, so counting them would
+// show historical leads as a spike in the month they were imported.
+const IMPORT_SOURCE = "csv_import";
 
 // Enum values that exist in the DB but aren't in LEAD_CATEGORIES (lead forms).
 // Without these, leads in such categories silently vanish from the table.
@@ -73,6 +78,7 @@ const CategoryInsights = () => {
   const [raw, setRaw] = useState<RawLead[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [importedCount, setImportedCount] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -89,7 +95,7 @@ const CategoryInsights = () => {
     while (true) {
       const { data, error } = await supabase
         .from("leads")
-        .select("category, status, value_in_rupees, created_at")
+        .select("category, status, value_in_rupees, created_at, source")
         .gte("created_at", since.toISOString())
         .is("deleted_at", null)
         // Stable ordering is required for range pagination; without it
@@ -105,7 +111,9 @@ const CategoryInsights = () => {
       if (!data || data.length < PAGE) break;
       page++;
     }
-    setRaw(all);
+    const organic = all.filter(l => l.source !== IMPORT_SOURCE);
+    setRaw(organic);
+    setImportedCount(all.length - organic.length);
     setLoading(false);
   }, []);
 
@@ -362,6 +370,9 @@ const CategoryInsights = () => {
           Hover any month cell to see Won / Lost / ₹ Value breakdown.
           Green = higher than prev month · Red = lower · Bold = current month.
           Trend compares current month-to-date vs the same days of the previous month.
+          {importedCount > 0 && (
+            <> Excludes {importedCount} bulk-imported (CSV) leads, whose dates reflect the upload day, not the enquiry.</>
+          )}
         </p>
       </CardContent>
     </Card>
