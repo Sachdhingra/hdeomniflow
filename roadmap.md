@@ -27,5 +27,5 @@
 - [x] Add WhatsApp mirroring to staff push and staff broadcasts
 - [x] Create and submit the hde_staff_alert Utility template to Meta
 - [x] Confirm Meta approval and verify a live staff WhatsApp alert
-- [ ] Add every Insider app account and complete points history to the daily 8 PM Excel backup
-- [ ] Deploy and verify the updated daily report without changing its schedule or existing sheets
+- [x] Add every Insider app account and complete points history to the daily 8 PM Excel backup
+- [x] Deploy and verify the updated daily report without changing its schedule or existing sheets
