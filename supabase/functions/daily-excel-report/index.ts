@@ -32,6 +32,42 @@ const fmtFileDate = (d: Date) => {
   return `${dd}-${mm}-${d.getFullYear()}`;
 };
 
+const fmtDateTimeIST = (value?: string | null) =>
+  value
+    ? new Date(value).toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      })
+    : "";
+
+async function fetchAllRows(
+  supabase: any,
+  table: string,
+  select: string,
+  orderColumn = "created_at",
+): Promise<any[]> {
+  const pageSize = 1000;
+  const rows: any[] = [];
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from(table)
+      .select(select)
+      .order(orderColumn, { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) throw new Error(`${table} export failed: ${error.message}`);
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+  }
+
+  return rows;
+}
+
 function styleHeader(row: any, color: string) {
   row.eachCell((cell: any) => {
     cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 12 };
@@ -71,11 +107,26 @@ async function buildWorkbook(supabase: any) {
   const weekAgo = new Date(now.getTime() - 7 * 86400000);
   const monthAgo = new Date(now.getTime() - 30 * 86400000);
 
-  const [leadsRes, jobsRes, msgsRes, profilesRes] = await Promise.all([
+  const [leadsRes, jobsRes, msgsRes, profilesRes, appUsers, eliteCustomers, pointEntries] = await Promise.all([
     supabase.from("leads").select("*").is("deleted_at", null).order("created_at", { ascending: false }).limit(5000),
     supabase.from("service_jobs").select("*").is("deleted_at", null).order("created_at", { ascending: false }).limit(5000),
     supabase.from("lead_messages").select("*").gte("sent_at", monthAgo.toISOString()).order("sent_at", { ascending: false }).limit(10000),
     supabase.from("profiles").select("id, name, email"),
+    fetchAllRows(
+      supabase,
+      "app_users",
+      "id, user_id, customer_id, push_enabled, onesignal_player_id, created_at, push_permission, push_permission_at, push_prompt_dismissed_at, push_reengaged_at",
+    ),
+    fetchAllRows(
+      supabase,
+      "elite_customers",
+      "id, customer_name, phone_1, phone_2, card_issue_date, card_expiry_date, status, lead_id, notes, created_by, created_at, updated_at, app_activated, referral_code, card_tier, card_number, current_points, lifetime_points, card_enrollment_date, date_of_birth, anniversary_date",
+    ),
+    fetchAllRows(
+      supabase,
+      "card_points",
+      "id, customer_id, points, transaction_type, is_expired, expires_at, notes, created_by, created_at",
+    ),
   ]);
 
   const leads = leadsRes.data || [];
@@ -281,6 +332,101 @@ async function buildWorkbook(supabase: any) {
 
   an.columns.forEach((c: any) => (c.width = 24));
 
+  // ---------------- SHEET 6: INSIDER DATA ----------------
+  // app_users is the authoritative list of every Insider app created since launch.
+  const insider = wb.addWorksheet("Insider Data");
+  insider.columns = [
+    { header: "Customer Name", key: "name" },
+    { header: "Primary Phone", key: "phone1" },
+    { header: "Alternate Phone", key: "phone2" },
+    { header: "Card Number", key: "cardNumber" },
+    { header: "Card Tier", key: "tier" },
+    { header: "Card Status", key: "cardStatus" },
+    { header: "App Created (IST)", key: "appCreated" },
+    { header: "App Activated", key: "appActivated" },
+    { header: "Card Enrollment Date", key: "enrollment" },
+    { header: "Card Issue Date", key: "issueDate" },
+    { header: "Card Expiry Date", key: "expiryDate" },
+    { header: "Date of Birth", key: "dob" },
+    { header: "Anniversary Date", key: "anniversary" },
+    { header: "Referral Code", key: "referral" },
+    { header: "Current Points", key: "currentPoints" },
+    { header: "Lifetime Points", key: "lifetimePoints" },
+    { header: "Points Transaction Date (IST)", key: "pointsDate" },
+    { header: "Points Transaction Type", key: "pointsType" },
+    { header: "Points Change", key: "pointsChange" },
+    { header: "Points Expired", key: "pointsExpired" },
+    { header: "Points Expiry (IST)", key: "pointsExpiry" },
+    { header: "Points Notes", key: "pointsNotes" },
+    { header: "Push Enabled", key: "pushEnabled" },
+    { header: "Push Permission", key: "pushPermission" },
+    { header: "Push Permission Updated (IST)", key: "pushPermissionAt" },
+    { header: "Push Device ID", key: "pushDeviceId" },
+    { header: "App Account ID", key: "appId" },
+    { header: "App User ID", key: "userId" },
+    { header: "Customer ID", key: "customerId" },
+    { header: "Points Entry ID", key: "pointsId" },
+  ];
+  styleHeader(insider.getRow(1), "FF7030A0");
+  insider.getRow(1).height = 32;
+
+  const customerMap = new Map(eliteCustomers.map((customer: any) => [customer.id, customer]));
+  const pointsByCustomer = new Map<string, any[]>();
+  for (const entry of pointEntries) {
+    const customerRows = pointsByCustomer.get(entry.customer_id) || [];
+    customerRows.push(entry);
+    pointsByCustomer.set(entry.customer_id, customerRows);
+  }
+
+  for (const app of appUsers) {
+    const customer = customerMap.get(app.customer_id) || {};
+    const customerPoints = pointsByCustomer.get(app.customer_id) || [null];
+    for (const point of customerPoints) {
+      const row = insider.addRow({
+        name: customer.customer_name || "",
+        phone1: customer.phone_1 || "",
+        phone2: customer.phone_2 || "",
+        cardNumber: customer.card_number || "",
+        tier: customer.card_tier ? String(customer.card_tier).replaceAll("_", " ") : "",
+        cardStatus: customer.status || "",
+        appCreated: fmtDateTimeIST(app.created_at),
+        appActivated: customer.app_activated ? "Yes" : "No",
+        enrollment: customer.card_enrollment_date || "",
+        issueDate: customer.card_issue_date || "",
+        expiryDate: customer.card_expiry_date || "",
+        dob: customer.date_of_birth || "",
+        anniversary: customer.anniversary_date || "",
+        referral: customer.referral_code || "",
+        currentPoints: Number(customer.current_points || 0),
+        lifetimePoints: Number(customer.lifetime_points || 0),
+        pointsDate: fmtDateTimeIST(point?.created_at),
+        pointsType: point?.transaction_type || "",
+        pointsChange: point ? Number(point.points || 0) : "",
+        pointsExpired: point ? (point.is_expired ? "Yes" : "No") : "",
+        pointsExpiry: fmtDateTimeIST(point?.expires_at),
+        pointsNotes: point?.notes || "",
+        pushEnabled: app.push_enabled ? "Yes" : "No",
+        pushPermission: app.push_permission || "",
+        pushPermissionAt: fmtDateTimeIST(app.push_permission_at),
+        pushDeviceId: app.onesignal_player_id || "",
+        appId: app.id,
+        userId: app.user_id || "",
+        customerId: app.customer_id || "",
+        pointsId: point?.id || "",
+      });
+      row.font = { name: "Arial", size: 10 };
+      row.getCell("currentPoints").numFmt = '#,##0;[Red](#,##0);-';
+      row.getCell("lifetimePoints").numFmt = '#,##0;[Red](#,##0);-';
+      row.getCell("pointsChange").numFmt = '#,##0;[Red](#,##0);-';
+      const statusFill = statusColor(customer.status || "");
+      if (statusFill) row.getCell("cardStatus").fill = { type: "pattern", pattern: "solid", fgColor: { argb: statusFill } };
+    }
+  }
+
+  insider.autoFilter = { from: "A1", to: { row: 1, column: insider.columnCount } };
+  insider.views = [{ state: "frozen", ySplit: 1, xSplit: 1 }];
+  autoSize(insider);
+
   const buf = await wb.xlsx.writeBuffer();
   return new Uint8Array(buf as ArrayBuffer);
 }
@@ -422,6 +568,7 @@ Included in this Excel workbook:
 • Service Jobs — deliveries and service jobs with assigned agents
 • WhatsApp Messages — last 30 days of customer conversations
 • Analytics — psychology stage breakdown and team performance
+• Insider Data — every Insider app account since launch with complete points details
 
 Generated automatically at 8:00 PM IST.
 
