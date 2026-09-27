@@ -9,7 +9,7 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Phone, MoveHorizontal, Sparkles, MessageCircle, MapPin, Zap, AlertTriangle, Snowflake, Star, Reply, Flame } from "lucide-react";
+import { Phone, MoveHorizontal, Sparkles, MessageCircle, MapPin, Zap, AlertTriangle, Snowflake, Star, Reply, Flame, CheckCircle2, CircleDot } from "lucide-react";
 import { toast } from "@/lib/toast";
 import LeadDetailsDrawer from "@/components/LeadDetailsDrawer";
 import SendTemplateDialog from "@/components/SendTemplateDialog";
@@ -18,6 +18,8 @@ import { neighborhoodColor, responseTimeColor, formatRelativeTime, PREFERRED_STY
 import { type JourneyStage, statusToStage } from "@/lib/messageTemplates";
 
 type LeadAlert = { id: string; lead_id: string; alert_type: string; severity: string; message: string };
+type MessageSummary = { status: string; message_type: string; created_at: string };
+type ActionFilter = "all" | "respond" | "call" | "whatsapp";
 
 const COLUMNS: { stage: JourneyStage | "cold"; label: string; accent: string; sub: string }[] = [
   { stage: "problem",     label: "Problem",     accent: "border-t-destructive",       sub: "Day -30 to 0" },
@@ -44,6 +46,8 @@ const LeadsBoard = () => {
   const [templateLead, setTemplateLead] = useState<Lead | null>(null);
   const [alerts, setAlerts] = useState<LeadAlert[]>([]);
   const [unseenReplies, setUnseenReplies] = useState<Record<string, number>>({});
+  const [latestMessages, setLatestMessages] = useState<Record<string, MessageSummary>>({});
+  const [actionFilter, setActionFilter] = useState<ActionFilter>("all");
 
   useEffect(() => {
     let mounted = true;
@@ -58,6 +62,18 @@ const LeadsBoard = () => {
         const counts: Record<string, number> = {};
         (replies ?? []).forEach(r => { counts[r.lead_id] = (counts[r.lead_id] ?? 0) + 1; });
         setUnseenReplies(counts);
+      }
+      const { data: messages } = await supabase
+        .from("lead_messages")
+        .select("lead_id,status,message_type,created_at")
+        .order("created_at", { ascending: false })
+        .limit(2000);
+      if (mounted) {
+        const latest: Record<string, MessageSummary> = {};
+        (messages ?? []).forEach(message => {
+          if (!latest[message.lead_id]) latest[message.lead_id] = message as MessageSummary;
+        });
+        setLatestMessages(latest);
       }
     })();
     const ch = supabase
@@ -96,6 +112,14 @@ const LeadsBoard = () => {
     COLUMNS.forEach(c => { map[c.stage] = []; });
     for (const l of visibleLeads) {
       if (["won", "converted", "lost"].includes(l.status)) continue;
+      const replyState = (l as any).follow_up_reply_state;
+      const latest = latestMessages[l.id];
+      const hasReply = (unseenReplies[l.id] ?? 0) > 0 || replyState === "interested";
+      const needsCall = !hasReply && ((l as any).needs_personal_call === true || latest?.status === "read" || latest?.status === "failed");
+      const needsWhatsApp = !hasReply && !needsCall && !latest;
+      if (actionFilter === "respond" && !hasReply) continue;
+      if (actionFilter === "call" && !needsCall) continue;
+      if (actionFilter === "whatsapp" && !needsWhatsApp) continue;
       const s = journeyOf(l);
       if (map[s]) map[s].push(l);
     }
@@ -108,7 +132,20 @@ const LeadsBoard = () => {
       });
     }
     return map;
-  }, [visibleLeads]);
+  }, [visibleLeads, latestMessages, unseenReplies, actionFilter]);
+
+  const actionCounts = useMemo(() => {
+    const counts = { respond: 0, call: 0, whatsapp: 0 };
+    visibleLeads.forEach(lead => {
+      if (["won", "converted", "lost"].includes(lead.status)) return;
+      const latest = latestMessages[lead.id];
+      const hasReply = (unseenReplies[lead.id] ?? 0) > 0 || (lead as any).follow_up_reply_state === "interested";
+      if (hasReply) counts.respond += 1;
+      else if ((lead as any).needs_personal_call === true || latest?.status === "read" || latest?.status === "failed") counts.call += 1;
+      else if (!latest) counts.whatsapp += 1;
+    });
+    return counts;
+  }, [visibleLeads, latestMessages, unseenReplies]);
 
   const stageStats = (stage: string, items: Lead[]) => {
     if (items.length === 0) return { avgDays: 0, needAction: 0 };
@@ -155,6 +192,26 @@ const LeadsBoard = () => {
         )}
       </div>
 
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {([
+          ["all", "All leads", visibleLeads.length],
+          ["respond", "Respond now", actionCounts.respond],
+          ["call", "Call next", actionCounts.call],
+          ["whatsapp", "WhatsApp next", actionCounts.whatsapp],
+        ] as const).map(([value, label, count]) => (
+          <Button
+            key={value}
+            type="button"
+            size="sm"
+            variant={actionFilter === value ? "default" : "outline"}
+            className="shrink-0"
+            onClick={() => setActionFilter(value)}
+          >
+            {label} · {count}
+          </Button>
+        ))}
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
         {COLUMNS.map(col => {
           const items = byStage[col.stage] ?? [];
@@ -192,6 +249,16 @@ const LeadsBoard = () => {
                   const categoryLabel = LEAD_CATEGORIES.find(c => c.value === lead.category)?.label;
                   const respMins = l.response_time_minutes;
                   const leadAlerts = alertsByLead.get(lead.id) ?? [];
+                  const latestMessage = latestMessages[lead.id];
+                  const hasReply = (unseenReplies[lead.id] ?? 0) > 0 || l.follow_up_reply_state === "interested";
+                  const recommendedAction = hasReply
+                    ? { label: "Respond now", icon: Reply, tone: "text-success" }
+                    : l.needs_personal_call || latestMessage?.status === "read" || latestMessage?.status === "failed"
+                      ? { label: "Call next", icon: Phone, tone: "text-warning" }
+                      : !latestMessage
+                        ? { label: "WhatsApp next", icon: MessageCircle, tone: "text-primary" }
+                        : { label: "Awaiting response", icon: CircleDot, tone: "text-muted-foreground" };
+                  const ActionIcon = recommendedAction.icon;
                   return (
                     <Card
                       key={lead.id}
@@ -288,6 +355,9 @@ const LeadsBoard = () => {
                         )}
 
                         <div className="border-t pt-1.5 space-y-0.5 text-[11px]">
+                          <div className={`flex items-center gap-1 font-medium ${recommendedAction.tone}`}>
+                            <ActionIcon className="w-3 h-3" />{recommendedAction.label}
+                          </div>
                           <div className="flex items-center justify-between text-muted-foreground">
                             <span className="flex items-center gap-1">
                               <MessageCircle className="w-3 h-3" />
@@ -295,6 +365,11 @@ const LeadsBoard = () => {
                             </span>
                             {l.last_response_at && <span>✅</span>}
                           </div>
+                          {latestMessage && (
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <CheckCircle2 className="w-3 h-3" />WhatsApp: {latestMessage.status}
+                            </div>
+                          )}
                           {respMins != null && (
                             <div className={`flex items-center gap-1 ${responseTimeColor(respMins)}`}>
                               <Zap className="w-3 h-3" />Response: {respMins}m

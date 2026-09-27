@@ -95,6 +95,8 @@ function fillVars(body: string, lead: Lead): string {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  const requestBody = await req.json().catch(() => ({}));
+
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -122,6 +124,12 @@ Deno.serve(async (req) => {
   if (!authorized) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  if (requestBody?.dry_run === true) {
+    return new Response(JSON.stringify({ ok: true, authorized: true, dry_run: true }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 

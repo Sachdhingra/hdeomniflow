@@ -37,7 +37,7 @@ interface OutreachLead {
 }
 
 type SendState = "idle" | "sending" | "sent" | "failed";
-type Performance = { total: number; sent: number; delivered: number; read: number; replied: number; failed: number };
+type Performance = { total: number; sent: number; reached: number; read: number; replied: number; failed: number };
 type ActivityRow = { id: string; lead_id: string; message_type: string; message_body: string; status: string; sent_at: string; outreach_source: string | null };
 
 const STATUSES = ["follow_up", "negotiation", "overdue"] as const;
@@ -61,7 +61,7 @@ const LeadOutreach = () => {
   const [results, setResults] = useState<Record<string, { state: SendState; error?: string }>>({});
   const [period, setPeriod] = useState("7");
   const [sourceFilter, setSourceFilter] = useState("all");
-  const [performance, setPerformance] = useState<Performance>({ total: 0, sent: 0, delivered: 0, read: 0, replied: 0, failed: 0 });
+  const [performance, setPerformance] = useState<Performance>({ total: 0, sent: 0, reached: 0, read: 0, replied: 0, failed: 0 });
   const [activity, setActivity] = useState<ActivityRow[]>([]);
 
   const load = async () => {
@@ -92,12 +92,14 @@ const LeadOutreach = () => {
       const allRows = (data ?? []) as Array<ActivityRow & { response_received?: boolean }>;
       const rows = sourceFilter === "all" ? allRows : allRows.filter(r => r.outreach_source === sourceFilter || r.message_type === "inbound");
       const outbound = rows.filter(r => r.message_type === "outbound");
+      const outboundLeadIds = new Set(outbound.map(r => r.lead_id));
+      const repliedLeadIds = new Set(rows.filter(r => r.message_type === "inbound" && outboundLeadIds.has(r.lead_id)).map(r => r.lead_id));
       setPerformance({
         total: outbound.length,
         sent: outbound.filter(r => ["sent", "delivered", "read"].includes(r.status)).length,
-        delivered: outbound.filter(r => ["delivered", "read"].includes(r.status)).length,
+        reached: outbound.filter(r => ["delivered", "read"].includes(r.status)).length,
         read: outbound.filter(r => r.status === "read").length,
-        replied: outbound.filter(r => r.response_received).length,
+        replied: repliedLeadIds.size,
         failed: outbound.filter(r => r.status === "failed").length,
       });
       setActivity(rows.filter(r => r.message_type === "inbound" || r.status === "failed").slice(0, 12));
@@ -250,10 +252,10 @@ const LeadOutreach = () => {
       </div>
       <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
         {([
-          ["Sent", performance.sent, Send], ["Delivered", performance.delivered, CheckCircle2],
+          ["Sent", performance.sent, Send], ["Reached", performance.reached, CheckCircle2],
           ["Read", performance.read, Eye], ["Replied", performance.replied, Reply],
           ["Failed", performance.failed, AlertTriangle],
-          ["Reply rate", performance.total ? `${Math.round(performance.replied / performance.total * 100)}%` : "0%", MessageSquare],
+          ["Reply rate", performance.reached ? `${Math.round(performance.replied / performance.reached * 100)}%` : "0%", MessageSquare],
         ] as const).map(([label, value, Icon]) => (
           <Card key={String(label)}><CardContent className="p-3">
             <div className="flex items-center gap-1 text-[11px] text-muted-foreground"><Icon className="w-3 h-3" />{label as string}</div>

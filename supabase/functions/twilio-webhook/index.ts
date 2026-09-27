@@ -297,18 +297,20 @@ Deno.serve(async (req) => {
         .eq("message_type", "outbound")
         .order("sent_at", { ascending: false })
         .limit(1);
-      if (lastOut?.length && lastOut[0].variant && lastOut[0].template_id) {
-        const { data: v } = await supabase
-          .from("message_template_variants")
-          .select("id")
-          .eq("template_id", lastOut[0].template_id)
-          .eq("variant_label", lastOut[0].variant)
-          .maybeSingle();
-        if (v?.id) await supabase.rpc("bump_variant_reply", { _variant_id: v.id });
+      if (lastOut?.length) {
         await supabase
           .from("lead_messages")
           .update({ response_received: true })
           .eq("id", lastOut[0].id);
+        if (lastOut[0].variant && lastOut[0].template_id) {
+          const { data: v } = await supabase
+            .from("message_template_variants")
+            .select("id")
+            .eq("template_id", lastOut[0].template_id)
+            .eq("variant_label", lastOut[0].variant)
+            .maybeSingle();
+          if (v?.id) await supabase.rpc("bump_variant_reply", { _variant_id: v.id });
+        }
       }
     } else {
       // Log unmatched inbound for debugging
