@@ -41,13 +41,17 @@ const daysSince = (iso?: string | null) => {
 
 const LeadsBoard = () => {
   const { user } = useAuth();
-  const { leads, updateLead } = useData();
+  const { leads, updateLead, hasMoreLeads, loadMoreLeads } = useData();
   const [selected, setSelected] = useState<Lead | null>(null);
   const [templateLead, setTemplateLead] = useState<Lead | null>(null);
   const [alerts, setAlerts] = useState<LeadAlert[]>([]);
   const [unseenReplies, setUnseenReplies] = useState<Record<string, number>>({});
   const [latestMessages, setLatestMessages] = useState<Record<string, MessageSummary>>({});
   const [actionFilter, setActionFilter] = useState<ActionFilter>("all");
+
+  useEffect(() => {
+    if (hasMoreLeads) void loadMoreLeads();
+  }, [hasMoreLeads, leads.length, loadMoreLeads]);
 
   useEffect(() => {
     let mounted = true;

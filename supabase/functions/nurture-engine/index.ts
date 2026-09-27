@@ -77,21 +77,6 @@ const SPACE_BY_CATEGORY: Record<string, string> = {
   dining: "dining area", kitchen: "kitchen", office_table: "office",
 };
 
-function fillVars(body: string, lead: Lead): string {
-  const map: Record<string, string> = {
-    name: lead.customer_name || "there",
-    phone: lead.customer_phone,
-    neighborhood: lead.neighborhood || "your area",
-    product: lead.product_viewed || lead.liked_product || "the piece you liked",
-    budget_range: lead.budget_range || "",
-    stated_need: lead.stated_need || "",
-    family_type: lead.family_situation || "",
-    space: lead.category ? (SPACE_BY_CATEGORY[lead.category] || "your home") : "your home",
-    amount: Number(lead.value_in_rupees || 0).toLocaleString("en-IN"),
-  };
-  return body.replace(/{{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*}}/g, (_, n) => map[n] ?? "");
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -230,17 +215,6 @@ Deno.serve(async (req) => {
         }
 
         if (tpl) {
-          // Pick variant: round-robin by lowest sent_count
-          const variants = variantsByTemplate.get(tpl.id) ?? [];
-          let bodySource = tpl.body;
-          let variantLabel: string | null = null;
-          let variantId: string | null = null;
-          if (variants.length > 0) {
-            const v = [...variants].sort((a, b) => a.sent - b.sent)[0];
-            bodySource = v.body;
-            variantLabel = v.label;
-            variantId = v.id;
-          }
           // The approved WhatsApp template is the content customers actually
           // receive. Keep the audit row identical to that content rather than
           // recording an internal draft that was never sent.
