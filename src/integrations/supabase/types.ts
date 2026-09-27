@@ -4507,6 +4507,10 @@ export type Database = {
       }
       rpc_set_anniversary_date: { Args: { p_date: string }; Returns: undefined }
       verify_daily_report_secret: { Args: { _token: string }; Returns: boolean }
+      verify_nurture_engine_secret: {
+        Args: { candidate: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role:
