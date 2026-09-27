@@ -241,7 +241,12 @@ Deno.serve(async (req) => {
             variantLabel = v.label;
             variantId = v.id;
           }
-          const body = fillVars(bodySource, lead);
+          // The approved WhatsApp template is the content customers actually
+          // receive. Keep the audit row identical to that content rather than
+          // recording an internal draft that was never sent.
+          const customerFirstName = (lead.customer_name || "there").trim().split(/\s+/)[0] || "there";
+          const product = followUpProduct(lead);
+          const body = `Hi ${customerFirstName}! Are you still interested in ${product}?\n\nPlease reply YES and we’ll have your salesperson assist you, or reply NO and tell us if it is because of price, timing, or the product.`;
 
           // One reply-led follow-up per customer in 24h, even though the engine
           // checks twice daily. This protects against duplicate evening sends.
@@ -268,12 +273,12 @@ Deno.serve(async (req) => {
               lead_id: lead.id,
               message_type: "outbound",
               message_body: body,
-              template_id: tpl.id,
-              template_used: tpl.title,
+              template_id: null,
+              template_used: "hde_followup_yes_no_v1",
               journey_stage: newJourney,
               status: "pending",
-              variant: variantLabel,
-              message_kind: pick.messageKind,
+              variant: null,
+              message_kind: "follow_up_yes_no",
               sequence_number: seq,
               created_by: lead.assigned_to || lead.created_by,
             }).select("id").single();
@@ -286,14 +291,14 @@ Deno.serve(async (req) => {
                   phone: lead.customer_phone,
                   content_sid: TWILIO_TEMPLATES.followUpYesNo,
                   content_variables: {
-                    "1": (lead.customer_name || "there").trim().split(/\s+/)[0] || "there",
-                    "2": followUpProduct(lead),
+                    "1": customerFirstName,
+                    "2": product,
                   },
                   lead_id: lead.id,
                   lead_message_id: inserted?.id,
                   user_id: lead.assigned_to || lead.created_by,
-                  template_id: tpl.id,
-                  template_name: tpl.title,
+                  template_id: null,
+                  template_name: "hde_followup_yes_no_v1",
                   outreach_source: "automatic",
                   message_kind: "follow_up_yes_no",
                 }),
@@ -310,7 +315,6 @@ Deno.serve(async (req) => {
               if (ok) {
                 sentThisRun = 1;
                 summary.auto_sent++;
-                if (variantId) await supabase.rpc("bump_variant_sent", { _variant_id: variantId });
                 await supabase.from("leads").update({
                   conversation_message_count: seq,
                   unanswered_outbound_count: unanswered + 1,
@@ -325,7 +329,7 @@ Deno.serve(async (req) => {
                   details: {
                     customer_name: lead.customer_name,
                     phone: lead.customer_phone,
-                    template: tpl.title,
+                    template: "hde_followup_yes_no_v1",
                     journey_stage: newJourney,
                   },
                 });
@@ -340,7 +344,7 @@ Deno.serve(async (req) => {
                 event_type: "send_failed",
                 success: false,
                 error_message: msg,
-                details: { customer_name: lead.customer_name, phone: lead.customer_phone, template: tpl.title },
+                details: { customer_name: lead.customer_name, phone: lead.customer_phone, template: "hde_followup_yes_no_v1" },
               });
               console.error("send-whatsapp failed:", msg);
             }

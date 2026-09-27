@@ -379,6 +379,16 @@ const LeadsBoard = () => {
 
                         <div className="flex items-center gap-1.5 pt-1" onClick={e => e.stopPropagation()}>
                           <Button
+                            asChild
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-xs gap-1"
+                          >
+                            <a href={`tel:${lead.customer_phone}`} aria-label={`Call ${lead.customer_name}`}>
+                              <Phone className="w-3 h-3" />Call
+                            </a>
+                          </Button>
+                          <Button
                             size="sm"
                             className="h-7 flex-1 text-xs gap-1 gradient-primary"
                             onClick={() => handleOpenTemplates(lead)}
