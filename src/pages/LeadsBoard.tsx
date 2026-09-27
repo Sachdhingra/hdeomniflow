@@ -119,7 +119,7 @@ const LeadsBoard = () => {
       const replyState = (l as any).follow_up_reply_state;
       const latest = latestMessages[l.id];
       const hasReply = (unseenReplies[l.id] ?? 0) > 0 || replyState === "interested";
-      const needsCall = !hasReply && ((l as any).needs_personal_call === true || latest?.status === "read" || latest?.status === "failed");
+      const needsCall = !hasReply && ((l as any).needs_personal_call === true || latest?.status === "failed");
       const needsWhatsApp = !hasReply && !needsCall && !latest;
       if (actionFilter === "respond" && !hasReply) continue;
       if (actionFilter === "call" && !needsCall) continue;
@@ -145,7 +145,7 @@ const LeadsBoard = () => {
       const latest = latestMessages[lead.id];
       const hasReply = (unseenReplies[lead.id] ?? 0) > 0 || (lead as any).follow_up_reply_state === "interested";
       if (hasReply) counts.respond += 1;
-      else if ((lead as any).needs_personal_call === true || latest?.status === "read" || latest?.status === "failed") counts.call += 1;
+      else if ((lead as any).needs_personal_call === true || latest?.status === "failed") counts.call += 1;
       else if (!latest) counts.whatsapp += 1;
     });
     return counts;
@@ -257,7 +257,7 @@ const LeadsBoard = () => {
                   const hasReply = (unseenReplies[lead.id] ?? 0) > 0 || l.follow_up_reply_state === "interested";
                   const recommendedAction = hasReply
                     ? { label: "Respond now", icon: Reply, tone: "text-success" }
-                    : l.needs_personal_call || latestMessage?.status === "read" || latestMessage?.status === "failed"
+                    : l.needs_personal_call || latestMessage?.status === "failed"
                       ? { label: "Call next", icon: Phone, tone: "text-warning" }
                       : !latestMessage
                         ? { label: "WhatsApp next", icon: MessageCircle, tone: "text-primary" }
@@ -365,7 +365,7 @@ const LeadsBoard = () => {
                           <div className="flex items-center justify-between text-muted-foreground">
                             <span className="flex items-center gap-1">
                               <MessageCircle className="w-3 h-3" />
-                              {l.last_message_at ? `Last: ${formatRelativeTime(l.last_message_at)}` : "No messages"}
+                              {latestMessage ? `Last: ${formatRelativeTime(latestMessage.created_at)}` : "No messages"}
                             </span>
                             {l.last_response_at && <span>✅</span>}
                           </div>

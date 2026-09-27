@@ -29,8 +29,8 @@
 - [x] Confirm Meta approval and verify a live staff WhatsApp alert
 - [x] Add every Insider app account and complete points history to the daily 8 PM Excel backup
 - [x] Deploy and verify the updated daily report without changing its schedule or existing sheets
-- [ ] Restore authorized 6 PM and 8 PM lead outreach runs
-- [ ] Correct reply, reached, and conversion reporting from actual messages
-- [ ] Add prioritized respond-now, call-next, and WhatsApp-next queues
-- [ ] Show delivery status and recommended action on each lead card
-- [ ] Deploy and verify the repaired outreach circuit without bulk sending
+- [x] Restore authorized 6 PM and 8 PM lead outreach runs
+- [x] Correct reply, reached, and conversion reporting from actual messages
+- [x] Add prioritized respond-now, call-next, and WhatsApp-next queues
+- [x] Show delivery status and recommended action on each lead card
+- [x] Deploy and verify the repaired outreach circuit without bulk sending
