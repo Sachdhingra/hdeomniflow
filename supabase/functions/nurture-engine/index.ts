@@ -143,18 +143,6 @@ Deno.serve(async (req) => {
       templatesByStage.set(t.stage, arr);
     }
 
-    // Variants by template_id
-    const { data: variantRows } = await supabase
-      .from("message_template_variants")
-      .select("id, template_id, variant_label, body, is_active, sent_count")
-      .eq("is_active", true);
-    const variantsByTemplate = new Map<string, { id: string; label: string; body: string; sent: number }[]>();
-    for (const v of variantRows ?? []) {
-      const arr = variantsByTemplate.get(v.template_id) ?? [];
-      arr.push({ id: v.id, label: v.variant_label, body: v.body, sent: v.sent_count ?? 0 });
-      variantsByTemplate.set(v.template_id, arr);
-    }
-
     const { data: leads, error: fetchErr } = await supabase
       .from("leads")
       .select("id, customer_name, customer_phone, status, journey_stage, liked_product, product_viewed, neighborhood, budget_range, decision_timeline, family_situation, stated_need, value_in_rupees, concern_type, objection_type, barrier_addressed, response_time_minutes, last_message_at, last_response_at, last_payment_link_sent_at, stage_changed_at, journey_stage_changed_at, created_at, created_by, assigned_to, category, last_inbound_sentiment, last_inbound_concern, last_inbound_intent, unanswered_outbound_count, conversation_message_count, needs_personal_call, dead_lead, automation_paused")
