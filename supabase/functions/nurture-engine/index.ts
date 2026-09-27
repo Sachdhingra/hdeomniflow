@@ -71,12 +71,6 @@ const journeyToStatus = (j: JourneyStage): Stage | null => {
   }
 };
 
-const SPACE_BY_CATEGORY: Record<string, string> = {
-  sofa: "living room", coffee_table: "living room", chair: "living room",
-  almirah: "bedroom", bed: "bedroom", mattress: "bedroom",
-  dining: "dining area", kitchen: "kitchen", office_table: "office",
-};
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
