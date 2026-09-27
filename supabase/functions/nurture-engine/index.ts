@@ -80,11 +80,18 @@ Deno.serve(async (req) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
   const internalSecret = Deno.env.get("NURTURE_ENGINE_SECRET");
+  const serviceClient = createClient(supabaseUrl, serviceKey);
 
   const headerSecret = req.headers.get("x-internal-secret");
   let authorized = false;
   if (internalSecret && headerSecret && headerSecret === internalSecret) authorized = true;
-  else {
+  if (!authorized && headerSecret) {
+    const { data: validScheduledSecret } = await serviceClient.rpc("verify_nurture_engine_secret", {
+      candidate: headerSecret,
+    });
+    if (validScheduledSecret === true) authorized = true;
+  }
+  if (!authorized) {
     const authHeader = req.headers.get("Authorization");
     if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.replace("Bearer ", "");
@@ -112,7 +119,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  const supabase = createClient(supabaseUrl, serviceKey);
+  const supabase = serviceClient;
 
   const summary = {
     processed: 0, scored: 0, moved_to_overdue: 0, journey_moved: 0,
