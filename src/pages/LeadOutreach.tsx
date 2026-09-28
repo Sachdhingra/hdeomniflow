@@ -13,7 +13,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
-import { Loader2, Send, MessageSquare, Search, CheckCircle2, XCircle, Phone, Eye, Reply, AlertTriangle } from "lucide-react";
+import { Loader2, Send, MessageSquare, Search, CheckCircle2, XCircle, Phone, Eye, Reply, AlertTriangle, UserRound } from "lucide-react";
 import { toast } from "@/lib/toast";
 import {
   WA_TEMPLATES, YES_NO_FOLLOW_UP_PREVIEW, inferInterest, firstName,
@@ -38,7 +38,8 @@ interface OutreachLead {
 
 type SendState = "idle" | "sending" | "sent" | "failed";
 type Performance = { total: number; sent: number; reached: number; read: number; replied: number; failed: number };
-type ActivityRow = { id: string; lead_id: string; message_type: string; message_body: string; status: string; sent_at: string; outreach_source: string | null };
+type ActivityRow = { id: string; lead_id: string; message_type: string; message_body: string; status: string; sent_at: string; created_at: string; outreach_source: string | null };
+type ReplyDetail = ActivityRow & { customer_name: string; customer_phone: string | null; salesperson_name: string };
 
 const STATUSES = ["follow_up", "negotiation", "overdue"] as const;
 
@@ -49,7 +50,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const LeadOutreach = () => {
-  const { user } = useAuth();
+  const { user, allProfiles } = useAuth();
   const [leads, setLeads] = useState<OutreachLead[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -63,6 +64,8 @@ const LeadOutreach = () => {
   const [sourceFilter, setSourceFilter] = useState("all");
   const [performance, setPerformance] = useState<Performance>({ total: 0, sent: 0, reached: 0, read: 0, replied: 0, failed: 0 });
   const [activity, setActivity] = useState<ActivityRow[]>([]);
+  const [replyDetails, setReplyDetails] = useState<ReplyDetail[]>([]);
+  const [repliesOpen, setRepliesOpen] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -85,15 +88,16 @@ const LeadOutreach = () => {
     const loadPerformance = async () => {
       const since = new Date(Date.now() - Number(period) * 86400000).toISOString();
       const { data } = await supabase.from("lead_messages")
-        .select("id,lead_id,message_type,message_body,status,sent_at,outreach_source,response_received")
+        .select("id,lead_id,message_type,message_body,status,sent_at,created_at,outreach_source,response_received")
         .gte("created_at", since)
         .order("created_at", { ascending: false })
         .limit(500);
       const allRows = (data ?? []) as Array<ActivityRow & { response_received?: boolean }>;
       const rows = sourceFilter === "all" ? allRows : allRows.filter(r => r.outreach_source === sourceFilter || r.message_type === "inbound");
       const outbound = rows.filter(r => r.message_type === "outbound");
+      const inbound = rows.filter(r => r.message_type === "inbound");
       const outboundLeadIds = new Set(outbound.map(r => r.lead_id));
-      const repliedLeadIds = new Set(rows.filter(r => r.message_type === "inbound" && outboundLeadIds.has(r.lead_id)).map(r => r.lead_id));
+      const repliedLeadIds = new Set(inbound.filter(r => outboundLeadIds.has(r.lead_id)).map(r => r.lead_id));
       setPerformance({
         total: outbound.length,
         sent: outbound.filter(r => ["sent", "delivered", "read"].includes(r.status)).length,
@@ -103,9 +107,29 @@ const LeadOutreach = () => {
         failed: outbound.filter(r => r.status === "failed").length,
       });
       setActivity(rows.filter(r => r.message_type === "inbound" || r.status === "failed").slice(0, 12));
+      if (user?.role === "admin" && inbound.length > 0) {
+        const leadIds = Array.from(new Set(inbound.map(row => row.lead_id)));
+        const { data: replyLeads } = await supabase
+          .from("leads")
+          .select("id,customer_name,customer_phone,assigned_to")
+          .in("id", leadIds);
+        const leadMap = new Map((replyLeads ?? []).map(lead => [lead.id, lead]));
+        const profileMap = new Map(allProfiles.map(profile => [profile.id, profile.name]));
+        setReplyDetails(inbound.map(row => {
+          const lead = leadMap.get(row.lead_id);
+          return {
+            ...row,
+            customer_name: lead?.customer_name || "Unnamed customer",
+            customer_phone: lead?.customer_phone || null,
+            salesperson_name: lead?.assigned_to ? profileMap.get(lead.assigned_to) || "Unassigned" : "Unassigned",
+          };
+        }));
+      } else {
+        setReplyDetails([]);
+      }
     };
     loadPerformance();
-  }, [period, sourceFilter, sending]);
+  }, [period, sourceFilter, sending, user?.role, allProfiles]);
 
   const categories = useMemo(() => {
     const s = new Set<string>();
@@ -257,10 +281,25 @@ const LeadOutreach = () => {
           ["Failed", performance.failed, AlertTriangle],
           ["Reply rate", performance.reached ? `${Math.round(performance.replied / performance.reached * 100)}%` : "0%", MessageSquare],
         ] as const).map(([label, value, Icon]) => (
-          <Card key={String(label)}><CardContent className="p-3">
-            <div className="flex items-center gap-1 text-[11px] text-muted-foreground"><Icon className="w-3 h-3" />{label as string}</div>
-            <p className="text-xl font-bold">{value as any}</p>
-          </CardContent></Card>
+          label === "Replied" && user.role === "admin" ? (
+            <Button
+              key={label}
+              variant="outline"
+              className="h-auto justify-start p-3 text-left"
+              onClick={() => setRepliesOpen(true)}
+            >
+              <span>
+                <span className="flex items-center gap-1 text-[11px] font-normal text-muted-foreground"><Icon className="w-3 h-3" />{label}</span>
+                <span className="block text-xl font-bold">{value}</span>
+                <span className="block text-[10px] font-normal text-primary">View replies</span>
+              </span>
+            </Button>
+          ) : (
+            <Card key={String(label)}><CardContent className="p-3">
+              <div className="flex items-center gap-1 text-[11px] text-muted-foreground"><Icon className="w-3 h-3" />{label as string}</div>
+              <p className="text-xl font-bold">{value as any}</p>
+            </CardContent></Card>
+          )
         ))}
       </div>
 
@@ -269,7 +308,16 @@ const LeadOutreach = () => {
           <CardHeader className="pb-2"><CardTitle className="text-base">Replies and delivery issues</CardTitle></CardHeader>
           <CardContent className="space-y-2">
             {activity.map(row => (
-              <div key={row.id} className="flex gap-2 border-b last:border-0 pb-2 text-sm">
+              <div
+                key={row.id}
+                className={`flex gap-2 border-b last:border-0 pb-2 text-sm ${row.message_type === "inbound" && user.role === "admin" ? "cursor-pointer rounded-sm hover:bg-muted/60" : ""}`}
+                onClick={() => row.message_type === "inbound" && user.role === "admin" && setRepliesOpen(true)}
+                role={row.message_type === "inbound" && user.role === "admin" ? "button" : undefined}
+                tabIndex={row.message_type === "inbound" && user.role === "admin" ? 0 : undefined}
+                onKeyDown={event => {
+                  if (row.message_type === "inbound" && user.role === "admin" && (event.key === "Enter" || event.key === " ")) setRepliesOpen(true);
+                }}
+              >
                 {row.message_type === "inbound" ? <Reply className="w-4 h-4 text-success shrink-0 mt-0.5" /> : <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />}
                 <div className="min-w-0"><p className="line-clamp-2">{row.message_body}</p><p className="text-xs text-muted-foreground">{new Date(row.sent_at).toLocaleString()} · {row.outreach_source || "manual"}</p></div>
               </div>
@@ -423,6 +471,44 @@ const LeadOutreach = () => {
               Send now
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={repliesOpen} onOpenChange={setRepliesOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Customer replies</DialogTitle>
+            <DialogDescription>
+              Exact WhatsApp replies received during the selected {period}-day period.
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-[65vh] pr-3">
+            <div className="space-y-3">
+              {replyDetails.map(reply => (
+                <div key={reply.id} className="rounded-md border p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold">{reply.customer_name}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        {reply.customer_phone && (
+                          <a href={`tel:${reply.customer_phone}`} className="inline-flex items-center gap-1 text-primary hover:underline">
+                            <Phone className="h-3 w-3" />{reply.customer_phone}
+                          </a>
+                        )}
+                        <span className="inline-flex items-center gap-1"><UserRound className="h-3 w-3" />{reply.salesperson_name}</span>
+                      </div>
+                    </div>
+                    <Badge variant="secondary">Reply</Badge>
+                  </div>
+                  <p className="mt-3 whitespace-pre-wrap text-sm">{reply.message_body}</p>
+                  <p className="mt-2 text-xs text-muted-foreground">{new Date(reply.sent_at || reply.created_at).toLocaleString()}</p>
+                </div>
+              ))}
+              {replyDetails.length === 0 && (
+                <p className="py-8 text-center text-sm text-muted-foreground">No replies in this period.</p>
+              )}
+            </div>
+          </ScrollArea>
         </DialogContent>
       </Dialog>
     </div>
