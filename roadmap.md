@@ -35,4 +35,4 @@
 - [x] Show delivery status and recommended action on each lead card
 - [x] Deploy and verify the repaired outreach circuit without bulk sending
 
-- [ ] Make outreach replies clickable for admins with customer, message, time, and salesperson details
+- [x] Make outreach replies clickable for admins with customer, message, time, and salesperson details
