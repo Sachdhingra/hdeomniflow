@@ -31,6 +31,7 @@ const ProductLibrary = lazy(() => import("@/pages/ProductLibrary"));
 const AdminProductLibrary = lazy(() => import("@/pages/AdminProductLibrary"));
 
 const LeadsBoard = lazy(() => import("@/pages/LeadsBoard"));
+const LeadToDealPipeline = lazy(() => import("@/pages/LeadToDealPipeline"));
 const AdminAutomation = lazy(() => import("@/pages/AdminAutomation"));
 const LeadOutreach = lazy(() => import("@/pages/LeadOutreach"));
 const AdminMessageTemplates = lazy(() => import("@/pages/AdminMessageTemplates"));
@@ -112,6 +113,7 @@ const AppRoutes = () => {
             <Route path="/products" element={<AdminProducts />} />
             <Route path="/admin/products" element={<AdminProducts />} />
             <Route path="/leads/board" element={<LeadsBoard />} />
+            <Route path="/leads/deals" element={<LeadToDealPipeline />} />
             <Route path="/admin/automation" element={<AdminAutomation />} />
             <Route path="/outreach" element={<LeadOutreach />} />
             <Route path="/admin/templates" element={<AdminMessageTemplates />} />
@@ -150,6 +152,7 @@ const AppRoutes = () => {
             <Route path="/" element={<SalesDashboard />} />
             <Route path="/leads" element={<SalesDashboard />} />
             <Route path="/leads/board" element={<LeadsBoard />} />
+            <Route path="/leads/deals" element={<LeadToDealPipeline />} />
             <Route path="/pipeline" element={<SalesPipeline />} />
             <Route path="/outreach" element={<LeadOutreach />} />
             <Route path="/products" element={<ProductsView />} />

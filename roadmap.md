@@ -36,3 +36,7 @@
 - [x] Deploy and verify the repaired outreach circuit without bulk sending
 
 - [x] Make outreach replies clickable for admins with customer, message, time, and salesperson details
+- [x] Add secure YES lead-to-deal records and stage history
+- [x] Auto-create and advance deals from YES replies, visits, quotes, and lead outcomes
+- [x] Add Admin/Sales Lead-to-Deal board with dates, next steps, ownership, and timeline
+- [x] Backfill existing interested leads and verify the complete pipeline
