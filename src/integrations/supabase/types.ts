@@ -4575,6 +4575,10 @@ export type Database = {
         Returns: string
       }
       generate_hde_order_number: { Args: never; Returns: string }
+      generate_website_ref_code: {
+        Args: { _name: string; _profile_id: string }
+        Returns: string
+      }
       get_chat_directory: {
         Args: never
         Returns: {
