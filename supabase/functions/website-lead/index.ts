@@ -2,14 +2,20 @@
 // Website leads are only for the sales team (admin sees all leads anyway).
 // If the visitor came through one of their personal links (?ref=<code>), the lead
 // is assigned to that salesperson and they get the usual "New Lead Assigned" alert.
+// Enquiries with no salesperson link go to the showroom WhatsApp (WEBSITE_LEAD_WHATSAPP).
 // A repeat enquiry from a phone number that already has a lead is added to that
 // lead's notes and stays with its current owner.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { normalizeIndianPhone } from "../_shared/indian-phone.ts";
+import { sendStaffAlertToPhone } from "../_shared/staff-whatsapp.ts";
 import { WEBSITE_LEAD_ROLES, categoryFromEnquiry, cleanRefCode } from "./helpers.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+// Showroom WhatsApp that hears about website enquiries with no salesperson link.
+// Enquiries through a salesperson's link reach that salesperson instead: the
+// lead_assigned notification below is mirrored to their WhatsApp by send-staff-push.
+const WEBSITE_LEAD_WHATSAPP = Deno.env.get("WEBSITE_LEAD_WHATSAPP") || "+919917233664";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -25,6 +31,19 @@ function json(body: Record<string, unknown>, status = 200): Response {
 }
 
 const text = (v: unknown, max: number) => String(v ?? "").trim().slice(0, max);
+
+// Best effort: a WhatsApp failure never loses the lead, which is already saved.
+async function alertShowroom(admin: ReturnType<typeof createClient>, message: string) {
+  try {
+    await sendStaffAlertToPhone(admin, WEBSITE_LEAD_WHATSAPP, "Team", {
+      type: "lead_assigned",
+      title: "New website enquiry",
+      message,
+    });
+  } catch (e) {
+    console.error("[website-lead] showroom WhatsApp failed:", e instanceof Error ? e.message : e);
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
@@ -114,12 +133,15 @@ Deno.serve(async (req) => {
       }
       const { error } = await admin.from("leads").update(update).eq("id", existing.id);
       if (error) throw error;
+      const againText = `Website enquiry again from ${existing.customer_name} · ${phone}${interest ? ` · ${interest}` : ""}`;
       if (owner) {
         await admin.from("notifications").insert({
           user_id: owner,
           type: "lead_assigned",
-          message: `Website enquiry again from ${existing.customer_name} · ${phone}${interest ? ` · ${interest}` : ""}`,
+          message: againText,
         });
+      } else {
+        await alertShowroom(admin, againText);
       }
       return json({ success: true, leadId: existing.id, repeat: true });
     }
@@ -167,6 +189,8 @@ Deno.serve(async (req) => {
         type: "lead_assigned",
         message: `New website lead from your link: ${name} · ${phone}${interest ? ` · ${interest}` : ""}`,
       });
+    } else {
+      await alertShowroom(admin, `New website lead: ${name} · ${phone}${interest ? ` · ${interest}` : ""}`);
     }
 
     return json({ success: true, leadId: lead.id });
