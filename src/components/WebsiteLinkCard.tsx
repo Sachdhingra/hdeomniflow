@@ -7,6 +7,11 @@ import { toast } from "@/lib/toast";
 // website-lead function assigns enquiries from that link to them.
 export const PUBLIC_SITE_URL = "https://hdefurniture.netlify.app";
 
+// Only these roles handle website leads (same list as supabase/functions/website-lead/helpers.ts)
+export const WEBSITE_LEAD_ROLES = ["admin", "sales", "service_head"];
+
+export const hasWebsiteLink = (role: string | null | undefined) => !!role && WEBSITE_LEAD_ROLES.includes(role);
+
 export const websiteLink = (code: string) => `${PUBLIC_SITE_URL}/?ref=${encodeURIComponent(code)}`;
 
 export async function copyWebsiteLink(code: string, name?: string) {

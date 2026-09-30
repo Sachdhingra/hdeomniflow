@@ -1,11 +1,12 @@
 // Receives enquiries from the public website (hdefurniture.netlify.app).
-// If the visitor came through a salesperson's personal link (?ref=<code>), the lead
+// Website leads are only for admin, sales and service head staff.
+// If the visitor came through one of their personal links (?ref=<code>), the lead
 // is assigned to that salesperson and they get the usual "New Lead Assigned" alert.
 // A repeat enquiry from a phone number that already has a lead is added to that
 // lead's notes and stays with its current owner.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { normalizeIndianPhone } from "../_shared/indian-phone.ts";
-import { categoryFromEnquiry, cleanRefCode } from "./helpers.ts";
+import { WEBSITE_LEAD_ROLES, categoryFromEnquiry, cleanRefCode } from "./helpers.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -66,7 +67,17 @@ Deno.serve(async (req) => {
         .eq("website_ref_code", ref)
         .eq("active", true)
         .maybeSingle();
-      salesperson = data;
+      if (data) {
+        // Only admin, sales and service head handle website leads; other staff's links are ignored
+        const { data: role } = await admin
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", data.id)
+          .in("role", WEBSITE_LEAD_ROLES)
+          .limit(1)
+          .maybeSingle();
+        if (role) salesperson = data;
+      }
     }
 
     const today = new Date().toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" });

@@ -1,3 +1,6 @@
+/** Roles that handle website leads and get a personal website link. Keep in step with WebsiteLinkCard.tsx. */
+export const WEBSITE_LEAD_ROLES = ["admin", "sales", "service_head"];
+
 /** Website link codes look like "rahul-sharma" (see generate_website_ref_code). */
 export function cleanRefCode(raw: unknown): string {
   const code = String(raw ?? "").trim().toLowerCase();

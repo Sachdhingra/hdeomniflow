@@ -22,7 +22,7 @@ import { toast } from "@/lib/toast";
 import type { Lead } from "@/contexts/DataContext";
 import SalesTargetCard from "@/components/SalesTargetCard";
 import VoiceReminderCard from "@/components/VoiceReminderCard";
-import WebsiteLinkCard from "@/components/WebsiteLinkCard";
+import WebsiteLinkCard, { hasWebsiteLink } from "@/components/WebsiteLinkCard";
 import { supabase } from "@/integrations/supabase/client";
 
 const STATUS_COLORS: Record<LeadStatus, string> = {
@@ -275,7 +275,7 @@ const SalesDashboard = () => {
 
       <VoiceReminderCard />
 
-      {user && user.role !== "admin" && (
+      {user && hasWebsiteLink(user.role) && (
         <WebsiteLinkCard
           code={profiles.find(p => p.id === user.id)?.website_ref_code}
           name={profiles.find(p => p.id === user.id)?.name || user.name || ""}
