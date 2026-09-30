@@ -1,3 +1,6 @@
+/** Only the sales team handles website leads and gets a personal website link (admin sees every lead anyway). Keep in step with WebsiteLinkCard.tsx. */
+export const WEBSITE_LEAD_ROLES = ["sales"];
+
 /** Website link codes look like "rahul-sharma" (see generate_website_ref_code). */
 export function cleanRefCode(raw: unknown): string {
   const code = String(raw ?? "").trim().toLowerCase();

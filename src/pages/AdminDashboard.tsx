@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useData, LEAD_CATEGORIES } from "@/contexts/DataContext";
-import { websiteLink, copyWebsiteLink } from "@/components/WebsiteLinkCard";
+import { websiteLink, copyWebsiteLink, hasWebsiteLink } from "@/components/WebsiteLinkCard";
 import CategoryInsights from "@/components/CategoryInsights";
 import { useAuth, User } from "@/contexts/AuthContext";
 import StatCard from "@/components/StatCard";
@@ -739,7 +739,7 @@ const AdminDashboard = () => {
                           )}
                         </TableCell>
                         <TableCell>
-                          {u.website_ref_code ? (
+                          {u.website_ref_code && hasWebsiteLink(u.role) ? (
                             <button
                               className="text-xs text-muted-foreground hover:text-foreground hover:underline inline-flex items-center gap-1"
                               title={websiteLink(u.website_ref_code)}
