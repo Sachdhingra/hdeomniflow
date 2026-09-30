@@ -1900,6 +1900,110 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_deal_history: {
+        Row: {
+          change_source: string
+          changed_at: string
+          changed_by_id: string | null
+          deal_id: string
+          id: string
+          lead_id: string
+          new_stage: string
+          next_step: string | null
+          next_step_due_date: string | null
+          old_stage: string | null
+        }
+        Insert: {
+          change_source?: string
+          changed_at?: string
+          changed_by_id?: string | null
+          deal_id: string
+          id?: string
+          lead_id: string
+          new_stage: string
+          next_step?: string | null
+          next_step_due_date?: string | null
+          old_stage?: string | null
+        }
+        Update: {
+          change_source?: string
+          changed_at?: string
+          changed_by_id?: string | null
+          deal_id?: string
+          id?: string
+          lead_id?: string
+          new_stage?: string
+          next_step?: string | null
+          next_step_due_date?: string | null
+          old_stage?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_deal_history_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "lead_deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_deal_history_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_deals: {
+        Row: {
+          close_reason: string | null
+          created_at: string
+          id: string
+          lead_id: string
+          next_step: string | null
+          next_step_due_date: string | null
+          owner_id: string | null
+          stage: string
+          stage_started_at: string
+          updated_at: string
+          yes_received_at: string
+        }
+        Insert: {
+          close_reason?: string | null
+          created_at?: string
+          id?: string
+          lead_id: string
+          next_step?: string | null
+          next_step_due_date?: string | null
+          owner_id?: string | null
+          stage?: string
+          stage_started_at?: string
+          updated_at?: string
+          yes_received_at?: string
+        }
+        Update: {
+          close_reason?: string | null
+          created_at?: string
+          id?: string
+          lead_id?: string
+          next_step?: string | null
+          next_step_due_date?: string | null
+          owner_id?: string | null
+          stage?: string
+          stage_started_at?: string
+          updated_at?: string
+          yes_received_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_deals_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_deduplication_log: {
         Row: {
           action: string
@@ -4330,6 +4434,15 @@ export type Database = {
       _invoke_daily_excel_report: { Args: never; Returns: number }
       _invoke_staff_push: { Args: { _payload: Json }; Returns: number }
       _staff_push_enabled: { Args: never; Returns: boolean }
+      advance_lead_deal: {
+        Args: {
+          p_event_at?: string
+          p_lead_id: string
+          p_source: string
+          p_stage: string
+        }
+        Returns: undefined
+      }
       attendance_auto_clockout: { Args: never; Returns: number }
       attendance_clock: {
         Args: { p_action: string; p_lat?: number; p_lng?: number }
@@ -4500,6 +4613,7 @@ export type Database = {
         Returns: boolean
       }
       is_loyalty_app_user: { Args: { _uid: string }; Returns: boolean }
+      lead_deal_stage_rank: { Args: { p_stage: string }; Returns: number }
       link_loyalty_app_user: { Args: { _phone: string }; Returns: string }
       register_staff_push_device: {
         Args: { _player_id: string; _role?: string; _user_agent?: string }
