@@ -1,5 +1,5 @@
 // Receives enquiries from the public website (hdefurniture.netlify.app).
-// Website leads are only for admin, sales and service head staff.
+// Website leads are only for the sales team (admin sees all leads anyway).
 // If the visitor came through one of their personal links (?ref=<code>), the lead
 // is assigned to that salesperson and they get the usual "New Lead Assigned" alert.
 // A repeat enquiry from a phone number that already has a lead is added to that
@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
         .eq("active", true)
         .maybeSingle();
       if (data) {
-        // Only admin, sales and service head handle website leads; other staff's links are ignored
+        // Only the sales team handles website leads; other staff's links are ignored
         const { data: role } = await admin
           .from("user_roles")
           .select("role")
