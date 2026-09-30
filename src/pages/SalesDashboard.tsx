@@ -22,6 +22,7 @@ import { toast } from "@/lib/toast";
 import type { Lead } from "@/contexts/DataContext";
 import SalesTargetCard from "@/components/SalesTargetCard";
 import VoiceReminderCard from "@/components/VoiceReminderCard";
+import WebsiteLinkCard from "@/components/WebsiteLinkCard";
 import { supabase } from "@/integrations/supabase/client";
 
 const STATUS_COLORS: Record<LeadStatus, string> = {
@@ -273,6 +274,13 @@ const SalesDashboard = () => {
       </div>
 
       <VoiceReminderCard />
+
+      {user && user.role !== "admin" && (
+        <WebsiteLinkCard
+          code={profiles.find(p => p.id === user.id)?.website_ref_code}
+          name={profiles.find(p => p.id === user.id)?.name || user.name || ""}
+        />
+      )}
 
       {myActiveDispatches.length > 0 && (
         <div className="rounded-lg border-2 border-destructive/30 bg-destructive/5 p-4 space-y-3">
