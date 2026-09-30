@@ -197,3 +197,39 @@ export async function mirrorStaffAlertToWhatsApp(
   console.log(`[staff-whatsapp] ${sent}/${recipients.length} staff alerts sent on WhatsApp (${alert.type})`);
   return sent;
 }
+
+/**
+ * Send one staff alert straight to a phone number that isn't tied to a staff
+ * profile (e.g. the showroom's shared WhatsApp for website enquiries that came
+ * without a salesperson link). Same template, same best-effort rules as above.
+ */
+export async function sendStaffAlertToPhone(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  phone: string,
+  name: string,
+  alert: { type: string; title: string; message: string },
+): Promise<boolean> {
+  if (!staffWhatsAppEnabled()) return false;
+  const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
+  const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
+  const contentSid = Deno.env.get("TWILIO_STAFF_ALERT_TEMPLATE_SID")!;
+  if (!accountSid || !authToken) {
+    console.warn("[staff-whatsapp] Twilio credentials missing — skipping");
+    return false;
+  }
+
+  const r = await sendOne(accountSid, authToken, whatsappFrom(), contentSid, "", phone, name, alert.title, alert.message);
+  const { error: logErr } = await supabase.from("message_logs").insert({
+    phone: r.phone,
+    recipient_name: name,
+    message: `[staff-alert:${alert.type}] ${alert.title} — ${alert.message}`,
+    provider: "twilio",
+    provider_message_id: r.sid ?? null,
+    status: r.ok ? "sent" : "failed",
+    error_message: r.error ?? null,
+    sent_at: r.ok ? new Date().toISOString() : null,
+  });
+  if (logErr) console.error("[staff-whatsapp] log insert failed:", logErr.message);
+  return r.ok;
+}
