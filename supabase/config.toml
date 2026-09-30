@@ -30,3 +30,7 @@ verify_jwt = false
 # it checks x-internal-secret itself.
 [functions.feedback-whatsapp]
 verify_jwt = false
+
+# Public website enquiry form (hdefurniture.netlify.app); no user JWT
+[functions.website-lead]
+verify_jwt = false
