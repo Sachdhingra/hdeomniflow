@@ -3419,6 +3419,7 @@ export type Database = {
           name: string
           phone_number: string | null
           updated_at: string
+          website_ref_code: string | null
         }
         Insert: {
           active?: boolean
@@ -3429,6 +3430,7 @@ export type Database = {
           name: string
           phone_number?: string | null
           updated_at?: string
+          website_ref_code?: string | null
         }
         Update: {
           active?: boolean
@@ -3439,6 +3441,7 @@ export type Database = {
           name?: string
           phone_number?: string | null
           updated_at?: string
+          website_ref_code?: string | null
         }
         Relationships: []
       }
@@ -4572,6 +4575,10 @@ export type Database = {
         Returns: string
       }
       generate_hde_order_number: { Args: never; Returns: string }
+      generate_website_ref_code: {
+        Args: { _name: string; _profile_id: string }
+        Returns: string
+      }
       get_chat_directory: {
         Args: never
         Returns: {
