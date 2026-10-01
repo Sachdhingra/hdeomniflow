@@ -35,9 +35,8 @@ function mapStatus(twilioStatus: string): string {
 }
 
 /** Never let a late, lower-priority callback overwrite a terminal status. */
-function protectTerminalStatus<T>(query: T & {
-  not: (column: string, operator: string, value: string) => T;
-}, status: string): T {
+// deno-lint-ignore no-explicit-any
+function protectTerminalStatus(query: any, status: string): any {
   if (status === "queued") return query.not("status", "in", "(sent,delivered,read,failed)");
   if (status === "sent") return query.not("status", "in", "(delivered,read,failed)");
   if (status === "delivered") return query.not("status", "in", "(read,failed)");

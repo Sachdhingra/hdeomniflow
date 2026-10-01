@@ -33,7 +33,10 @@ function json(body: Record<string, unknown>, status = 200): Response {
 const text = (v: unknown, max: number) => String(v ?? "").trim().slice(0, max);
 
 // Best effort: a WhatsApp failure never loses the lead, which is already saved.
-async function alertShowroom(admin: ReturnType<typeof createClient>, message: string) {
+// The shared sender accepts a service-role client without relying on generated
+// database types, so keep this boundary deliberately untyped.
+// deno-lint-ignore no-explicit-any
+async function alertShowroom(admin: any, message: string) {
   try {
     await sendStaffAlertToPhone(admin, WEBSITE_LEAD_WHATSAPP, "Team", {
       type: "lead_assigned",
