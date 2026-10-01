@@ -114,34 +114,39 @@ Deno.serve(async (req: Request) => {
     if (!ONESIGNAL_APP_ID || !ONESIGNAL_API_KEY) {
       return json({ error: "Push service is not configured yet." }, 503);
     }
-    // Staff reach comes from our own device table — OneSignal's device list
-    // spans both apps when they share an app ID and can't tell them apart.
+    // Staff reach comes from our own device table.
     const { count: staffReachable } = await supabase
       .from("staff_push_devices")
       .select("id", { count: "exact", head: true })
       .eq("push_enabled", true);
 
-    // How many Insider customers the app knows are unreachable right now.
+    // Customer reach is counted from the same place a broadcast sends to: the
+    // push tokens the Insider app saved on app_users. OneSignal's legacy
+    // /players endpoint returns nothing for apps on its User Model, which is
+    // what left this badge stuck at 0 while broadcasts were being delivered.
+    const { data: tokenRows, error: tokenErr } = await supabase
+      .from("app_users")
+      .select("onesignal_player_id")
+      .not("onesignal_player_id", "is", null);
+    if (tokenErr) {
+      console.error("Could not count Insider push tokens:", tokenErr.message);
+      return json({ error: "Could not read registered Insider devices." }, 502);
+    }
+    const customerReachable = new Set(
+      (tokenRows ?? []).map((r) => r.onesignal_player_id as string),
+    ).size;
+
+    // Unreachable customers: no saved token, or the browser said no / never
+    // answered. A saved token with a blank push_permission is an account that
+    // registered before permission tracking existed — it is reachable.
     const { count: needsOptIn } = await supabase
       .from("app_users")
       .select("id", { count: "exact", head: true })
-      .or("push_permission.is.null,push_permission.neq.granted");
-
-    const reachable = await getOneSignalReachableCount();
-    if (reachable === null) {
-      return json({ error: "Could not read registered devices from OneSignal." }, 502);
-    }
-
-    // When both apps share one OneSignal app, its device list covers staff
-    // too. Take those out so the Insider badge counts customers only.
-    const staffCount = staffReachable ?? 0;
-    const customerReachable = STAFF_APP_ID === ONESIGNAL_APP_ID
-      ? Math.max(0, reachable - staffCount)
-      : reachable;
+      .or("onesignal_player_id.is.null,push_permission.in.(denied,default)");
 
     return json({
       reachable: customerReachable,
-      staff_reachable: staffCount,
+      staff_reachable: staffReachable ?? 0,
       needs_opt_in: needsOptIn ?? 0,
     });
   }
@@ -482,41 +487,6 @@ async function failCampaign(id: string, error: string): Promise<void> {
     .update({ status: "failed", error })
     .eq("id", id);
 }
-
-async function getOneSignalReachableCount(): Promise<number | null> {
-  try {
-    // Count only devices that actually hold a push subscription
-    // (notification_types > 0). Records with null/negative values exist in
-    // OneSignal but cannot receive anything — counting them is misleading.
-    let offset = 0;
-    let reachable = 0;
-    for (let page = 0; page < 10; page++) {
-      const response = await fetch(
-        `https://onesignal.com/api/v1/players?app_id=${encodeURIComponent(ONESIGNAL_APP_ID)}&limit=300&offset=${offset}`,
-        { headers: { "Authorization": `Key ${ONESIGNAL_API_KEY}` } },
-      );
-      if (!response.ok) {
-        console.error("OneSignal device count error:", response.status, await response.text());
-        return null;
-      }
-      const result = await response.json() as {
-        total_count?: number;
-        players?: { notification_types?: number | null; invalid_identifier?: boolean }[];
-      };
-      const players = result.players ?? [];
-      reachable += players.filter(
-        (p) => !p.invalid_identifier && typeof p.notification_types === "number" && p.notification_types > 0,
-      ).length;
-      offset += players.length;
-      if (players.length === 0 || offset >= (result.total_count ?? 0)) break;
-    }
-    return reachable;
-  } catch (error) {
-    console.error("OneSignal device count failed:", String(error));
-    return null;
-  }
-}
-
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
