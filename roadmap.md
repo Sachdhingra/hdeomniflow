@@ -40,3 +40,4 @@
 - [x] Auto-create and advance deals from YES replies, visits, quotes, and lead outcomes
 - [x] Add Admin/Sales Lead-to-Deal board with dates, next steps, ownership, and timeline
 - [x] Backfill existing interested leads and verify the complete pipeline
+- [x] Restore and secure the kiosk Google-review confirmation action
