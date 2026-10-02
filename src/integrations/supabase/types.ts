@@ -3857,6 +3857,44 @@ export type Database = {
           },
         ]
       }
+      review_draw_entries: {
+        Row: {
+          created_at: string
+          customer_name: string
+          customer_phone: string
+          draw_month: string
+          feedback_id: string | null
+          id: string
+          source: string
+        }
+        Insert: {
+          created_at?: string
+          customer_name: string
+          customer_phone: string
+          draw_month: string
+          feedback_id?: string | null
+          id?: string
+          source?: string
+        }
+        Update: {
+          created_at?: string
+          customer_name?: string
+          customer_phone?: string
+          draw_month?: string
+          feedback_id?: string | null
+          id?: string
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_draw_entries_feedback_id_fkey"
+            columns: ["feedback_id"]
+            isOneToOne: false
+            referencedRelation: "customer_feedback"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sales_targets: {
         Row: {
           created_at: string
@@ -4622,6 +4660,10 @@ export type Database = {
       is_loyalty_app_user: { Args: { _uid: string }; Returns: boolean }
       lead_deal_stage_rank: { Args: { p_stage: string }; Returns: number }
       link_loyalty_app_user: { Args: { _phone: string }; Returns: string }
+      record_google_review: {
+        Args: { p_feedback_id: string; p_source?: string }
+        Returns: Json
+      }
       register_staff_push_device: {
         Args: { _player_id: string; _role?: string; _user_agent?: string }
         Returns: undefined
