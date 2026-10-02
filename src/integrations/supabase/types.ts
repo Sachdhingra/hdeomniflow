@@ -4627,6 +4627,17 @@ export type Database = {
         Returns: undefined
       }
       rpc_set_anniversary_date: { Args: { p_date: string }; Returns: undefined }
+      submit_kiosk_feedback: {
+        Args: {
+          p_comments?: string
+          p_customer_name: string
+          p_customer_phone: string
+          p_overall_rating: number
+          p_salesperson_name?: string
+          p_staff_rating: number
+        }
+        Returns: string
+      }
       verify_daily_report_secret: { Args: { _token: string }; Returns: boolean }
       verify_nurture_engine_secret: {
         Args: { candidate: string }
