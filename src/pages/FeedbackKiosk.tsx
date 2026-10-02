@@ -226,13 +226,12 @@ const FeedbackKiosk = () => {
   const confirmReview = async () => {
     if (!feedbackId) return;
     setConfirmingReview(true);
-    const { error } = await (supabase as any).rpc("record_google_review", {
-      p_feedback_id: feedbackId,
-      p_source: "kiosk",
+    const { data, error } = await supabase.functions.invoke("record-kiosk-review", {
+      body: { feedbackId },
     });
     setConfirmingReview(false);
-    if (error) {
-      toast.error("Could not record that. " + error.message);
+    if (error || data?.success !== true) {
+      toast.error(data?.error || "Could not record that review. Please ask a staff member for help.");
       return;
     }
     setReviewConfirmed(true);
