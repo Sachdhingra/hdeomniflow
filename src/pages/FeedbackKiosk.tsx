@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/lib/toast";
+import { isValidIndianMobile } from "@/lib/phone";
 import { Check, Loader2, Maximize2, MessageCircle } from "lucide-react";
 import GoogleReviewQRCode from "@/components/GoogleReviewQRCode";
 import KioskScreensaver from "@/components/kiosk/KioskScreensaver";
@@ -164,7 +165,7 @@ const FeedbackKiosk = () => {
 
   const submit = async () => {
     if (!name.trim()) return toast.error("Please enter your name");
-    if (!/^\d{10}$/.test(phone)) return toast.error("WhatsApp number must be 10 digits");
+    if (!isValidIndianMobile(phone)) return toast.error("Please enter a valid 10-digit Indian mobile number");
     if (!salesperson) return toast.error("Please select the salesperson who helped you");
     if (overall == null || staff == null) return;
 
