@@ -35,6 +35,7 @@ Deno.serve(async (req) => {
     if (error) throw error;
 
     const paths = (data ?? []).map((p) => p.image_url).filter(Boolean);
+    if (paths.length === 0) return json({ photos: [] }, 200, "public, max-age=240");
     const { data: signed, error: signedError } = await admin.storage
       .from("website-gallery")
       .createSignedUrls(paths, 600);
