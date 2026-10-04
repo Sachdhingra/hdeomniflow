@@ -17,9 +17,9 @@ import { parseStorageUrl, resolvePhotoUrl } from "@/lib/photoUrls";
  * ("Recently delivered in Dehradun" on hdefurniture.netlify.app).
  *
  * Proof photos stay private in job-photos. Publishing copies one into the
- * public website-gallery bucket with a caption and category only, so nothing
- * about the customer goes public. The website reads published photos through
- * the website-gallery edge function.
+ * private website-gallery bucket with a caption and category only, so nothing
+ * about the customer goes public. The website reads expiring signed copies
+ * through the website-gallery edge function.
  */
 
 const BUCKET = "website-gallery";
@@ -72,7 +72,7 @@ async function uploadToGallery(file: Blob, name: string): Promise<{ path: string
     upsert: false,
   });
   if (error) throw new Error(`Upload failed: ${error.message}`);
-  return { path, url: supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl };
+  return { path, url: path };
 }
 
 const AdminWebsiteGallery = () => {
@@ -236,7 +236,7 @@ const AdminWebsiteGallery = () => {
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
               {gallery.map((g) => (
                 <div key={g.id} className={`rounded-lg border overflow-hidden ${g.active ? "" : "opacity-50"}`}>
-                  <img src={g.image_url} alt={g.caption} className="w-full aspect-[4/3] object-cover" loading="lazy" />
+                  <SignedImg src={g.storage_path || g.image_url} bucket={BUCKET} alt={g.caption} className="w-full aspect-[4/3] object-cover" />
                   <div className="p-2 space-y-2">
                     <p className="text-xs line-clamp-2">{g.caption}</p>
                     <div className="flex items-center justify-between">
