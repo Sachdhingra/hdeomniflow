@@ -4381,56 +4381,6 @@ export type Database = {
         }
         Relationships: []
       }
-      website_gallery: {
-        Row: {
-          active: boolean
-          caption: string
-          category: string | null
-          created_at: string
-          created_by: string | null
-          delivered_on: string | null
-          id: string
-          image_url: string
-          source_job_id: string | null
-          source_photo: string | null
-          storage_path: string
-        }
-        Insert: {
-          active?: boolean
-          caption?: string
-          category?: string | null
-          created_at?: string
-          created_by?: string | null
-          delivered_on?: string | null
-          id?: string
-          image_url: string
-          source_job_id?: string | null
-          source_photo?: string | null
-          storage_path: string
-        }
-        Update: {
-          active?: boolean
-          caption?: string
-          category?: string | null
-          created_at?: string
-          created_by?: string | null
-          delivered_on?: string | null
-          id?: string
-          image_url?: string
-          source_job_id?: string | null
-          source_photo?: string | null
-          storage_path?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "website_gallery_source_job_id_fkey"
-            columns: ["source_job_id"]
-            isOneToOne: false
-            referencedRelation: "service_jobs"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
     }
     Views: {
       daily_feedback_stats: {
