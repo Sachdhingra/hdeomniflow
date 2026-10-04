@@ -34,15 +34,22 @@ Deno.serve(async (req) => {
       .limit(MAX_ITEMS);
     if (error) throw error;
 
-    const photos = (data ?? []).map((p) => ({
+    const paths = (data ?? []).map((p) => p.image_url).filter(Boolean);
+    if (paths.length === 0) return json({ photos: [] }, 200, "public, max-age=240");
+    const { data: signed, error: signedError } = await admin.storage
+      .from("website-gallery")
+      .createSignedUrls(paths, 600);
+    if (signedError) throw signedError;
+
+    const photos = (data ?? []).map((p, index) => ({
       id: p.id,
-      image: p.image_url,
+      image: signed?.[index]?.signedUrl ?? "",
       caption: p.caption,
       category: p.category,
       date: p.delivered_on || String(p.created_at).slice(0, 10),
-    }));
+    })).filter((p) => p.image);
     // A few minutes of browser/CDN caching is plenty: photos change a few times a week.
-    return json({ photos }, 200, "public, max-age=300");
+    return json({ photos }, 200, "public, max-age=240");
   } catch (e) {
     console.error("[website-gallery]", e instanceof Error ? e.message : e);
     return json({ error: "Could not load the gallery" }, 500);
