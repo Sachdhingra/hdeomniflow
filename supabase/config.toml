@@ -34,3 +34,7 @@ verify_jwt = false
 # Public website enquiry form (hdefurniture.netlify.app); no user JWT
 [functions.website-lead]
 verify_jwt = false
+
+# Public gallery feed read by the website (no user JWT); returns published photos only.
+[functions.website-gallery]
+verify_jwt = false
