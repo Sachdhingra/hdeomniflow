@@ -221,3 +221,28 @@ export function buildWebsiteShareMessage(input: WebsiteShareMessageInput): strin
     signOff(business),
   ].join("\n\n");
 }
+
+export interface KioskTemplateCheck {
+  overallRating: number;
+  alreadyReviewed?: boolean;
+  reviewUrl?: string | null;
+  websiteUrl?: string | null;
+  drawEnabled?: boolean;
+}
+
+/**
+ * The approved kiosk WhatsApp template has fixed wording: a Google review ask,
+ * the lucky draw and the website link. Use it only for a visitor that wording
+ * fits exactly — happy (4–5★), not yet reviewed, with a review link, a website
+ * link and the draw running. Everyone else gets the free-text message, which
+ * adapts (apology for 1–2★, no repeat ask for past reviewers).
+ */
+export function canUseKioskWelcomeTemplate(input: KioskTemplateCheck): boolean {
+  return (
+    input.overallRating >= REVIEW_ASK_MIN_RATING &&
+    input.alreadyReviewed !== true &&
+    !!(input.reviewUrl || "").trim() &&
+    !!(input.websiteUrl || "").trim() &&
+    input.drawEnabled !== false
+  );
+}

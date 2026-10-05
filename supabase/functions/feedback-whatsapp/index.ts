@@ -29,6 +29,7 @@ import {
   buildDrawWinnerMessage,
   buildKioskWelcomeMessage,
   buildWebsiteShareMessage,
+  canUseKioskWelcomeTemplate,
   firstName,
 } from "../_shared/kiosk-messages.ts";
 
@@ -293,6 +294,7 @@ async function composeWelcome(row: QueueRow, settings: Settings): Promise<Compos
     fb.reviewed_on_google === true ||
     (await hasReviewedBefore(fb.customer_phone, fb.id));
 
+  const websiteUrl = settings.websiteShareEnabled ? settings.websiteUrl : "";
   const message = buildKioskWelcomeMessage({
     customerName: fb.customer_name,
     businessName: settings.businessName,
@@ -303,15 +305,27 @@ async function composeWelcome(row: QueueRow, settings: Settings): Promise<Compos
     drawEnabled: settings.drawEnabled,
     drawPrize: settings.drawPrize,
     minDrawEntries: settings.minDrawEntries,
-    websiteUrl: settings.websiteShareEnabled ? settings.websiteUrl : "",
+    websiteUrl,
   });
+
+  // The template always asks for a review; unhappy visitors and past
+  // reviewers get the free-text message instead.
+  const useTemplate =
+    !!settings.welcomeContentSid &&
+    canUseKioskWelcomeTemplate({
+      overallRating: fb.overall_rating,
+      alreadyReviewed,
+      reviewUrl: settings.reviewUrl,
+      websiteUrl,
+      drawEnabled: settings.drawEnabled,
+    });
 
   return {
     message,
     recipientName: fb.customer_name,
-    contentSid: settings.welcomeContentSid || undefined,
-    contentVariables: settings.welcomeContentSid
-      ? { "1": firstName(fb.customer_name), "2": settings.reviewUrl, "3": settings.websiteUrl }
+    contentSid: useTemplate ? settings.welcomeContentSid : undefined,
+    contentVariables: useTemplate
+      ? { "1": firstName(fb.customer_name), "2": settings.reviewUrl, "3": websiteUrl }
       : undefined,
   };
 }

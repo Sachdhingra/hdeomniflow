@@ -50,7 +50,7 @@ dropped when `website_share_enabled` is `false`.
 | `monthly_draw_enabled` | `false` switches the draw off; review asks continue. |
 | `monthly_draw_min_entries` | Entries needed before a month is drawn. Default `50`. |
 | `monthly_draw_prize` | Prize wording shown on the kiosk and in both messages. |
-| `kiosk_welcome_content_sid` | Twilio Content SID for the welcome — vars `{{1}}` first name, `{{2}}` review URL, `{{3}}` website URL. |
+| `kiosk_welcome_content_sid` | Twilio Content SID for the welcome — vars `{{1}}` first name, `{{2}}` review URL, `{{3}}` website URL. Used only for 4–5 ★ visitors who have not reviewed before (and only while the review link, website link and draw are all on); everyone else gets the free-text message. |
 | `draw_winner_content_sid` | Twilio Content SID for the winner — vars `{{1}}` first name, `{{2}}` month, `{{3}}` prize. |
 
 ## To go live
