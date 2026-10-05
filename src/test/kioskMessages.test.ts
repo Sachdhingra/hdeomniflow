@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildDeliveryReviewMessage,
   buildDrawWinnerMessage,
   buildKioskWelcomeMessage,
+  buildWebsiteShareMessage,
+  canUseKioskWelcomeTemplate,
   firstName,
   monthLabel,
 } from "../../supabase/functions/_shared/kiosk-messages";
@@ -144,5 +147,90 @@ describe("draw month keys", () => {
 
   it("rolls back across a year boundary", () => {
     expect(previousDrawMonth(new Date("2026-01-04T12:00:00Z"))).toBe("2025-12-01");
+  });
+});
+
+describe("buildDeliveryReviewMessage", () => {
+  it("greets by first name, includes the review link and a fix-it offer", () => {
+    const msg = buildDeliveryReviewMessage({
+      customerName: "priya sharma",
+      reviewUrl: REVIEW_URL,
+      businessPhone: "98765 43210",
+    });
+    expect(msg).toMatch(/^Hi Priya!/);
+    expect(msg).toContain("delivered");
+    expect(msg).toContain(REVIEW_URL);
+    expect(msg).toContain("98765 43210");
+  });
+
+  it("falls back to reply-here when no phone is configured", () => {
+    const msg = buildDeliveryReviewMessage({ customerName: "", reviewUrl: REVIEW_URL });
+    expect(msg).toMatch(/^Hi there!/);
+    expect(msg).toContain("just reply here and we will fix it");
+  });
+});
+
+describe("buildWebsiteShareMessage", () => {
+  const SITE = "https://hdefurniture.netlify.app";
+
+  it("does not claim a review it cannot know about", () => {
+    const msg = buildWebsiteShareMessage({ customerName: "amit", websiteUrl: SITE });
+    expect(msg).not.toMatch(/your Google review/);
+    expect(msg).toContain(SITE);
+  });
+});
+
+describe("kiosk welcome website link", () => {
+  const SITE = "https://hdefurniture.netlify.app";
+
+  it("is included for happy and neutral visitors", () => {
+    for (const overallRating of [3, 4, 5]) {
+      expect(welcome({ overallRating, websiteUrl: SITE })).toContain(SITE);
+    }
+  });
+
+  it("is placed after the review ask", () => {
+    const msg = welcome({ websiteUrl: SITE });
+    expect(msg.indexOf(SITE)).toBeGreaterThan(msg.indexOf(REVIEW_URL));
+  });
+
+  it("is never sent to an unhappy visitor", () => {
+    expect(welcome({ overallRating: 1, websiteUrl: SITE })).not.toContain(SITE);
+    expect(welcome({ overallRating: 2, websiteUrl: SITE })).not.toContain(SITE);
+  });
+
+  it("is left out when no website is configured", () => {
+    expect(welcome({ websiteUrl: "" })).not.toContain("Browse our latest collections");
+  });
+});
+
+describe("canUseKioskWelcomeTemplate", () => {
+  const ok = {
+    overallRating: 5,
+    alreadyReviewed: false,
+    reviewUrl: REVIEW_URL,
+    websiteUrl: "https://hdefurniture.netlify.app",
+    drawEnabled: true,
+  };
+
+  it("allows the template for a happy first-time reviewer", () => {
+    expect(canUseKioskWelcomeTemplate(ok)).toBe(true);
+    expect(canUseKioskWelcomeTemplate({ ...ok, overallRating: 4 })).toBe(true);
+  });
+
+  it("never sends the review-ask template to an unhappy or neutral visitor", () => {
+    for (const overallRating of [1, 2, 3]) {
+      expect(canUseKioskWelcomeTemplate({ ...ok, overallRating })).toBe(false);
+    }
+  });
+
+  it("does not ask a past reviewer again", () => {
+    expect(canUseKioskWelcomeTemplate({ ...ok, alreadyReviewed: true })).toBe(false);
+  });
+
+  it("falls back to free text when a link is missing or the draw is off", () => {
+    expect(canUseKioskWelcomeTemplate({ ...ok, reviewUrl: "" })).toBe(false);
+    expect(canUseKioskWelcomeTemplate({ ...ok, websiteUrl: "" })).toBe(false);
+    expect(canUseKioskWelcomeTemplate({ ...ok, drawEnabled: false })).toBe(false);
   });
 });

@@ -21,6 +21,8 @@ export interface WelcomeMessageInput {
   /** True when this customer has already left us a review before. */
   alreadyReviewed?: boolean;
   overallRating: number;
+  /** Our website. Shared with 3★+ visitors; omitted/blank = not mentioned. */
+  websiteUrl?: string | null;
   businessPhone?: string | null;
   drawEnabled?: boolean;
   drawPrize?: string | null;
@@ -82,11 +84,14 @@ function drawParagraph(
  *   • 3 stars    → thank you, and an open question about what to improve.
  *   • 4–5 stars  → thank you, review ask (unless they have already reviewed),
  *                  and the lucky-draw explainer.
+ * 3★ and above also get our website link; an unhappy visitor gets an apology,
+ * not a sales link.
  */
 export function buildKioskWelcomeMessage(input: WelcomeMessageInput): string {
   const name = firstName(input.customerName);
   const business = input.businessName?.trim() || DEFAULT_BUSINESS_NAME;
   const reviewUrl = (input.reviewUrl || "").trim();
+  const websiteUrl = (input.websiteUrl || "").trim();
   const minEntries = input.minDrawEntries ?? DEFAULT_MIN_DRAW_ENTRIES;
   const prize = (input.drawPrize || "").trim() || `a special gift from ${business}`;
   const drawEnabled = input.drawEnabled !== false;
@@ -132,6 +137,12 @@ export function buildKioskWelcomeMessage(input: WelcomeMessageInput): string {
     if (drawEnabled) parts.push(drawParagraph(prize, minEntries, false));
   }
 
+  if (websiteUrl) {
+    parts.push(
+      `🛋️ Browse our latest collections, offers and photos of homes we have recently furnished in Dehradun:\n${websiteUrl}`,
+    );
+  }
+
   parts.push(
     "Need anything at all — sizes, prices, delivery dates or a fresh quote — just reply to this message and our team will help you right away.",
   );
@@ -158,4 +169,80 @@ export function buildDrawWinnerMessage(input: WinnerMessageInput): string {
       : "Reply to this message and our team will arrange for you to collect it.",
     `Thank you for supporting us 🙏\n${business}`,
   ].join("\n\n");
+}
+
+export interface DeliveryReviewMessageInput {
+  customerName: string;
+  businessName?: string;
+  /** Google review link. Blank = no message is sent at all. */
+  reviewUrl?: string | null;
+  businessPhone?: string | null;
+}
+
+export interface WebsiteShareMessageInput {
+  customerName: string;
+  businessName?: string;
+  websiteUrl: string;
+}
+
+/**
+ * Sent seconds after a field agent marks a delivery complete. The furniture is
+ * freshly assembled in the customer's home — the best moment to ask.
+ */
+export function buildDeliveryReviewMessage(input: DeliveryReviewMessageInput): string {
+  const name = firstName(input.customerName);
+  const business = input.businessName?.trim() || DEFAULT_BUSINESS_NAME;
+  const reviewUrl = (input.reviewUrl || "").trim();
+
+  return [
+    `Hi ${name}! 🙏`,
+    `Your furniture from ${business} has just been delivered. We hope it looks wonderful in your home! 🏡`,
+    `⭐ If you are happy with your purchase and our delivery team, could you spare 30 seconds to leave us a Google review? ` +
+      `For a family-run showroom like ours it makes a real difference:\n${reviewUrl}`,
+    input.businessPhone
+      ? `If anything is not right — a scratch, a missing part, an adjustment — just reply here or call us on ${input.businessPhone} and we will fix it.`
+      : "If anything is not right — a scratch, a missing part, an adjustment — just reply here and we will fix it.",
+    signOff(business),
+  ].join("\n\n");
+}
+
+/**
+ * Follows a delivery review ask after a delay. We cannot know whether they
+ * reviewed (Google has no webhook), so the message does not assume it.
+ */
+export function buildWebsiteShareMessage(input: WebsiteShareMessageInput): string {
+  const name = firstName(input.customerName);
+  const business = input.businessName?.trim() || DEFAULT_BUSINESS_NAME;
+
+  return [
+    `Hi ${name}, thank you once again for choosing ${business}! 🙏`,
+    `🛋️ Take a look at our website — our latest collections, offers and photos of homes we have recently furnished in Dehradun:\n${input.websiteUrl}`,
+    "Feel free to share it with family and friends who are planning their home. Need anything else? Just reply to this message.",
+    signOff(business),
+  ].join("\n\n");
+}
+
+export interface KioskTemplateCheck {
+  overallRating: number;
+  alreadyReviewed?: boolean;
+  reviewUrl?: string | null;
+  websiteUrl?: string | null;
+  drawEnabled?: boolean;
+}
+
+/**
+ * The approved kiosk WhatsApp template has fixed wording: a Google review ask,
+ * the lucky draw and the website link. Use it only for a visitor that wording
+ * fits exactly — happy (4–5★), not yet reviewed, with a review link, a website
+ * link and the draw running. Everyone else gets the free-text message, which
+ * adapts (apology for 1–2★, no repeat ask for past reviewers).
+ */
+export function canUseKioskWelcomeTemplate(input: KioskTemplateCheck): boolean {
+  return (
+    input.overallRating >= REVIEW_ASK_MIN_RATING &&
+    input.alreadyReviewed !== true &&
+    !!(input.reviewUrl || "").trim() &&
+    !!(input.websiteUrl || "").trim() &&
+    input.drawEnabled !== false
+  );
 }
