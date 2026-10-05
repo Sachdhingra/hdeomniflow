@@ -159,3 +159,59 @@ export function buildDrawWinnerMessage(input: WinnerMessageInput): string {
     `Thank you for supporting us 🙏\n${business}`,
   ].join("\n\n");
 }
+
+export interface DeliveryReviewMessageInput {
+  customerName: string;
+  businessName?: string;
+  /** Google review link. Blank = no message is sent at all. */
+  reviewUrl?: string | null;
+  businessPhone?: string | null;
+}
+
+export interface WebsiteShareMessageInput {
+  customerName: string;
+  businessName?: string;
+  websiteUrl: string;
+  /**
+   * True when we know the customer confirmed a Google review (kiosk button or
+   * admin tick), so we can thank them for it outright. False for the delayed
+   * follow-up after a delivery review ask, where we cannot know.
+   */
+  reviewConfirmed?: boolean;
+}
+
+/**
+ * Sent seconds after a field agent marks a delivery complete. The furniture is
+ * freshly assembled in the customer's home — the best moment to ask.
+ */
+export function buildDeliveryReviewMessage(input: DeliveryReviewMessageInput): string {
+  const name = firstName(input.customerName);
+  const business = input.businessName?.trim() || DEFAULT_BUSINESS_NAME;
+  const reviewUrl = (input.reviewUrl || "").trim();
+
+  return [
+    `Hi ${name}! 🙏`,
+    `Your furniture from ${business} has just been delivered. We hope it looks wonderful in your home! 🏡`,
+    `⭐ If you are happy with your purchase and our delivery team, could you spare 30 seconds to leave us a Google review? ` +
+      `For a family-run showroom like ours it makes a real difference:\n${reviewUrl}`,
+    input.businessPhone
+      ? `If anything is not right — a scratch, a missing part, an adjustment — just reply here or call us on ${input.businessPhone} and we will fix it.`
+      : "If anything is not right — a scratch, a missing part, an adjustment — just reply here and we will fix it.",
+    signOff(business),
+  ].join("\n\n");
+}
+
+/** Shares our website once the customer has reviewed us (or been asked to). */
+export function buildWebsiteShareMessage(input: WebsiteShareMessageInput): string {
+  const name = firstName(input.customerName);
+  const business = input.businessName?.trim() || DEFAULT_BUSINESS_NAME;
+
+  return [
+    input.reviewConfirmed
+      ? `Hi ${name}, thank you so much for your Google review! ⭐ It truly helps our small team.`
+      : `Hi ${name}, thank you once again for choosing ${business}! 🙏`,
+    `🛋️ Take a look at our website — our latest collections, offers and photos of homes we have recently furnished in Dehradun:\n${input.websiteUrl}`,
+    "Feel free to share it with family and friends who are planning their home. Need anything else? Just reply to this message.",
+    signOff(business),
+  ].join("\n\n");
+}

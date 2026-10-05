@@ -10,6 +10,11 @@
  *                            their name and number at the kiosk.
  *   kind = 'draw_winner'   → the winner announcement, queued by
  *                            fn_run_monthly_draw().
+ *   kind = 'delivery_review' → Google review ask, queued the moment a delivery
+ *                            service job is marked completed.
+ *   kind = 'website_share' → our website link. Queued when a kiosk review is
+ *                            confirmed (sent at once) and after every delivery
+ *                            review ask (sent website_share_delay_hours later).
  *
  * A pg_cron job hits this every 5 minutes as a safety net for anything the
  * instant poke missed (pg_net down, function cold-start failure, etc).
@@ -20,8 +25,10 @@
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 import {
+  buildDeliveryReviewMessage,
   buildDrawWinnerMessage,
   buildKioskWelcomeMessage,
+  buildWebsiteShareMessage,
   firstName,
 } from "../_shared/kiosk-messages.ts";
 
@@ -38,6 +45,10 @@ const DEFAULT_BATCH = 25;
  * drop it rather than surprising a customer days later.
  */
 const MAX_QUEUE_AGE_HOURS = 24;
+/** At most one delivery review ask / one website link per number in this window. */
+const REPEAT_WINDOW_DAYS = 30;
+/** A negative WhatsApp reply this recent stops a delivery review ask. */
+const NEGATIVE_LOOKBACK_DAYS = 7;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -55,8 +66,12 @@ interface QueueRow {
   phone: string;
   kind: string;
   draw_id: string | null;
+  service_job_id: string | null;
+  lead_id: string | null;
+  customer_name: string | null;
   attempts: number;
   created_at: string;
+  scheduled_send_time: string;
 }
 
 interface Settings {
@@ -68,6 +83,9 @@ interface Settings {
   minDrawEntries: number;
   welcomeContentSid: string;
   winnerContentSid: string;
+  websiteUrl: string;
+  deliveryReviewContentSid: string;
+  websiteShareContentSid: string;
 }
 
 async function loadSettings(): Promise<Settings> {
@@ -83,6 +101,9 @@ async function loadSettings(): Promise<Settings> {
       "monthly_draw_prize",
       "kiosk_welcome_content_sid",
       "draw_winner_content_sid",
+      "website_url",
+      "delivery_review_content_sid",
+      "website_share_content_sid",
     ]);
 
   const map = new Map<string, string>(
@@ -102,6 +123,9 @@ async function loadSettings(): Promise<Settings> {
     minDrawEntries: Number.isFinite(min) && min > 0 ? min : 50,
     welcomeContentSid: map.get("kiosk_welcome_content_sid") || "",
     winnerContentSid: map.get("draw_winner_content_sid") || "",
+    websiteUrl: map.get("website_url") || "https://hdefurniture.netlify.app",
+    deliveryReviewContentSid: map.get("delivery_review_content_sid") || "",
+    websiteShareContentSid: map.get("website_share_content_sid") || "",
   };
 }
 
@@ -123,6 +147,146 @@ interface Composed {
   contentSid?: string;
   contentVariables?: Record<string, string>;
   recipientName: string;
+  /** Logged against the lead's conversation when known. */
+  leadId?: string | null;
+}
+
+/** A queue row that should not be sent, with the reason recorded on it. */
+interface Skip {
+  skip: string;
+}
+
+const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+
+/** The lead for this row: the job's source lead, else a lead with the same number. */
+async function resolveLeadId(row: QueueRow): Promise<string | null> {
+  if (row.lead_id) return row.lead_id;
+  if (row.service_job_id) {
+    const { data: job } = await supabase
+      .from("service_jobs")
+      .select("source_lead_id")
+      .eq("id", row.service_job_id)
+      .maybeSingle();
+    if (job?.source_lead_id) return job.source_lead_id;
+  }
+  const { data: lead } = await supabase
+    .from("leads")
+    .select("id")
+    .eq("customer_phone", row.phone)
+    .is("deleted_at", null)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return lead?.id ?? null;
+}
+
+/**
+ * Has the customer sent a clearly negative WhatsApp reply since `since`?
+ * Inbound message rows are the source of truth for replies.
+ */
+async function repliedNegatively(leadId: string | null, since: string): Promise<boolean> {
+  if (!leadId) return false;
+  const { data } = await supabase
+    .from("lead_messages")
+    .select("id")
+    .eq("lead_id", leadId)
+    .eq("message_type", "inbound")
+    .gte("created_at", since)
+    .or("sentiment.eq.negative,intent.eq.not_interested")
+    .limit(1);
+  return (data?.length ?? 0) > 0;
+}
+
+/** Was a message of this kind already sent to this number recently? */
+async function sentRecently(phone: string, kind: string, exceptId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from("pending_thank_you_messages")
+    .select("id")
+    .eq("phone", phone)
+    .eq("kind", kind)
+    .eq("status", "sent")
+    .neq("id", exceptId)
+    .gte("sent_at", daysAgo(REPEAT_WINDOW_DAYS))
+    .limit(1);
+  return (data?.length ?? 0) > 0;
+}
+
+async function composeDeliveryReview(row: QueueRow, settings: Settings): Promise<Composed | Skip> {
+  if (!settings.reviewUrl) return { skip: "google_review_url is not set" };
+
+  const { data: job } = await supabase
+    .from("service_jobs")
+    .select("customer_name, status, deleted_at")
+    .eq("id", row.service_job_id ?? "")
+    .maybeSingle();
+  if (!job || job.deleted_at) return { skip: "delivery job no longer exists" };
+  if (job.status !== "completed") return { skip: "delivery is no longer marked completed" };
+
+  if (await hasReviewedBefore(row.phone, null)) return { skip: "customer has already reviewed us" };
+  if (await sentRecently(row.phone, "delivery_review", row.id)) {
+    return { skip: `review already requested in the last ${REPEAT_WINDOW_DAYS} days` };
+  }
+
+  const leadId = await resolveLeadId(row);
+  if (await repliedNegatively(leadId, daysAgo(NEGATIVE_LOOKBACK_DAYS))) {
+    return { skip: "customer recently replied negatively — no review ask" };
+  }
+
+  const name = job.customer_name || row.customer_name || "";
+  return {
+    message: buildDeliveryReviewMessage({
+      customerName: name,
+      businessName: settings.businessName,
+      businessPhone: settings.businessPhone,
+      reviewUrl: settings.reviewUrl,
+    }),
+    recipientName: name,
+    leadId,
+    contentSid: settings.deliveryReviewContentSid || undefined,
+    contentVariables: settings.deliveryReviewContentSid
+      ? { "1": firstName(name), "2": settings.reviewUrl }
+      : undefined,
+  };
+}
+
+async function composeWebsiteShare(row: QueueRow, settings: Settings): Promise<Composed | Skip> {
+  if (!settings.websiteUrl) return { skip: "website_url is not set" };
+  if (await sentRecently(row.phone, "website_share", row.id)) {
+    return { skip: `website already shared in the last ${REPEAT_WINDOW_DAYS} days` };
+  }
+
+  const leadId = await resolveLeadId(row);
+  // Anything negative since the review ask went out means we stay quiet.
+  if (await repliedNegatively(leadId, row.created_at)) {
+    return { skip: "customer replied negatively — website not shared" };
+  }
+
+  let reviewConfirmed = false;
+  let name = row.customer_name || "";
+  if (row.feedback_id) {
+    const { data: fb } = await supabase
+      .from("customer_feedback")
+      .select("customer_name, reviewed_on_google")
+      .eq("id", row.feedback_id)
+      .maybeSingle();
+    reviewConfirmed = fb?.reviewed_on_google === true;
+    name = fb?.customer_name || name;
+  }
+
+  return {
+    message: buildWebsiteShareMessage({
+      customerName: name,
+      businessName: settings.businessName,
+      websiteUrl: settings.websiteUrl,
+      reviewConfirmed,
+    }),
+    recipientName: name,
+    leadId,
+    contentSid: settings.websiteShareContentSid || undefined,
+    contentVariables: settings.websiteShareContentSid
+      ? { "1": firstName(name), "2": settings.websiteUrl }
+      : undefined,
+  };
 }
 
 async function composeWelcome(row: QueueRow, settings: Settings): Promise<Composed | null> {
@@ -194,7 +358,10 @@ async function composeWinner(row: QueueRow, settings: Settings): Promise<Compose
 }
 
 async function sendOne(row: QueueRow, settings: Settings): Promise<"sent" | "failed" | "skipped"> {
-  const ageHours = (Date.now() - new Date(row.created_at).getTime()) / 3_600_000;
+  // Measured from when the row was due, so a deliberately delayed message
+  // (the website share) is not dropped for waiting as designed.
+  const dueAt = new Date(row.scheduled_send_time || row.created_at).getTime();
+  const ageHours = (Date.now() - dueAt) / 3_600_000;
   if (ageHours > MAX_QUEUE_AGE_HOURS) {
     await supabase
       .from("pending_thank_you_messages")
@@ -208,10 +375,28 @@ async function sendOne(row: QueueRow, settings: Settings): Promise<"sent" | "fai
     return "skipped";
   }
 
-  const composed =
+  const result =
     row.kind === "draw_winner"
       ? await composeWinner(row, settings)
-      : await composeWelcome(row, settings);
+      : row.kind === "delivery_review"
+        ? await composeDeliveryReview(row, settings)
+        : row.kind === "website_share"
+          ? await composeWebsiteShare(row, settings)
+          : await composeWelcome(row, settings);
+
+  if (result && "skip" in result) {
+    await supabase
+      .from("pending_thank_you_messages")
+      .update({
+        status: "cancelled",
+        error_message: result.skip,
+        last_attempt_at: new Date().toISOString(),
+      })
+      .eq("id", row.id);
+    console.log(`[feedback-whatsapp] skipped ${row.kind} for ${row.phone}: ${result.skip}`);
+    return "skipped";
+  }
+  const composed = result;
 
   if (!composed) {
     // The feedback or draw row is gone — nothing left to say.
@@ -245,8 +430,9 @@ async function sendOne(row: QueueRow, settings: Settings): Promise<"sent" | "fai
         user_name: composed.recipientName,
         content_sid: composed.contentSid,
         content_variables: composed.contentVariables,
+        lead_id: composed.leadId ?? undefined,
         message_kind: row.kind,
-        outreach_source: "feedback_kiosk",
+        outreach_source: row.service_job_id ? "delivery_review" : "feedback_kiosk",
       }),
     });
     const body = await res.json().catch(() => ({}));
@@ -273,7 +459,7 @@ async function sendOne(row: QueueRow, settings: Settings): Promise<"sent" | "fai
     })
     .eq("id", row.id);
 
-  if (row.feedback_id) {
+  if (row.feedback_id && row.kind === "kiosk_welcome") {
     await supabase
       .from("customer_feedback")
       .update({
@@ -321,7 +507,9 @@ Deno.serve(async (req) => {
     // sends that row in this same invocation and clears any backlog with it.
     const { data: rows, error } = await supabase
       .from("pending_thank_you_messages")
-      .select("id, feedback_id, phone, kind, draw_id, attempts, created_at")
+      .select(
+        "id, feedback_id, phone, kind, draw_id, service_job_id, lead_id, customer_name, attempts, created_at, scheduled_send_time",
+      )
       .eq("status", "pending")
       .lte("scheduled_send_time", new Date().toISOString())
       .lt("attempts", MAX_ATTEMPTS)
