@@ -172,19 +172,33 @@ describe("buildDeliveryReviewMessage", () => {
 describe("buildWebsiteShareMessage", () => {
   const SITE = "https://hdefurniture.netlify.app";
 
-  it("thanks the customer for a confirmed review and shares the site", () => {
-    const msg = buildWebsiteShareMessage({
-      customerName: "amit",
-      websiteUrl: SITE,
-      reviewConfirmed: true,
-    });
-    expect(msg).toContain("thank you so much for your Google review");
-    expect(msg).toContain(SITE);
-  });
-
   it("does not claim a review it cannot know about", () => {
     const msg = buildWebsiteShareMessage({ customerName: "amit", websiteUrl: SITE });
     expect(msg).not.toMatch(/your Google review/);
     expect(msg).toContain(SITE);
+  });
+});
+
+describe("kiosk welcome website link", () => {
+  const SITE = "https://hdefurniture.netlify.app";
+
+  it("is included for happy and neutral visitors", () => {
+    for (const overallRating of [3, 4, 5]) {
+      expect(welcome({ overallRating, websiteUrl: SITE })).toContain(SITE);
+    }
+  });
+
+  it("is placed after the review ask", () => {
+    const msg = welcome({ websiteUrl: SITE });
+    expect(msg.indexOf(SITE)).toBeGreaterThan(msg.indexOf(REVIEW_URL));
+  });
+
+  it("is never sent to an unhappy visitor", () => {
+    expect(welcome({ overallRating: 1, websiteUrl: SITE })).not.toContain(SITE);
+    expect(welcome({ overallRating: 2, websiteUrl: SITE })).not.toContain(SITE);
+  });
+
+  it("is left out when no website is configured", () => {
+    expect(welcome({ websiteUrl: "" })).not.toContain("Browse our latest collections");
   });
 });

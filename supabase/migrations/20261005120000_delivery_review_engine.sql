@@ -10,9 +10,8 @@
 --      Google offers no "review posted" webhook, so for delivery customers the
 --      website link follows the review ask after a delay instead of waiting on
 --      a confirmation that never comes.
---   2. customer_feedback.reviewed_on_google flips to true (kiosk "I've left my
---      review" button, or an admin ticking it off)  →  queue a 'website_share'
---      straight away.
+--   2. Kiosk visitors (3★ and up) get the website link inside the welcome
+--      message feedback-whatsapp already sends them — no extra message.
 --
 -- Both are drained by the existing feedback-whatsapp edge function, which owns
 -- the wording (supabase/functions/_shared/kiosk-messages.ts) and the
@@ -31,9 +30,12 @@ INSERT INTO public.app_settings (key, value) VALUES
   ('website_share_enabled',       'true'),
   ('website_url',                 'https://hdefurniture.netlify.app'),
   -- Hours between the delivery review ask and the website link.
+  -- website_share_enabled = 'false' also drops the link from the kiosk welcome.
   ('website_share_delay_hours',   '48'),
   -- Twilio Content (template) SIDs. Empty = send as free text (only reaches
   -- customers inside the 24h WhatsApp session window).
+  -- The kiosk welcome template (kiosk_welcome_content_sid) now also receives
+  -- {{3}} = website URL.
   --   delivery_review_content_sid  vars: {{1}} first name, {{2}} review URL
   --   website_share_content_sid    vars: {{1}} first name, {{2}} website URL
   ('delivery_review_content_sid', ''),
@@ -62,13 +64,10 @@ CREATE INDEX IF NOT EXISTS idx_pending_thank_you_pending
   WHERE status = 'pending';
 
 -- A delivery toggled completed → in_progress → completed must not message the
--- customer twice, and a review confirmed twice must not share the site twice.
+-- customer twice.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_pending_thank_you_job_kind
   ON public.pending_thank_you_messages (service_job_id, kind)
   WHERE service_job_id IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS uq_pending_thank_you_website_feedback
-  ON public.pending_thank_you_messages (feedback_id)
-  WHERE kind = 'website_share' AND feedback_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_pending_thank_you_phone_kind
   ON public.pending_thank_you_messages (phone, kind, created_at DESC);
 
@@ -213,52 +212,9 @@ CREATE TRIGGER trg_service_jobs_delivery_review
   AFTER INSERT OR UPDATE OF status ON public.service_jobs
   FOR EACH ROW EXECUTE FUNCTION public.fn_queue_delivery_review();
 
--- ── 5. Review confirmed → share the website ─────────────────────────────────
-
-CREATE OR REPLACE FUNCTION public.fn_queue_website_share_after_review()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_queue_id uuid;
-BEGIN
-  IF NEW.reviewed_on_google IS NOT TRUE
-     OR OLD.reviewed_on_google IS TRUE
-     OR COALESCE(btrim(NEW.customer_phone), '') = '' THEN
-    RETURN NEW;
-  END IF;
-
-  IF NOT COALESCE(
-    (SELECT lower(btrim(value)) <> 'false' FROM public.app_settings WHERE key = 'website_share_enabled'),
-    true) THEN
-    RETURN NEW;
-  END IF;
-
-  INSERT INTO public.pending_thank_you_messages
-    (feedback_id, phone, customer_name, message, kind, scheduled_send_time, status)
-  VALUES
-    (NEW.id, NEW.customer_phone, NEW.customer_name, '', 'website_share', now(), 'pending')
-  ON CONFLICT (feedback_id) WHERE kind = 'website_share' AND feedback_id IS NOT NULL DO NOTHING
-  RETURNING id INTO v_queue_id;
-
-  IF v_queue_id IS NOT NULL THEN
-    PERFORM public._invoke_feedback_whatsapp(jsonb_build_object('queue_id', v_queue_id));
-  END IF;
-  RETURN NEW;
-EXCEPTION WHEN OTHERS THEN
-  RAISE WARNING 'website share not queued for feedback %: %', NEW.id, SQLERRM;
-  RETURN NEW;
-END;
-$$;
-
-REVOKE EXECUTE ON FUNCTION public.fn_queue_website_share_after_review() FROM PUBLIC, anon, authenticated;
-
-DROP TRIGGER IF EXISTS trg_customer_feedback_website_share ON public.customer_feedback;
-CREATE TRIGGER trg_customer_feedback_website_share
-  AFTER UPDATE OF reviewed_on_google ON public.customer_feedback
-  FOR EACH ROW EXECUTE FUNCTION public.fn_queue_website_share_after_review();
+-- ── 5. Kiosk visitors ───────────────────────────────────────────────────────
+-- Kiosk visitors get the website link inside their welcome message
+-- (feedback-whatsapp adds it), so no separate message is queued for them.
 
 -- ── 6. Drain schedule ───────────────────────────────────────────────────────
 -- The delayed website share only goes out when the drain runs after its

@@ -34,8 +34,12 @@ by `src/test/kioskMessages.test.ts` — edit it there, not in SQL.
 | --- | --- |
 | 1–2 ★ | Apology, "tell us what went wrong", phone number. **No review ask** — asking an unhappy customer for a public review is how you get a one-star review. |
 | 3 ★ | Thank you plus an open "what could we have done better?". |
-| 4–5 ★ | Thank you, Google review link, lucky-draw explainer (prize + the 50-entry rule). |
-| 4–5 ★, already reviewed | Thanks them for the earlier review instead of asking again, and confirms the draw. |
+| 4–5 ★ | Thank you, Google review link, lucky-draw explainer (prize + the 50-entry rule), website link. |
+| 4–5 ★, already reviewed | Thanks them for the earlier review instead of asking again, confirms the draw, website link. |
+
+3 ★ visitors also get the website link; 1–2 ★ visitors never do (an apology
+is not the place for a sales link). The link comes from `website_url` and is
+dropped when `website_share_enabled` is `false`.
 
 ## Settings (Admin → app_settings)
 
@@ -46,7 +50,7 @@ by `src/test/kioskMessages.test.ts` — edit it there, not in SQL.
 | `monthly_draw_enabled` | `false` switches the draw off; review asks continue. |
 | `monthly_draw_min_entries` | Entries needed before a month is drawn. Default `50`. |
 | `monthly_draw_prize` | Prize wording shown on the kiosk and in both messages. |
-| `kiosk_welcome_content_sid` | Twilio Content SID for the welcome — vars `{{1}}` first name, `{{2}}` review URL. |
+| `kiosk_welcome_content_sid` | Twilio Content SID for the welcome — vars `{{1}}` first name, `{{2}}` review URL, `{{3}}` website URL. |
 | `draw_winner_content_sid` | Twilio Content SID for the winner — vars `{{1}}` first name, `{{2}}` month, `{{3}}` prize. |
 
 ## To go live
@@ -79,8 +83,9 @@ by `src/test/kioskMessages.test.ts` — edit it there, not in SQL.
 
 # Delivery review engine & website share
 
-Every completed delivery asks the customer for a Google review on WhatsApp, and
-every review is followed by a link to our website.
+Every completed delivery asks the customer for a Google review on WhatsApp and
+later shares our website. Kiosk visitors get the website link inside their
+welcome message (see the table above), so they receive one message, not two.
 
 ## The flow
 
@@ -93,10 +98,7 @@ every review is followed by a link to our website.
    `website_share_delay_hours` later (default 48, never under 24). Google has
    no "review posted" webhook, so for delivery customers the website link
    follows the review ask on a delay.
-4. When a kiosk customer taps **I've left my review** (or an admin ticks a
-   review off), `trg_customer_feedback_website_share` queues a `website_share`
-   that goes out straight away and thanks them for the review.
-5. The 5-minute `feedback-whatsapp-drain` cron sends the delayed rows.
+4. The 5-minute `feedback-whatsapp-drain` cron sends the delayed rows.
 
 ## Guard rails (in `feedback-whatsapp`)
 
@@ -114,7 +116,7 @@ Delivery messages are also logged on the lead's conversation
 | Key | Meaning |
 | --- | --- |
 | `delivery_review_enabled` | `false` stops delivery review asks (and their delayed website link). |
-| `website_share_enabled` | `false` stops all website-link messages. |
+| `website_share_enabled` | `false` stops the delayed delivery website message and drops the link from the kiosk welcome. |
 | `website_url` | Link shared. Default `https://hdefurniture.netlify.app`. |
 | `website_share_delay_hours` | Delay between delivery review ask and website link. Default `48`, minimum `24`. |
 | `delivery_review_content_sid` | Twilio Content SID — vars `{{1}}` first name, `{{2}}` review URL. |

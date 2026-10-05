@@ -21,6 +21,8 @@ export interface WelcomeMessageInput {
   /** True when this customer has already left us a review before. */
   alreadyReviewed?: boolean;
   overallRating: number;
+  /** Our website. Shared with 3★+ visitors; omitted/blank = not mentioned. */
+  websiteUrl?: string | null;
   businessPhone?: string | null;
   drawEnabled?: boolean;
   drawPrize?: string | null;
@@ -82,11 +84,14 @@ function drawParagraph(
  *   • 3 stars    → thank you, and an open question about what to improve.
  *   • 4–5 stars  → thank you, review ask (unless they have already reviewed),
  *                  and the lucky-draw explainer.
+ * 3★ and above also get our website link; an unhappy visitor gets an apology,
+ * not a sales link.
  */
 export function buildKioskWelcomeMessage(input: WelcomeMessageInput): string {
   const name = firstName(input.customerName);
   const business = input.businessName?.trim() || DEFAULT_BUSINESS_NAME;
   const reviewUrl = (input.reviewUrl || "").trim();
+  const websiteUrl = (input.websiteUrl || "").trim();
   const minEntries = input.minDrawEntries ?? DEFAULT_MIN_DRAW_ENTRIES;
   const prize = (input.drawPrize || "").trim() || `a special gift from ${business}`;
   const drawEnabled = input.drawEnabled !== false;
@@ -132,6 +137,12 @@ export function buildKioskWelcomeMessage(input: WelcomeMessageInput): string {
     if (drawEnabled) parts.push(drawParagraph(prize, minEntries, false));
   }
 
+  if (websiteUrl) {
+    parts.push(
+      `🛋️ Browse our latest collections, offers and photos of homes we have recently furnished in Dehradun:\n${websiteUrl}`,
+    );
+  }
+
   parts.push(
     "Need anything at all — sizes, prices, delivery dates or a fresh quote — just reply to this message and our team will help you right away.",
   );
@@ -172,12 +183,6 @@ export interface WebsiteShareMessageInput {
   customerName: string;
   businessName?: string;
   websiteUrl: string;
-  /**
-   * True when we know the customer confirmed a Google review (kiosk button or
-   * admin tick), so we can thank them for it outright. False for the delayed
-   * follow-up after a delivery review ask, where we cannot know.
-   */
-  reviewConfirmed?: boolean;
 }
 
 /**
@@ -201,15 +206,16 @@ export function buildDeliveryReviewMessage(input: DeliveryReviewMessageInput): s
   ].join("\n\n");
 }
 
-/** Shares our website once the customer has reviewed us (or been asked to). */
+/**
+ * Follows a delivery review ask after a delay. We cannot know whether they
+ * reviewed (Google has no webhook), so the message does not assume it.
+ */
 export function buildWebsiteShareMessage(input: WebsiteShareMessageInput): string {
   const name = firstName(input.customerName);
   const business = input.businessName?.trim() || DEFAULT_BUSINESS_NAME;
 
   return [
-    input.reviewConfirmed
-      ? `Hi ${name}, thank you so much for your Google review! ⭐ It truly helps our small team.`
-      : `Hi ${name}, thank you once again for choosing ${business}! 🙏`,
+    `Hi ${name}, thank you once again for choosing ${business}! 🙏`,
     `🛋️ Take a look at our website — our latest collections, offers and photos of homes we have recently furnished in Dehradun:\n${input.websiteUrl}`,
     "Feel free to share it with family and friends who are planning their home. Need anything else? Just reply to this message.",
     signOff(business),

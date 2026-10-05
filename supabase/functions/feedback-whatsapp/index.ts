@@ -12,9 +12,9 @@
  *                            fn_run_monthly_draw().
  *   kind = 'delivery_review' → Google review ask, queued the moment a delivery
  *                            service job is marked completed.
- *   kind = 'website_share' → our website link. Queued when a kiosk review is
- *                            confirmed (sent at once) and after every delivery
- *                            review ask (sent website_share_delay_hours later).
+ *   kind = 'website_share' → our website link, sent website_share_delay_hours
+ *                            after every delivery review ask. Kiosk visitors
+ *                            get the link inside the welcome message instead.
  *
  * A pg_cron job hits this every 5 minutes as a safety net for anything the
  * instant poke missed (pg_net down, function cold-start failure, etc).
@@ -84,6 +84,7 @@ interface Settings {
   welcomeContentSid: string;
   winnerContentSid: string;
   websiteUrl: string;
+  websiteShareEnabled: boolean;
   deliveryReviewContentSid: string;
   websiteShareContentSid: string;
 }
@@ -102,6 +103,7 @@ async function loadSettings(): Promise<Settings> {
       "kiosk_welcome_content_sid",
       "draw_winner_content_sid",
       "website_url",
+      "website_share_enabled",
       "delivery_review_content_sid",
       "website_share_content_sid",
     ]);
@@ -124,6 +126,7 @@ async function loadSettings(): Promise<Settings> {
     welcomeContentSid: map.get("kiosk_welcome_content_sid") || "",
     winnerContentSid: map.get("draw_winner_content_sid") || "",
     websiteUrl: map.get("website_url") || "https://hdefurniture.netlify.app",
+    websiteShareEnabled: (map.get("website_share_enabled") || "true").toLowerCase() !== "false",
     deliveryReviewContentSid: map.get("delivery_review_content_sid") || "",
     websiteShareContentSid: map.get("website_share_content_sid") || "",
   };
@@ -261,24 +264,12 @@ async function composeWebsiteShare(row: QueueRow, settings: Settings): Promise<C
     return { skip: "customer replied negatively — website not shared" };
   }
 
-  let reviewConfirmed = false;
-  let name = row.customer_name || "";
-  if (row.feedback_id) {
-    const { data: fb } = await supabase
-      .from("customer_feedback")
-      .select("customer_name, reviewed_on_google")
-      .eq("id", row.feedback_id)
-      .maybeSingle();
-    reviewConfirmed = fb?.reviewed_on_google === true;
-    name = fb?.customer_name || name;
-  }
-
+  const name = row.customer_name || "";
   return {
     message: buildWebsiteShareMessage({
       customerName: name,
       businessName: settings.businessName,
       websiteUrl: settings.websiteUrl,
-      reviewConfirmed,
     }),
     recipientName: name,
     leadId,
@@ -312,6 +303,7 @@ async function composeWelcome(row: QueueRow, settings: Settings): Promise<Compos
     drawEnabled: settings.drawEnabled,
     drawPrize: settings.drawPrize,
     minDrawEntries: settings.minDrawEntries,
+    websiteUrl: settings.websiteShareEnabled ? settings.websiteUrl : "",
   });
 
   return {
@@ -319,7 +311,7 @@ async function composeWelcome(row: QueueRow, settings: Settings): Promise<Compos
     recipientName: fb.customer_name,
     contentSid: settings.welcomeContentSid || undefined,
     contentVariables: settings.welcomeContentSid
-      ? { "1": firstName(fb.customer_name), "2": settings.reviewUrl }
+      ? { "1": firstName(fb.customer_name), "2": settings.reviewUrl, "3": settings.websiteUrl }
       : undefined,
   };
 }
