@@ -1,11 +1,12 @@
 import ExcelJS from "exceljs";
-import { BUCKET_IMAGES, resolveUrl } from "@/lib/productLibrary";
+import { BUCKET_IMAGES, priceBreakdown, resolveUrl } from "@/lib/productLibrary";
+import { fetchWebsiteImage, isWebsiteImageUrl } from "@/lib/websiteCatalog";
 
 export interface QuoteExcelLine {
   image_url: string | null;
   product_name: string;
   sku: string | null;
-  unit_price: number; // list / unit price before discount
+  unit_price: number; // Omniflow price before discount, already INCLUDING GST
   discount_percent: number; // special price discount
   gst_percent: number;
   quantity: number;
@@ -72,8 +73,21 @@ const FOOTER_LINES = [
 const THIN = { style: "thin" as const, color: { argb: "FF000000" } };
 const BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
 
-async function fetchImage(path: string | null): Promise<{ base64: string; ext: "png" | "jpeg" } | null> {
+type EmbeddedImage = { base64: string; ext: "png" | "jpeg" };
+
+const extOf = (type: string): EmbeddedImage["ext"] => (type.includes("png") ? "png" : "jpeg");
+
+async function fetchImage(path: string | null): Promise<EmbeddedImage | null> {
   try {
+    if (!path) return null;
+    // Photo uploaded by hand on the quote: already a data URL.
+    const inline = /^data:(image\/[\w+.-]+);base64,(.+)$/i.exec(path);
+    if (inline) return { base64: inline[2], ext: extOf(inline[1]) };
+    // Website / interio.com photos send no CORS headers, so fetch them server-side.
+    if (isWebsiteImageUrl(path)) {
+      const img = await fetchWebsiteImage(path);
+      return img ? { base64: img.base64, ext: extOf(img.type) } : null;
+    }
     const url = await resolveUrl(BUCKET_IMAGES, path);
     if (!url) return null;
     const res = await fetch(url);
@@ -83,10 +97,7 @@ async function fetchImage(path: string | null): Promise<{ base64: string; ext: "
     let binary = "";
     const bytes = new Uint8Array(buf);
     for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-    return {
-      base64: btoa(binary),
-      ext: blob.type.includes("png") ? "png" : "jpeg",
-    };
+    return { base64: btoa(binary), ext: extOf(blob.type) };
   } catch {
     return null;
   }
@@ -139,8 +150,8 @@ export async function buildQuoteWorkbook(lines: QuoteExcelLine[], meta: QuoteExc
     ["B", "SR.NO"],
     ["C", " REF. IMAGE"],
     ["D", "GODREJ PRODUCT"],
-    ["F", "UNIT PRICE"],
-    ["G", "SPECIAL PRICE"],
+    ["F", "UNIT PRICE\n(EXCL. GST)"],
+    ["G", "SPECIAL PRICE\n(EXCL. GST)"],
     ["H", "GST PRICE"],
     ["I", "UNIT PRICE"],
     ["J", "QTY"],
@@ -187,12 +198,17 @@ export async function buildQuoteWorkbook(lines: QuoteExcelLine[], meta: QuoteExc
     ws.mergeCells(`D${top + 1}:E${top + 1}`);
     ws.mergeCells(`D${top + 2}:E${bottom}`);
 
-    ws.getCell(`F${top}`).value = l.unit_price;
-    ws.getCell(`G${top}`).value = { formula: `F${top}-(F${top}*${(l.discount_percent || 0) / 100})` };
-    ws.getCell(`H${top}`).value = { formula: `G${top}*${(l.gst_percent || 0) / 100}` };
-    ws.getCell(`I${top}`).value = { formula: `G${top}+H${top}` };
+    // Omniflow prices include GST: F works back to the basic price, G applies the discount,
+    // H adds GST again, so with no discount I lands exactly on the Omniflow price.
+    const gstRate = (l.gst_percent || 0) / 100;
+    const discRate = (l.discount_percent || 0) / 100;
+    const b = priceBreakdown(l.unit_price, l.gst_percent, l.discount_percent || 0);
+    ws.getCell(`F${top}`).value = { formula: `${l.unit_price || 0}/(1+${gstRate})`, result: b.unitBasic };
+    ws.getCell(`G${top}`).value = { formula: `F${top}-(F${top}*${discRate})`, result: b.specialBasic };
+    ws.getCell(`H${top}`).value = { formula: `G${top}*${gstRate}`, result: b.unitGst };
+    ws.getCell(`I${top}`).value = { formula: `G${top}+H${top}`, result: b.unitInclusive };
     ws.getCell(`J${top}`).value = l.quantity;
-    ws.getCell(`K${top}`).value = { formula: `I${top}*J${top}` };
+    ws.getCell(`K${top}`).value = { formula: `I${top}*J${top}`, result: b.unitInclusive * l.quantity };
 
     for (let r = top; r <= bottom; r++) {
       for (let c = 2; c <= 11; c++) {

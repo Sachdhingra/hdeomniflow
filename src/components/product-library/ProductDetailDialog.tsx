@@ -163,7 +163,7 @@ const ProductDetailDialog = ({ product, onClose }: Props) => {
               {mrp > price && (
                 <span className="text-lg line-through text-muted-foreground">{money(mrp)}</span>
               )}
-              <span className="text-xs text-muted-foreground">+{product.gst_percent}% GST</span>
+              <span className="text-xs text-muted-foreground">incl. {product.gst_percent}% GST</span>
             </div>
 
             {product.description && (
