@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { lineTotal, priceBreakdown, quoteTotals } from "@/lib/productLibrary";
-import { buildCatalogIndex, findWebsiteProduct, websiteImageOf } from "@/lib/websiteCatalog";
+import { buildCatalogIndex, codeCandidates, findWebsiteProduct, websiteImageOf } from "@/lib/websiteCatalog";
 
 describe("quote pricing with GST-inclusive Omniflow prices", () => {
   it("works back to the basic price and lands on the same inclusive price", () => {
@@ -65,5 +65,33 @@ describe("website catalogue matching", () => {
 
   it("returns null for products the website does not list", () => {
     expect(findWebsiteProduct(index, { codes: ["NOPE"], name: "Custom sofa" })).toBeNull();
+  });
+});
+
+describe("website catalogue: options and prefixed Omniflow SKUs", () => {
+  const index = buildCatalogIndex([
+    {
+      id: "56101515sd00658",
+      sku: "56101515SD00658",
+      name: "Stud Engineered Wood Bed with Pullout Storage",
+      image: "https://hdefurniture.netlify.app/assets/img/products/56101515sd00658.jpg",
+      remoteImage: null,
+      codes: ["56101515sd00658", "56101515sd00657"],
+      names: ["Stud King Size Engineered Wood Bed With Pullout Storage"],
+    },
+  ]);
+
+  it("finds a size option from an SKU with a brand prefix", () => {
+    const hit = findWebsiteProduct(index, { codes: ["NEW2025-56101515SD00657"], name: "Stud King Bed Sonoma Oak" });
+    expect(hit?.id).toBe("56101515sd00658");
+  });
+
+  it("splits out the Interio code and ignores short fragments", () => {
+    expect(codeCandidates("NEW2025-56101515SD00657")).toEqual([
+      "new2025-56101515sd00657",
+      "new2025",
+      "56101515sd00657",
+    ]);
+    expect(codeCandidates("A-1")).toEqual(["a-1"]);
   });
 });

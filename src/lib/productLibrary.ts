@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { parseStorageUrl, resolvePhotoUrl } from "@/lib/photoUrls";
 
 /** Supabase client without generated types for the new product library tables. */
 export const plDb = supabase as any;
@@ -110,6 +111,9 @@ export function isExternalUrl(value?: string | null) {
 /** Resolve a stored value (either an external URL or a storage path) to a usable URL. */
 export async function resolveUrl(bucket: string, value?: string | null): Promise<string | null> {
   if (!value) return null;
+  // Supabase storage links (e.g. inventory photos saved as /object/public/ URLs of a
+  // bucket that is now private) only load once re-signed.
+  if (parseStorageUrl(value)) return resolvePhotoUrl(value);
   if (isExternalUrl(value)) return value;
   const key = `${bucket}:${value}`;
   const hit = signedCache.get(key);

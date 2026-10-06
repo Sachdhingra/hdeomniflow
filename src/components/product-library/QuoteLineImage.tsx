@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Globe, ImagePlus, Link2, Loader2, Trash2 } from "lucide-react";
 import { useQuote, type QuoteLine } from "@/contexts/QuoteContext";
-import { lookupWebsiteImage } from "@/lib/websiteCatalog";
+import { findWebsiteImage } from "@/lib/websiteCatalog";
 import { toast } from "@/lib/toast";
 import StorageImage from "./StorageImage";
 
@@ -78,12 +78,16 @@ const QuoteLineImage = ({ line }: { line: QuoteLine }) => {
   const applyWebsitePhoto = async () => {
     setBusy(true);
     try {
-      const url = await lookupWebsiteImage({ codes: [line.sku], name: line.product_name });
-      if (!url) {
+      const r = await findWebsiteImage({ codes: [line.sku], name: line.product_name });
+      if (r.status === "unavailable") {
+        toast.error("Couldn't reach the website catalogue. Try again, or upload a photo.");
+        return;
+      }
+      if (r.status === "not_listed") {
         toast.error("This product isn't on the website. Upload a photo instead.");
         return;
       }
-      updateItem(line.id, { image_url: url, image_source: "website" });
+      updateItem(line.id, { image_url: r.url, image_source: "website" });
       setOpen(false);
     } finally {
       setBusy(false);
