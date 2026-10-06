@@ -11,6 +11,9 @@ export interface WebsiteProduct {
   name: string;
   image: string | null;
   remoteImage: string | null;
+  /** Size / colour option codes and names on the website, which share this product's photo. */
+  codes?: string[];
+  names?: string[];
 }
 
 export interface WebsiteCatalogIndex {
@@ -25,16 +28,37 @@ export const normalizeCode = (v?: string | null) => (v || "").trim().toLowerCase
 /** Names compare on letters and digits only. */
 export const normalizeName = (v?: string | null) => (v || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
 
+/** Interio item codes look like 56101515SD00657. */
+const INTERIO_CODE = /\d{8}sd\d{5}/gi;
+
+/**
+ * Codes worth trying for one Omniflow code: itself, each "-"-separated part
+ * ("NEW2025-56101515SD00657"), and any Interio item code inside it.
+ */
+export function codeCandidates(code?: string | null): string[] {
+  const c = normalizeCode(code);
+  if (!c) return [];
+  const parts = c.split(/[-\s/]+/).filter((part) => part.length >= 6);
+  return [...new Set([c, ...parts, ...(c.match(INTERIO_CODE) || [])])];
+}
+
 export function buildCatalogIndex(products: WebsiteProduct[]): WebsiteCatalogIndex {
   const byCode = new Map<string, WebsiteProduct>();
   const byName = new Map<string, WebsiteProduct>();
-  for (const p of products) {
-    for (const code of [p.sku, p.id]) {
-      const key = normalizeCode(code);
-      if (key && !byCode.has(key)) byCode.set(key, p);
+  // Products' own codes first, so an option never shadows a product with its own photo.
+  for (const pass of ["own", "options"] as const) {
+    for (const p of products) {
+      const codes = pass === "own" ? [p.sku, p.id] : p.codes || [];
+      const names = pass === "own" ? [p.name] : p.names || [];
+      for (const code of codes) {
+        const key = normalizeCode(code);
+        if (key && !byCode.has(key)) byCode.set(key, p);
+      }
+      for (const n of names) {
+        const key = normalizeName(n);
+        if (key && !byName.has(key)) byName.set(key, p);
+      }
     }
-    const name = normalizeName(p.name);
-    if (name && !byName.has(name)) byName.set(name, p);
   }
   return { byCode, byName };
 }
@@ -44,8 +68,8 @@ export function findWebsiteProduct(
   index: WebsiteCatalogIndex,
   lookup: { codes: (string | null | undefined)[]; name?: string | null },
 ): WebsiteProduct | null {
-  for (const code of lookup.codes) {
-    const hit = index.byCode.get(normalizeCode(code));
+  for (const code of lookup.codes.flatMap(codeCandidates)) {
+    const hit = index.byCode.get(code);
     if (hit) return hit;
   }
   const name = normalizeName(lookup.name);
@@ -82,17 +106,34 @@ export function loadWebsiteCatalog(): Promise<WebsiteCatalogIndex> {
   return indexPromise;
 }
 
+export type WebsiteImageResult =
+  | { status: "found"; url: string }
+  | { status: "not_listed" }
+  | { status: "unavailable" };
+
+/** Website photo for a product; says whether it isn't listed or the catalogue couldn't be reached. */
+export async function findWebsiteImage(lookup: {
+  codes: (string | null | undefined)[];
+  name?: string | null;
+}): Promise<WebsiteImageResult> {
+  let index: WebsiteCatalogIndex;
+  try {
+    index = await loadWebsiteCatalog();
+  } catch (e) {
+    console.warn("[websiteCatalog] catalogue unavailable", e);
+    return { status: "unavailable" };
+  }
+  const url = websiteImageOf(findWebsiteProduct(index, lookup));
+  return url ? { status: "found", url } : { status: "not_listed" };
+}
+
 /** Website photo URL for a product, or null when the website doesn't list it (or is unreachable). */
 export async function lookupWebsiteImage(lookup: {
   codes: (string | null | undefined)[];
   name?: string | null;
 }): Promise<string | null> {
-  try {
-    return websiteImageOf(findWebsiteProduct(await loadWebsiteCatalog(), lookup));
-  } catch (e) {
-    console.warn("[websiteCatalog] lookup failed", e);
-    return null;
-  }
+  const r = await findWebsiteImage(lookup);
+  return r.status === "found" ? r.url : null;
 }
 
 /** Image bytes for the Excel export (website hosts don't send CORS headers). */

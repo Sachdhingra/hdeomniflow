@@ -2,7 +2,8 @@
 // Reads the catalogue the HDE website publishes (hdefurniture.netlify.app,
 // generated from interio.com by hdewebsite/tools/scrape_interio.py) server-side,
 // so Omniflow never runs the website's script and isn't blocked by CORS.
-//   { action: "catalog" }      -> { updated, products: [{ id, sku, name, image, remoteImage }] }
+//   { action: "catalog" }      -> { updated, products: [{ id, sku, name, image, remoteImage, codes, names }] }
+//   (codes / names: the product's size and colour options, which share its photo)
 //   { action: "image", url }   -> { data: <base64>, type } for embedding in the Excel quote
 // Only the website and interio.com hosts are fetched; signed-in staff only (verify_jwt).
 
@@ -31,6 +32,8 @@ interface CatalogProduct {
   name: string;
   image: string | null;
   remoteImage: string | null;
+  codes: string[];
+  names: string[];
 }
 
 let cached: { at: number; body: { updated: string | null; products: CatalogProduct[] } } | null = null;
@@ -43,6 +46,9 @@ function absolute(path: unknown): string | null {
     return null;
   }
 }
+
+const options = (p: Record<string, unknown>) =>
+  (Array.isArray(p.options) ? p.options : []) as Record<string, unknown>[];
 
 /** catalog.js is `window.HDE_CATALOG = { updated: "...", rooms: {...}, products: [ ...JSON... ] };` */
 function parseCatalog(script: string) {
@@ -59,6 +65,8 @@ function parseCatalog(script: string) {
       name: String(p.name ?? ""),
       image: absolute(p.image),
       remoteImage: absolute(p.remoteImage),
+      codes: options(p).map((o) => String(o.id ?? "")).filter(Boolean),
+      names: options(p).map((o) => String(o.name ?? "")).filter(Boolean),
     }))
     .filter((p) => (p.id || p.sku) && (p.image || p.remoteImage));
   return { updated, products };
