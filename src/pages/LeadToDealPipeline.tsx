@@ -9,7 +9,11 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/lib/toast";
-import { CalendarClock, ChevronRight, Clock3, Loader2, Phone, UserRound } from "lucide-react";
+import { CalendarClock, ChevronRight, Clock3, FilePlus2, FileText, Loader2, Phone, UserRound } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useQuote } from "@/contexts/QuoteContext";
+import { money } from "@/lib/productLibrary";
+import { EMPTY_META, QUOTE_STATUSES, leadLabel, listQuotesForLead, type SavedQuoteRow } from "@/lib/savedQuotes";
 
 type DealRow = Database["public"]["Tables"]["lead_deals"]["Row"];
 type HistoryRow = Database["public"]["Tables"]["lead_deal_history"]["Row"];
@@ -32,6 +36,9 @@ const formatDate = (value?: string | null) => value ? new Date(value).toLocaleDa
 const LeadToDealPipeline = () => {
   const [deals, setDeals] = useState<DealView[]>([]);
   const [history, setHistory] = useState<HistoryRow[]>([]);
+  const [quotes, setQuotes] = useState<SavedQuoteRow[]>([]);
+  const navigate = useNavigate();
+  const { items: quoteItems, meta: quoteMeta, loadSaved } = useQuote();
   const [selected, setSelected] = useState<DealView | null>(null);
   const [nextStage, setNextStage] = useState<DealStage>("contacted");
   const [nextStep, setNextStep] = useState("");
@@ -74,8 +81,22 @@ const LeadToDealPipeline = () => {
     setNextStep(deal.next_step ?? "");
     setDueDate(deal.next_step_due_date ?? "");
     setCloseReason(deal.close_reason ?? "");
-    const { data } = await supabase.from("lead_deal_history").select("*").eq("deal_id", deal.id).order("changed_at", { ascending: false });
+    setQuotes([]);
+    const [{ data }, linked] = await Promise.all([
+      supabase.from("lead_deal_history").select("*").eq("deal_id", deal.id).order("changed_at", { ascending: false }),
+      listQuotesForLead(deal.lead_id).catch(() => [] as SavedQuoteRow[]),
+    ]);
     setHistory(data ?? []);
+    setQuotes(linked);
+  };
+
+  /** Start a new quote already linked to this lead, in the Product Library. */
+  const startQuoteForLead = () => {
+    const lead = selected?.lead;
+    if (!selected || !lead) return;
+    if (quoteItems.length && !quoteMeta.quoteId && !window.confirm("Your current quote isn't saved. Start a new one for this lead?")) return;
+    loadSaved({ ...EMPTY_META, leadId: lead.id, leadLabel: leadLabel(lead), customerName: lead.customer_name, customerPhone: lead.customer_phone }, []);
+    navigate("/product-library");
   };
 
   const saveDeal = async () => {
@@ -172,6 +193,28 @@ const LeadToDealPipeline = () => {
             {nextStage === "lost" && <label className="space-y-1.5 text-sm font-medium sm:col-span-2">Lost reason
               <Textarea value={closeReason} onChange={event => setCloseReason(event.target.value)} placeholder="Why was this opportunity lost?" />
             </label>}
+          </div>
+          <div className="border-t pt-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold">Quotes</h3>
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={startQuoteForLead}><FilePlus2 className="mr-1 h-3.5 w-3.5" />New quote</Button>
+            </div>
+            {quotes.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No quotes linked to this lead yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {quotes.map(q => (
+                  <button key={q.id} type="button" onClick={() => navigate("/product-library/quotes")} className="flex w-full items-center gap-3 rounded-md border p-2 text-left text-sm hover:border-primary">
+                    <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">{q.quote_number}</span>
+                      <span className="block text-xs text-muted-foreground">{formatDate(q.created_at)} · {QUOTE_STATUSES.find(s => s.value === q.status)?.label ?? q.status}</span>
+                    </span>
+                    <span className="font-semibold">{money(q.grand_total)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div className="border-t pt-4">
             <h3 className="mb-3 text-sm font-semibold">Stage timeline</h3>

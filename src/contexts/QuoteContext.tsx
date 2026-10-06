@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
 import { quoteTotals } from "@/lib/productLibrary";
 import { lookupWebsiteImage } from "@/lib/websiteCatalog";
+import { EMPTY_META, type QuoteMeta } from "@/lib/savedQuotes";
 
 export interface QuoteLine {
   id: string;
@@ -26,6 +27,13 @@ interface QuoteCtx {
   updateItem: (id: string, patch: Partial<QuoteLine>) => void;
   removeItem: (id: string) => void;
   clear: () => void;
+  /** Customer, lead and saved-quote details of the quote being drafted. */
+  meta: QuoteMeta;
+  setMeta: (patch: Partial<QuoteMeta>) => void;
+  /** Open a saved quote for editing (replaces the current draft). */
+  loadSaved: (meta: QuoteMeta, lines: QuoteLine[]) => void;
+  /** Empty basket and details, ready for a new quote. */
+  startNew: () => void;
   count: number;
   subtotal: number;
   gstTotal: number;
@@ -36,6 +44,7 @@ interface QuoteCtx {
 
 const Ctx = createContext<QuoteCtx | undefined>(undefined);
 const KEY = "hde_quote_cart_v1";
+const META_KEY = "hde_quote_meta_v1";
 
 export const QuoteProvider = ({ children }: { children: ReactNode }) => {
   const [items, setItems] = useState<QuoteLine[]>(() => {
@@ -45,11 +54,32 @@ export const QuoteProvider = ({ children }: { children: ReactNode }) => {
       return [];
     }
   });
+  const [meta, setMetaState] = useState<QuoteMeta>(() => {
+    try {
+      return { ...EMPTY_META, ...JSON.parse(localStorage.getItem(META_KEY) || "{}") };
+    } catch {
+      return EMPTY_META;
+    }
+  });
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
     localStorage.setItem(KEY, JSON.stringify(items));
   }, [items]);
+
+  useEffect(() => {
+    localStorage.setItem(META_KEY, JSON.stringify(meta));
+  }, [meta]);
+
+  const setMeta = (patch: Partial<QuoteMeta>) => setMetaState((prev) => ({ ...prev, ...patch }));
+  const loadSaved = (m: QuoteMeta, lines: QuoteLine[]) => {
+    setMetaState(m);
+    setItems(lines);
+  };
+  const startNew = () => {
+    setMetaState(EMPTY_META);
+    setItems([]);
+  };
 
   const updateItem: QuoteCtx["updateItem"] = (id, patch) =>
     setItems((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
@@ -109,6 +139,10 @@ export const QuoteProvider = ({ children }: { children: ReactNode }) => {
         updateItem,
         removeItem,
         clear,
+        meta,
+        setMeta,
+        loadSaved,
+        startNew,
         count: items.reduce((s, i) => s + i.quantity, 0),
         ...totals,
         open,
