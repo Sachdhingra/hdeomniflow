@@ -5,4 +5,5 @@
 
 - Lead-to-deal progression is stored separately from broad lead status, because commercial stage dates and next actions require their own auditable lifecycle.
 - Signed-out kiosk review confirmations pass through a validating edge function; the elevated database action is service-role-only to protect customer records.
+- Kiosk WhatsApp messages use approved rating-specific templates with no business-initiated plain-text fallback, preserving review gating and delivery reliability.
 - Website gallery copies remain in private storage and are exposed publicly only through short-lived signed URLs, preventing permanent direct file access.

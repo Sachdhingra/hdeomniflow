@@ -66,7 +66,10 @@ interface Settings {
   drawEnabled: boolean;
   drawPrize: string;
   minDrawEntries: number;
-  welcomeContentSid: string;
+  positiveContentSid: string;
+  returningReviewerContentSid: string;
+  neutralContentSid: string;
+  recoveryContentSid: string;
   winnerContentSid: string;
 }
 
@@ -81,7 +84,10 @@ async function loadSettings(): Promise<Settings> {
       "monthly_draw_enabled",
       "monthly_draw_min_entries",
       "monthly_draw_prize",
-      "kiosk_welcome_content_sid",
+      "kiosk_positive_content_sid",
+      "kiosk_returning_reviewer_content_sid",
+      "kiosk_neutral_content_sid",
+      "kiosk_recovery_content_sid",
       "draw_winner_content_sid",
     ]);
 
@@ -100,7 +106,10 @@ async function loadSettings(): Promise<Settings> {
     drawEnabled: (map.get("monthly_draw_enabled") || "true").toLowerCase() !== "false",
     drawPrize: map.get("monthly_draw_prize") || "",
     minDrawEntries: Number.isFinite(min) && min > 0 ? min : 50,
-    welcomeContentSid: map.get("kiosk_welcome_content_sid") || "",
+    positiveContentSid: map.get("kiosk_positive_content_sid") || "",
+    returningReviewerContentSid: map.get("kiosk_returning_reviewer_content_sid") || "",
+    neutralContentSid: map.get("kiosk_neutral_content_sid") || "",
+    recoveryContentSid: map.get("kiosk_recovery_content_sid") || "",
     winnerContentSid: map.get("draw_winner_content_sid") || "",
   };
 }
@@ -150,13 +159,29 @@ async function composeWelcome(row: QueueRow, settings: Settings): Promise<Compos
     minDrawEntries: settings.minDrawEntries,
   });
 
+  const contentSid = fb.overall_rating <= 2
+    ? settings.recoveryContentSid
+    : fb.overall_rating < 4
+      ? settings.neutralContentSid
+      : alreadyReviewed
+        ? settings.returningReviewerContentSid
+        : settings.positiveContentSid;
+
+  if (!contentSid) {
+    throw new Error(`Approved kiosk template is not configured for rating ${fb.overall_rating}`);
+  }
+
+  const contentVariables = fb.overall_rating <= 2
+    ? { "1": firstName(fb.customer_name), "2": settings.businessPhone || "our showroom team" }
+    : fb.overall_rating >= 4 && !alreadyReviewed
+      ? { "1": firstName(fb.customer_name), "2": settings.reviewUrl }
+      : { "1": firstName(fb.customer_name) };
+
   return {
     message,
     recipientName: fb.customer_name,
-    contentSid: settings.welcomeContentSid || undefined,
-    contentVariables: settings.welcomeContentSid
-      ? { "1": firstName(fb.customer_name), "2": settings.reviewUrl }
-      : undefined,
+    contentSid,
+    contentVariables,
   };
 }
 
@@ -179,17 +204,19 @@ async function composeWinner(row: QueueRow, settings: Settings): Promise<Compose
     prize,
   });
 
+  if (!settings.winnerContentSid) {
+    throw new Error("Approved draw-winner template is not configured");
+  }
+
   return {
     message,
     recipientName: draw.winner_name || "",
-    contentSid: settings.winnerContentSid || undefined,
-    contentVariables: settings.winnerContentSid
-      ? {
-          "1": firstName(draw.winner_name),
-          "2": String(draw.draw_month).slice(0, 7),
-          "3": prize || "a special gift",
-        }
-      : undefined,
+    contentSid: settings.winnerContentSid,
+    contentVariables: {
+      "1": firstName(draw.winner_name),
+      "2": String(draw.draw_month).slice(0, 7),
+      "3": prize || "a special gift",
+    },
   };
 }
 
