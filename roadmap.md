@@ -41,3 +41,4 @@
 - [x] Add Admin/Sales Lead-to-Deal board with dates, next steps, ownership, and timeline
 - [x] Backfill existing interested leads and verify the complete pipeline
 - [x] Restore and secure the kiosk Google-review confirmation action
+- [x] Repair and approve rating-aware kiosk review and website WhatsApp templates

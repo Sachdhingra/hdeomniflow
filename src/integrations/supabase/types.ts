@@ -2824,6 +2824,71 @@ export type Database = {
         }
         Relationships: []
       }
+      monthly_draws: {
+        Row: {
+          created_at: string
+          draw_month: string
+          drawn_at: string | null
+          drawn_by: string | null
+          id: string
+          last_checked_at: string | null
+          min_entries_required: number
+          notes: string | null
+          prize: string | null
+          status: string
+          total_entries: number
+          updated_at: string
+          winner_entry_id: string | null
+          winner_name: string | null
+          winner_notified_at: string | null
+          winner_phone: string | null
+        }
+        Insert: {
+          created_at?: string
+          draw_month: string
+          drawn_at?: string | null
+          drawn_by?: string | null
+          id?: string
+          last_checked_at?: string | null
+          min_entries_required?: number
+          notes?: string | null
+          prize?: string | null
+          status?: string
+          total_entries?: number
+          updated_at?: string
+          winner_entry_id?: string | null
+          winner_name?: string | null
+          winner_notified_at?: string | null
+          winner_phone?: string | null
+        }
+        Update: {
+          created_at?: string
+          draw_month?: string
+          drawn_at?: string | null
+          drawn_by?: string | null
+          id?: string
+          last_checked_at?: string | null
+          min_entries_required?: number
+          notes?: string | null
+          prize?: string | null
+          status?: string
+          total_entries?: number
+          updated_at?: string
+          winner_entry_id?: string | null
+          winner_name?: string | null
+          winner_notified_at?: string | null
+          winner_phone?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "monthly_draws_winner_entry_id_fkey"
+            columns: ["winner_entry_id"]
+            isOneToOne: false
+            referencedRelation: "review_draw_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           created_at: string
@@ -2885,39 +2950,61 @@ export type Database = {
       }
       pending_thank_you_messages: {
         Row: {
+          attempts: number
           created_at: string
+          draw_id: string | null
           error_message: string | null
-          feedback_id: string
+          feedback_id: string | null
           id: string
+          kind: string
+          last_attempt_at: string | null
           message: string
           phone: string
+          provider_message_id: string | null
           scheduled_send_time: string
           sent_at: string | null
           status: string
         }
         Insert: {
+          attempts?: number
           created_at?: string
+          draw_id?: string | null
           error_message?: string | null
-          feedback_id: string
+          feedback_id?: string | null
           id?: string
-          message: string
+          kind?: string
+          last_attempt_at?: string | null
+          message?: string
           phone: string
+          provider_message_id?: string | null
           scheduled_send_time?: string
           sent_at?: string | null
           status?: string
         }
         Update: {
+          attempts?: number
           created_at?: string
+          draw_id?: string | null
           error_message?: string | null
-          feedback_id?: string
+          feedback_id?: string | null
           id?: string
+          kind?: string
+          last_attempt_at?: string | null
           message?: string
           phone?: string
+          provider_message_id?: string | null
           scheduled_send_time?: string
           sent_at?: string | null
           status?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "pending_thank_you_messages_draw_id_fkey"
+            columns: ["draw_id"]
+            isOneToOne: false
+            referencedRelation: "monthly_draws"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "pending_thank_you_messages_feedback_id_fkey"
             columns: ["feedback_id"]
@@ -4523,6 +4610,7 @@ export type Database = {
     }
     Functions: {
       _invoke_daily_excel_report: { Args: never; Returns: number }
+      _invoke_feedback_whatsapp: { Args: { _payload?: Json }; Returns: number }
       _invoke_staff_push: { Args: { _payload: Json }; Returns: number }
       _staff_push_enabled: { Args: never; Returns: boolean }
       advance_lead_deal: {
@@ -4661,6 +4749,14 @@ export type Database = {
       fn_points_window_start: {
         Args: { _customer: string; _exclude_entry: string; _issue: string }
         Returns: string
+      }
+      fn_resend_draw_winner_message: {
+        Args: { p_draw_id: string }
+        Returns: Json
+      }
+      fn_run_monthly_draw: {
+        Args: { p_force?: boolean; p_month?: string }
+        Returns: Json
       }
       generate_hde_order_number: { Args: never; Returns: string }
       generate_website_ref_code: {
