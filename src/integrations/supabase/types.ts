@@ -3754,8 +3754,10 @@ export type Database = {
         Row: {
           created_at: string
           description: string | null
+          discount_percent: number
           gst_percent: number
           id: string
+          image_source: string | null
           image_url: string | null
           product_id: string | null
           product_name: string
@@ -3770,8 +3772,10 @@ export type Database = {
         Insert: {
           created_at?: string
           description?: string | null
+          discount_percent?: number
           gst_percent?: number
           id?: string
+          image_source?: string | null
           image_url?: string | null
           product_id?: string | null
           product_name: string
@@ -3786,8 +3790,10 @@ export type Database = {
         Update: {
           created_at?: string
           description?: string | null
+          discount_percent?: number
           gst_percent?: number
           id?: string
+          image_source?: string | null
           image_url?: string | null
           product_id?: string | null
           product_name?: string
@@ -3825,36 +3831,60 @@ export type Database = {
       }
       quotes: {
         Row: {
+          billing_address: string | null
           created_at: string
           created_by: string
           customer_name: string | null
           customer_phone: string | null
+          delivery_address: string | null
+          grand_total: number
+          gst_total: number
+          handling_charges: number
           id: string
           lead_id: string | null
           notes: string | null
+          quote_number: string | null
+          sent_at: string | null
           status: string
+          subtotal: number
           updated_at: string
         }
         Insert: {
+          billing_address?: string | null
           created_at?: string
           created_by?: string
           customer_name?: string | null
           customer_phone?: string | null
+          delivery_address?: string | null
+          grand_total?: number
+          gst_total?: number
+          handling_charges?: number
           id?: string
           lead_id?: string | null
           notes?: string | null
+          quote_number?: string | null
+          sent_at?: string | null
           status?: string
+          subtotal?: number
           updated_at?: string
         }
         Update: {
+          billing_address?: string | null
           created_at?: string
           created_by?: string
           customer_name?: string | null
           customer_phone?: string | null
+          delivery_address?: string | null
+          grand_total?: number
+          gst_total?: number
+          handling_charges?: number
           id?: string
           lead_id?: string | null
           notes?: string | null
+          quote_number?: string | null
+          sent_at?: string | null
           status?: string
+          subtotal?: number
           updated_at?: string
         }
         Relationships: []
