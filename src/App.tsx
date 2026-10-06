@@ -28,6 +28,7 @@ const AdminCategories = lazy(() => import("@/pages/AdminCategories"));
 const AdminProducts = lazy(() => import("@/pages/AdminProducts"));
 const ProductsView = lazy(() => import("@/pages/ProductsView"));
 const ProductLibrary = lazy(() => import("@/pages/ProductLibrary"));
+const SavedQuotes = lazy(() => import("@/pages/SavedQuotes"));
 const AdminProductLibrary = lazy(() => import("@/pages/AdminProductLibrary"));
 
 const LeadsBoard = lazy(() => import("@/pages/LeadsBoard"));
@@ -220,6 +221,7 @@ const AppRoutes = () => {
             <Route path="/logistics-calculator/history" element={<LogisticsHistory />} />
             <Route path="/logistics-calculator/settings" element={<LogisticsCalculatorSettings />} />
             <Route path="/product-library" element={<ProductLibrary />} />
+            <Route path="/product-library/quotes" element={<SavedQuotes />} />
             <Route path="/admin/product-library" element={<AdminProductLibrary />} />
 
             <Route path="*" element={<NotFound />} />

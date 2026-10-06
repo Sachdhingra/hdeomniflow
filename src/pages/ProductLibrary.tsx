@@ -10,7 +10,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, ShoppingCart, Loader2, PackageSearch } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Search, ShoppingCart, Loader2, PackageSearch, History } from "lucide-react";
 import StorageImage from "@/components/product-library/StorageImage";
 import ProductDetailDialog from "@/components/product-library/ProductDetailDialog";
 import QuoteDrawer from "@/components/product-library/QuoteDrawer";
@@ -85,10 +86,17 @@ const ProductLibrary = () => {
             Master catalogue for quotations, website and customer apps.
           </p>
         </div>
-        <Button variant="outline" onClick={() => setOpen(true)}>
-          <ShoppingCart className="w-4 h-4 mr-1" /> Quote
-          {count > 0 && <Badge className="ml-2">{count}</Badge>}
-        </Button>
+        <div className="flex gap-2">
+          <Button asChild variant="ghost">
+            <Link to="/product-library/quotes">
+              <History className="w-4 h-4 mr-1" /> Saved quotes
+            </Link>
+          </Button>
+          <Button variant="outline" onClick={() => setOpen(true)}>
+            <ShoppingCart className="w-4 h-4 mr-1" /> Quote
+            {count > 0 && <Badge className="ml-2">{count}</Badge>}
+          </Button>
+        </div>
       </div>
 
       {/* Category navigation */}
