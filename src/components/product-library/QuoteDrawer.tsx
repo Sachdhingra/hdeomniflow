@@ -6,13 +6,14 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Trash2, Save, Share2, FileText, FileSpreadsheet, FilePlus2, History, Send } from "lucide-react";
+import { Trash2, Save, Share2, FileText, FileSpreadsheet, FilePlus2, History, Send, FileDown } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { useQuote } from "@/contexts/QuoteContext";
 import { money, lineTotal, priceBreakdown } from "@/lib/productLibrary";
 import {
   QUOTE_STATUSES,
   downloadSavedQuoteExcel,
+  downloadSavedQuotePdf,
   leadLabel,
   saveQuote as persistQuote,
   setQuoteStatus,
@@ -64,15 +65,16 @@ const QuoteDrawer = () => {
   };
 
   // Saves first, so every downloaded quotation has a real number and is on record.
-  const exportExcel = async () => {
+  const exportQuote = async (format: "pdf" | "excel") => {
     if (!items.length) return;
     setExporting(true);
     try {
       const saved = await save();
-      await downloadSavedQuoteExcel(items, saved);
+      if (format === "pdf") await downloadSavedQuotePdf(items, saved);
+      else await downloadSavedQuoteExcel(items, saved);
       toast.success(`Quotation ${saved.quoteNumber} downloaded`);
     } catch (e) {
-      toast.error(errorText(e, "Could not generate Excel"));
+      toast.error(errorText(e, format === "pdf" ? "Could not generate PDF" : "Could not generate Excel"));
     } finally {
       setExporting(false);
     }
@@ -300,8 +302,17 @@ const QuoteDrawer = () => {
             <Button className="flex-1" onClick={saveQuote} disabled={!items.length || saving}>
               <Save className="w-4 h-4 mr-1" /> {meta.quoteId ? "Update" : "Save"}
             </Button>
-            <Button variant="outline" onClick={exportExcel} disabled={!items.length || exporting}>
-              <FileSpreadsheet className="w-4 h-4 mr-1" /> Excel
+            <Button variant="outline" onClick={() => exportQuote("pdf")} disabled={!items.length || exporting}>
+              <FileDown className="w-4 h-4 mr-1" /> PDF
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              title="Excel"
+              onClick={() => exportQuote("excel")}
+              disabled={!items.length || exporting}
+            >
+              <FileSpreadsheet className="w-4 h-4" />
             </Button>
             <Button variant="outline" size="icon" onClick={shareQuote} disabled={!items.length}>
               <Share2 className="w-4 h-4" />

@@ -1,5 +1,6 @@
 import { plDb, lineTotal, quoteTotals } from "@/lib/productLibrary";
-import { downloadQuoteExcel } from "@/lib/quoteExcel";
+import { downloadQuoteExcel, type QuoteExcelLine, type QuoteExcelMeta } from "@/lib/quoteExcel";
+import { downloadQuotePdf } from "@/lib/quotePdf";
 import type { QuoteLine } from "@/contexts/QuoteContext";
 
 export type QuoteStatus = "draft" | "sent" | "accepted" | "rejected";
@@ -234,8 +235,8 @@ export async function deleteQuote(id: string) {
   if (error) throw error;
 }
 
-export function downloadSavedQuoteExcel(lines: QuoteLine[], meta: QuoteMeta, quoteDate = new Date()) {
-  return downloadQuoteExcel(
+function exportArgs(lines: QuoteLine[], meta: QuoteMeta, quoteDate: Date): [QuoteExcelLine[], QuoteExcelMeta] {
+  return [
     lines.map((i) => ({
       image_url: i.image_url,
       product_name: i.product_name,
@@ -254,5 +255,14 @@ export function downloadSavedQuoteExcel(lines: QuoteLine[], meta: QuoteMeta, quo
       handlingCharges: Number(meta.handlingCharges) || 0,
       contactLine: CONTACT_LINE,
     },
-  );
+  ];
+}
+
+export function downloadSavedQuoteExcel(lines: QuoteLine[], meta: QuoteMeta, quoteDate = new Date()) {
+  return downloadQuoteExcel(...exportArgs(lines, meta, quoteDate));
+}
+
+/** Quotation PDF on the HDE letterhead. */
+export function downloadSavedQuotePdf(lines: QuoteLine[], meta: QuoteMeta, quoteDate = new Date()) {
+  return downloadQuotePdf(...exportArgs(lines, meta, quoteDate));
 }
