@@ -104,7 +104,7 @@ export interface PLSpec {
 const signedCache = new Map<string, { url: string; expires: number }>();
 
 export function isExternalUrl(value?: string | null) {
-  return !!value && /^(https?:)?\/\//i.test(value);
+  return !!value && (/^(https?:)?\/\//i.test(value) || /^data:image\//i.test(value));
 }
 
 /** Resolve a stored value (either an external URL or a storage path) to a usable URL. */
@@ -141,5 +141,35 @@ export const effectivePrice = (p: { mrp: number; offer_price: number | null }) =
 export const money = (n: number) =>
   `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 
-export const lineTotal = (qty: number, price: number, gst: number) =>
-  Math.round(qty * price * (1 + (gst || 0) / 100) * 100) / 100;
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Omniflow prices (inventory net price, library MRP / offer price) already include GST.
+ * A quote works back to the basic (pre-tax) value, applies the discount to it, then adds
+ * GST again, so an undiscounted line lands exactly on the Omniflow price.
+ */
+export function priceBreakdown(inclusivePrice: number, gstPercent: number, discountPercent = 0) {
+  const rate = (gstPercent || 0) / 100;
+  const unitBasic = (Number(inclusivePrice) || 0) / (1 + rate);
+  const specialBasic = unitBasic * (1 - (discountPercent || 0) / 100);
+  const unitGst = specialBasic * rate;
+  return { unitBasic, specialBasic, unitGst, unitInclusive: specialBasic + unitGst };
+}
+
+/** Line total including GST: the GST-inclusive price after discount, times quantity. */
+export const lineTotal = (qty: number, inclusivePrice: number, gstPercent: number, discountPercent = 0) =>
+  round2(qty * priceBreakdown(inclusivePrice, gstPercent, discountPercent).unitInclusive);
+
+/** Taxable value, GST and grand total for a set of quote lines with GST-inclusive prices. */
+export function quoteTotals(
+  lines: { quantity: number; unit_price: number; gst_percent: number; discount_percent?: number }[],
+) {
+  let taxable = 0;
+  let gst = 0;
+  for (const l of lines) {
+    const b = priceBreakdown(l.unit_price, l.gst_percent, l.discount_percent || 0);
+    taxable += l.quantity * b.specialBasic;
+    gst += l.quantity * b.unitGst;
+  }
+  return { subtotal: round2(taxable), gstTotal: round2(gst), grandTotal: round2(taxable + gst) };
+}

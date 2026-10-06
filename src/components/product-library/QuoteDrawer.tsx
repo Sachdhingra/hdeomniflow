@@ -8,8 +8,8 @@ import { Trash2, Save, Share2, FileText, FileSpreadsheet } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { downloadQuoteExcel } from "@/lib/quoteExcel";
 import { useQuote } from "@/contexts/QuoteContext";
-import { money, lineTotal, plDb } from "@/lib/productLibrary";
-import StorageImage from "./StorageImage";
+import { money, lineTotal, plDb, priceBreakdown } from "@/lib/productLibrary";
+import QuoteLineImage from "./QuoteLineImage";
 import AddFromInventory from "./AddFromInventory";
 import { toast } from "@/lib/toast";
 
@@ -84,7 +84,7 @@ const QuoteDrawer = () => {
         quantity: i.quantity,
         unit_price: i.unit_price,
         gst_percent: i.gst_percent,
-        total: lineTotal(i.quantity, i.unit_price, i.gst_percent),
+        total: lineTotal(i.quantity, i.unit_price, i.gst_percent, i.discount_percent || 0),
         sort_order: idx,
       }));
       const { error: itemErr } = await plDb.from("quote_items").insert(rows);
@@ -104,9 +104,9 @@ const QuoteDrawer = () => {
       "Home Decor Enterprises — Quotation",
       ...items.map(
         (i) =>
-          `• ${i.product_name} (${i.sku || "-"}) x${i.quantity} @ ${money(i.unit_price)} + ${i.gst_percent}% GST = ${money(lineTotal(i.quantity, i.unit_price, i.gst_percent))}`,
+          `• ${i.product_name} (${i.sku || "-"}) x${i.quantity} @ ${money(priceBreakdown(i.unit_price, i.gst_percent, i.discount_percent || 0).unitInclusive)} incl. ${i.gst_percent}% GST = ${money(lineTotal(i.quantity, i.unit_price, i.gst_percent, i.discount_percent || 0))}`,
       ),
-      `Subtotal: ${money(subtotal)}`,
+      `Taxable value: ${money(subtotal)}`,
       `GST: ${money(gstTotal)}`,
       `Total: ${money(grandTotal)}`,
     ].join("\n");
@@ -183,11 +183,7 @@ const QuoteDrawer = () => {
           <div className="space-y-3">
             {items.map((i) => (
               <div key={i.id} className="flex gap-3 rounded-lg border p-2">
-                <StorageImage
-                  path={i.image_url}
-                  alt={i.product_name}
-                  className="w-16 h-16 rounded object-cover shrink-0"
-                />
+                <QuoteLineImage line={i} />
                 <div className="flex-1 min-w-0 space-y-1">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -197,6 +193,12 @@ const QuoteDrawer = () => {
                     <Button variant="ghost" size="icon" onClick={() => removeItem(i.id)}>
                       <Trash2 className="w-4 h-4 text-destructive" />
                     </Button>
+                  </div>
+                  <div className="grid grid-cols-4 gap-1 text-[10px] text-muted-foreground">
+                    <span>Qty</span>
+                    <span>Price incl. GST</span>
+                    <span>GST %</span>
+                    <span>Disc %</span>
                   </div>
                   <div className="grid grid-cols-4 gap-1">
                     <Input
@@ -230,9 +232,19 @@ const QuoteDrawer = () => {
                       className="h-8 text-xs"
                     />
                   </div>
-                  <p className="text-xs text-right font-semibold">
-                    {money(lineTotal(i.quantity, i.unit_price, i.gst_percent))}
-                  </p>
+                  {(() => {
+                    const b = priceBreakdown(i.unit_price, i.gst_percent, i.discount_percent || 0);
+                    return (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">
+                          Basic {money(b.specialBasic)} + GST {money(b.unitGst)}
+                        </span>
+                        <span className="font-semibold">
+                          {money(lineTotal(i.quantity, i.unit_price, i.gst_percent, i.discount_percent || 0))}
+                        </span>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             ))}
@@ -242,7 +254,7 @@ const QuoteDrawer = () => {
         <div className="pt-3 space-y-1 text-sm">
           <Separator className="mb-2" />
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Subtotal</span>
+            <span className="text-muted-foreground">Taxable value (excl. GST)</span>
             <span>{money(subtotal)}</span>
           </div>
           <div className="flex justify-between">
