@@ -5,7 +5,7 @@ Make the kiosk feedback, Google-review draw, website enquiry, and follow-up What
 
 ## Changes
 - Repair the live kiosk queue schema so it matches the deployed feedback sender and can distinguish welcome and draw-winner messages.
-- Create separate WhatsApp templates for positive, neutral, and negative kiosk feedback, preserving the rule that only happy customers receive a Google review request.
+- Create and connect the complete rating-aware kiosk template set: positive feedback includes the review ask; neutral and negative feedback do not.
 - Create the monthly draw-winner template and store all approved template IDs in app settings.
 - Keep website enquiries routed to the assigned salesperson or showroom through the approved staff alert template; verify recent delivery records.
 - Harden template configuration checks so missing IDs fail visibly instead of silently falling back to business-initiated plain text.
