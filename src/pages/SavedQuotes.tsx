@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   ArrowLeft,
+  FileDown,
   FileSpreadsheet,
   Link2,
   Loader2,
@@ -24,6 +25,7 @@ import {
   QUOTE_STATUSES,
   deleteQuote,
   downloadSavedQuoteExcel,
+  downloadSavedQuotePdf,
   leadLabel,
   listQuotes,
   loadQuote,
@@ -126,13 +128,14 @@ const SavedQuotes = () => {
     }
   };
 
-  const downloadExcel = async (q: Row) => {
+  const download = async (q: Row, format: "pdf" | "excel") => {
     setBusyId(q.id);
     try {
       const { meta: m, lines } = await loadQuote(q.id);
-      await downloadSavedQuoteExcel(lines, m, new Date(q.created_at));
+      if (format === "pdf") await downloadSavedQuotePdf(lines, m, new Date(q.created_at));
+      else await downloadSavedQuoteExcel(lines, m, new Date(q.created_at));
     } catch (e) {
-      toast.error(errorText(e, "Could not generate Excel"));
+      toast.error(errorText(e, format === "pdf" ? "Could not generate PDF" : "Could not generate Excel"));
     } finally {
       setBusyId(null);
     }
@@ -294,13 +297,23 @@ const SavedQuotes = () => {
                       variant="outline"
                       className="h-8"
                       disabled={busyId === q.id}
-                      onClick={() => void downloadExcel(q)}
+                      onClick={() => void download(q, "pdf")}
                     >
                       {busyId === q.id ? (
                         <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
                       ) : (
-                        <FileSpreadsheet className="w-3.5 h-3.5 mr-1" />
+                        <FileDown className="w-3.5 h-3.5 mr-1" />
                       )}
+                      PDF
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8"
+                      disabled={busyId === q.id}
+                      onClick={() => void download(q, "excel")}
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5 mr-1" />
                       Excel
                     </Button>
                     {canEdit && (
