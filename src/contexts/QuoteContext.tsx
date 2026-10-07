@@ -34,6 +34,8 @@ interface QuoteCtx {
   loadSaved: (meta: QuoteMeta, lines: QuoteLine[]) => void;
   /** Empty basket and details, ready for a new quote. */
   startNew: () => void;
+  /** Look up website photos again for lines that don't have one (and weren't set by hand). */
+  refreshWebsiteImages: () => void;
   count: number;
   subtotal: number;
   gstTotal: number;
@@ -101,13 +103,10 @@ export const QuoteProvider = ({ children }: { children: ReactNode }) => {
     );
   };
 
-  // Carts saved before website photos existed: look them up once.
-  useEffect(() => {
+  const refreshWebsiteImages = () =>
     items
-      .filter((i) => i.image_source === undefined)
+      .filter((i) => i.image_source !== "manual" && i.image_source !== "website")
       .forEach((i) => void applyWebsiteImage(i.id, i));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const addItem: QuoteCtx["addItem"] = (item, lookupCodes) => {
     const id = crypto.randomUUID();
@@ -143,6 +142,7 @@ export const QuoteProvider = ({ children }: { children: ReactNode }) => {
         setMeta,
         loadSaved,
         startNew,
+        refreshWebsiteImages,
         count: items.reduce((s, i) => s + i.quantity, 0),
         ...totals,
         open,

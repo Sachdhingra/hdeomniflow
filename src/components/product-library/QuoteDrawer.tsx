@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Trash2, Save, Share2, FileText, FileSpreadsheet, FilePlus2, History, Send, FileDown } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { useQuote } from "@/contexts/QuoteContext";
+import { loadWebsiteCatalog } from "@/lib/websiteCatalog";
 import { money, lineTotal, priceBreakdown } from "@/lib/productLibrary";
 import {
   QUOTE_STATUSES,
@@ -35,11 +36,26 @@ const QuoteDrawer = () => {
     meta,
     setMeta,
     startNew,
+    refreshWebsiteImages,
     subtotal,
     gstTotal,
     grandTotal,
   } = useQuote();
   const [saving, setSaving] = useState(false);
+  const [websiteDown, setWebsiteDown] = useState(false);
+
+  // Each time the drawer opens: make sure the website catalogue is reachable and give
+  // lines without a website photo another try.
+  useEffect(() => {
+    if (!open) return;
+    loadWebsiteCatalog()
+      .then(() => {
+        setWebsiteDown(false);
+        refreshWebsiteImages();
+      })
+      .catch(() => setWebsiteDown(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
   const [exporting, setExporting] = useState(false);
   const statusLabel = QUOTE_STATUSES.find((s) => s.value === meta.status)?.label ?? meta.status;
 
@@ -198,6 +214,12 @@ const QuoteDrawer = () => {
             Quote No: {meta.quoteNumber ?? "assigned when you save or download"}
           </p>
           <AddFromInventory />
+          {websiteDown && (
+            <p className="rounded bg-amber-100 px-2 py-1 text-[11px] text-amber-900">
+              Website photos can't be reached right now, so inventory photos are used. They'll be
+              swapped in automatically next time.
+            </p>
+          )}
         </div>
 
         <ScrollArea className="flex-1 -mx-2 px-2">

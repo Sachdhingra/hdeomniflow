@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { lineTotal, priceBreakdown, quoteTotals } from "@/lib/productLibrary";
-import { buildCatalogIndex, codeCandidates, findWebsiteProduct, websiteImageOf } from "@/lib/websiteCatalog";
+import { buildCatalogIndex, codeCandidates, findWebsiteProduct, parseCatalogScript, websiteImageOf } from "@/lib/websiteCatalog";
 
 describe("quote pricing with GST-inclusive Omniflow prices", () => {
   it("works back to the basic price and lands on the same inclusive price", () => {
@@ -93,5 +93,21 @@ describe("website catalogue: options and prefixed Omniflow SKUs", () => {
       "56101515sd00657",
     ]);
     expect(codeCandidates("A-1")).toEqual(["a-1"]);
+  });
+});
+
+describe("reading the website catalogue script", () => {
+  it("parses products and their options as data, with absolute photo links", () => {
+    const script = `/* generated */
+window.HDE_CATALOG = { updated: "2026-10-05", rooms: {"bedroom": {"id": "x"}}, products: [
+ {"id": "56101515sd00658", "sku": "56101515SD00658", "name": "Stud Bed", "image": "assets/img/products/56101515sd00658.jpg",
+  "options": [{"id": "56101515sd00657", "name": "Stud King Bed", "price": 1}]},
+ {"id": "nophoto", "sku": "NOPHOTO", "name": "No photo"}
+] };`;
+    const products = parseCatalogScript(script);
+    expect(products).toHaveLength(1);
+    expect(products[0].image).toBe("https://hdefurniture.netlify.app/assets/img/products/56101515sd00658.jpg");
+    const hit = findWebsiteProduct(buildCatalogIndex(products), { codes: ["NEW2025-56101515SD00657"] });
+    expect(hit?.id).toBe("56101515sd00658");
   });
 });
