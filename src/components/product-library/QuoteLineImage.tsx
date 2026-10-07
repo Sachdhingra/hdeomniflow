@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Globe, ImagePlus, Link2, Loader2, Trash2 } from "lucide-react";
 import { useQuote, type QuoteLine } from "@/contexts/QuoteContext";
 import { findWebsiteImage } from "@/lib/websiteCatalog";
+import { lookupInventoryPhoto } from "@/lib/inventoryPhotos";
 import { toast } from "@/lib/toast";
 import StorageImage from "./StorageImage";
 
@@ -48,7 +49,8 @@ const QuoteLineImage = ({ line }: { line: QuoteLine }) => {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const setManual = (image_url: string | null) => {
-    updateItem(line.id, { image_url, image_source: image_url ? "manual" : null });
+    // Also "manual" when removed, so the automatic lookup doesn't put a photo back.
+    updateItem(line.id, { image_url, image_source: "manual" });
     setOpen(false);
   };
 
@@ -79,15 +81,23 @@ const QuoteLineImage = ({ line }: { line: QuoteLine }) => {
     setBusy(true);
     try {
       const r = await findWebsiteImage({ codes: [line.sku], name: line.product_name });
-      if (r.status === "unavailable") {
-        toast.error("Couldn't reach the website catalogue. Try again, or upload a photo.");
-        return;
+      if (r.status === "found") {
+        updateItem(line.id, { image_url: r.url, image_source: "website" });
+      } else {
+        const inventory = await lookupInventoryPhoto([line.sku]);
+        if (!inventory) {
+          toast.error(
+            r.status === "unavailable"
+              ? "Couldn't reach the website, and there's no inventory photo. Upload a photo instead."
+              : "No website or inventory photo for this product. Upload a photo instead.",
+          );
+          return;
+        }
+        updateItem(line.id, { image_url: inventory, image_source: "inventory" });
+        toast.success(
+          r.status === "unavailable" ? "Website unreachable: using the inventory photo" : "Not on the website: using the inventory photo",
+        );
       }
-      if (r.status === "not_listed") {
-        toast.error("This product isn't on the website. Upload a photo instead.");
-        return;
-      }
-      updateItem(line.id, { image_url: r.url, image_source: "website" });
       setOpen(false);
     } finally {
       setBusy(false);
@@ -95,7 +105,13 @@ const QuoteLineImage = ({ line }: { line: QuoteLine }) => {
   };
 
   const label =
-    line.image_source === "website" ? "Website" : line.image_source === "manual" ? "Manual" : null;
+    line.image_source === "website"
+      ? "Website"
+      : line.image_source === "inventory"
+        ? "Inventory"
+        : line.image_source === "manual"
+          ? "Manual"
+          : null;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -120,8 +136,8 @@ const QuoteLineImage = ({ line }: { line: QuoteLine }) => {
       </PopoverTrigger>
       <PopoverContent className="w-72 space-y-2" align="start">
         <p className="text-xs text-muted-foreground">
-          Reference image for the quote. Website photos are used automatically when the product is
-          listed on our website.
+          Reference image for the quote. Picked automatically: the website photo first, then the
+          inventory photo. Upload or paste a link to use your own.
         </p>
         <input
           ref={fileRef}
@@ -159,7 +175,7 @@ const QuoteLineImage = ({ line }: { line: QuoteLine }) => {
           disabled={busy}
           onClick={applyWebsitePhoto}
         >
-          <Globe className="w-4 h-4 mr-2" /> Use website photo
+          <Globe className="w-4 h-4 mr-2" /> Use website / inventory photo
         </Button>
         {line.image_url && (
           <Button

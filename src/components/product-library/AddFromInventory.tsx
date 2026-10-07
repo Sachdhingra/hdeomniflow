@@ -78,6 +78,7 @@ const AddFromInventory = () => {
         product_id: null,
         variant_id: null,
         image_url: p.photo_url,
+        image_source: p.photo_url ? "inventory" : null,
         product_name: p.product_name,
         sku: p.sku,
         description: null,
