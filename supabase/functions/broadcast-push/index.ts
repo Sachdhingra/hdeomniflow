@@ -17,7 +17,8 @@
  *   title            : string                        (required)
  *   message          : string                        (required)
  *   image_url        : string   (optional — shown as big picture for banner/offer)
- *   link_url         : string   (optional — opened when notification is tapped)
+ *   link_url         : string   (optional — customer pushes show it as a button on
+ *                                 the Insider home screen; staff pushes open it on tap)
  *   offer_code       : string   (optional — forwarded in data payload)
  *   offer_expires_at : ISO date (optional — forwarded in data payload)
  *
@@ -39,6 +40,11 @@ const ONESIGNAL_APP_ID  = Deno.env.get("ONESIGNAL_APP_ID")!;
 // mismatched credentials.
 const STAFF_APP_ID  = Deno.env.get("ONESIGNAL_STAFF_APP_ID")  ?? "4e6e57c1-7555-4f05-81e2-efdb9d6e19d4";
 const STAFF_API_KEY = Deno.env.get("ONESIGNAL_STAFF_API_KEY") ?? "";
+
+// Tapping a customer broadcast opens the Insider home screen, where the push
+// stays on show for 24 hours (see push_notifications_log.expires_at).
+const PWA_URL = Deno.env.get("PWA_URL") ?? "https://homedecorinsider.lovable.app";
+const IN_APP_TTL_MS = 24 * 60 * 60 * 1000;
 
 const ONESIGNAL_URL = "https://onesignal.com/api/v1/notifications";
 // OneSignal accepts at most 2000 player IDs per create-notification call.
@@ -279,6 +285,13 @@ Deno.serve(async (req: Request) => {
     ...(link_url ? { link_url } : {}),
   };
 
+  // Where a tap lands. Customers go to the Insider home screen with this
+  // campaign highlighted; any link_url becomes a button on that card. Staff
+  // keep the old behaviour of opening link_url directly.
+  const clickUrl = audience === "staff"
+    ? (link_url || undefined)
+    : `${PWA_URL}/home?push=${campaign.id}`;
+
   let sentCount = 0;
   let lastError: string | undefined;
 
@@ -296,7 +309,7 @@ Deno.serve(async (req: Request) => {
       headings: { en: title },
       contents: { en: message },
       data: dataPayload,
-      ...(link_url ? { url: link_url } : {}),
+      ...(clickUrl ? { url: clickUrl } : {}),
       ...(image_url
         ? {
             big_picture: image_url,
@@ -332,6 +345,15 @@ Deno.serve(async (req: Request) => {
       lastError = String(e);
     }
 
+    // The segment send has no per-device list, so give every Insider customer
+    // the in-app copy — otherwise the home screen would have nothing to show
+    // when they tap the push. The nudge is about switching notifications on
+    // and has nothing to show in-app.
+    if (!isReengagement && sentCount > 0) {
+      await logInAppCopies(campaign.id, {
+        campaign_type, title, message, image_url, link_url, offer_code, offer_expires_at,
+      });
+    }
 
     // Stamp the nudge so the dashboard can show when it last went out.
     if (isReengagement && sentCount > 0) {
@@ -385,7 +407,7 @@ Deno.serve(async (req: Request) => {
       headings:           { en: title },
       contents:           { en: message },
       data:               dataPayload,
-      ...(link_url ? { url: link_url } : {}),
+      ...(clickUrl ? { url: clickUrl } : {}),
       // Rich image for banner/offer pushes across platforms
       ...(image_url
         ? {
@@ -437,7 +459,7 @@ Deno.serve(async (req: Request) => {
       offer_code:        offer_code || null,
       offer_expires_at:  offer_expires_at || null,
       campaign_id:       campaign.id,
-      expires_at:        new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      expires_at:        new Date(Date.now() + IN_APP_TTL_MS).toISOString(),
       delivery_status:   batchOk ? "sent" : "failed",
     }));
     const { error: logErr } = await supabase.from("push_notifications_log").insert(logRows);
@@ -480,6 +502,53 @@ Deno.serve(async (req: Request) => {
     ...(lastError ? { error: lastError } : {}),
   }, status === "failed" && whatsappSent === 0 ? 502 : 200);
 });
+
+type InAppFields = {
+  campaign_type: string;
+  title: string;
+  message: string;
+  image_url?: string;
+  link_url?: string;
+  offer_code?: string;
+  offer_expires_at?: string;
+};
+
+/** One push_notifications_log row per Insider customer, shown in-app for 24 hours. */
+async function logInAppCopies(campaignId: string, f: InAppFields): Promise<void> {
+  const { data, error } = await supabase
+    .from("app_users")
+    .select("customer_id")
+    .not("customer_id", "is", null);
+  if (error) {
+    console.error("In-app copy recipients error:", error.message);
+    return;
+  }
+
+  const customerIds = [...new Set((data ?? []).map((r) => r.customer_id as string))];
+  const nowIso = new Date().toISOString();
+  const expiresIso = new Date(Date.now() + IN_APP_TTL_MS).toISOString();
+  const rows = customerIds.map((customer_id) => ({
+    customer_id,
+    notification_type: `broadcast_${f.campaign_type}`,
+    title:             f.title,
+    message:           f.message,
+    sent_at:           nowIso,
+    image_url:         f.image_url || null,
+    link_url:          f.link_url || null,
+    offer_code:        f.offer_code || null,
+    offer_expires_at:  f.offer_expires_at || null,
+    campaign_id:       campaignId,
+    expires_at:        expiresIso,
+    delivery_status:   "sent",
+  }));
+
+  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+    const { error: logErr } = await supabase
+      .from("push_notifications_log")
+      .insert(rows.slice(i, i + BATCH_SIZE));
+    if (logErr) console.error("In-app copy insert error:", logErr.message);
+  }
+}
 
 async function failCampaign(id: string, error: string): Promise<void> {
   await supabase

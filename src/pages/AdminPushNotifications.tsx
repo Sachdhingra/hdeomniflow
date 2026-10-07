@@ -437,6 +437,10 @@ const AdminPushNotifications = () => {
                 onChange={(e) => setForm((f) => ({ ...f, link_url: e.target.value }))}
                 placeholder="https://…"
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                Tapping a customer push opens the Insider home screen, where it stays for 24 hours.
+                This link shows there as a button.
+              </p>
             </div>
 
             {isOffer && (
