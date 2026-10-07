@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
 import { quoteTotals } from "@/lib/productLibrary";
 import { lookupWebsiteImage } from "@/lib/websiteCatalog";
+import { lookupInventoryPhoto } from "@/lib/inventoryPhotos";
 import { EMPTY_META, type QuoteMeta } from "@/lib/savedQuotes";
 
 export interface QuoteLine {
@@ -8,8 +9,12 @@ export interface QuoteLine {
   product_id: string | null;
   variant_id: string | null;
   image_url: string | null;
-  /** "website" when the photo came from the HDE website catalogue, "manual" when staff supplied it. */
-  image_source?: "website" | "manual" | null;
+  /**
+   * Where the photo came from. Order of preference: "website" (HDE website catalogue),
+   * then "inventory" (Inventory Manager photo), then whatever the line came with.
+   * "manual" (picked by staff) is never replaced.
+   */
+  image_source?: "website" | "inventory" | "manual" | null;
   product_name: string;
   sku: string | null;
   description: string | null;
@@ -34,6 +39,8 @@ interface QuoteCtx {
   loadSaved: (meta: QuoteMeta, lines: QuoteLine[]) => void;
   /** Empty basket and details, ready for a new quote. */
   startNew: () => void;
+  /** Look up website photos again for lines that don't have one (and weren't set by hand). */
+  refreshWebsiteImages: () => void;
   count: number;
   subtotal: number;
   gstTotal: number;
@@ -84,30 +91,40 @@ export const QuoteProvider = ({ children }: { children: ReactNode }) => {
   const updateItem: QuoteCtx["updateItem"] = (id, patch) =>
     setItems((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
 
-  /** Website photo takes priority; a photo staff picked by hand is never replaced. */
+  /** 1st choice the website photo, 2nd the inventory photo; a photo staff picked by hand is never replaced. */
   const applyWebsiteImage = async (
     id: string,
     line: Pick<QuoteLine, "sku" | "product_name">,
     lookupCodes: (string | null | undefined)[] = [],
   ) => {
-    const url = await lookupWebsiteImage({ codes: [line.sku, ...lookupCodes], name: line.product_name });
-    if (!url) return;
+    const codes = [line.sku, ...lookupCodes];
+    const website = await lookupWebsiteImage({ codes, name: line.product_name });
+    if (website) {
+      setItems((prev) =>
+        prev.map((p) =>
+          p.id === id && p.image_source !== "manual"
+            ? { ...p, image_url: website, image_source: "website" }
+            : p,
+        ),
+      );
+      return;
+    }
+    const inventory = await lookupInventoryPhoto(codes);
+    if (!inventory) return;
     setItems((prev) =>
       prev.map((p) =>
-        p.id === id && p.image_source !== "manual"
-          ? { ...p, image_url: url, image_source: "website" }
+        p.id === id && p.image_source !== "manual" && p.image_source !== "website"
+          ? { ...p, image_url: inventory, image_source: "inventory" }
           : p,
       ),
     );
   };
 
-  // Carts saved before website photos existed: look them up once.
-  useEffect(() => {
+  const refreshWebsiteImages = () =>
     items
-      .filter((i) => i.image_source === undefined)
+      // Inventory photos are retried too: the website photo is the first choice.
+      .filter((i) => i.image_source !== "manual" && i.image_source !== "website")
       .forEach((i) => void applyWebsiteImage(i.id, i));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const addItem: QuoteCtx["addItem"] = (item, lookupCodes) => {
     const id = crypto.randomUUID();
@@ -143,6 +160,7 @@ export const QuoteProvider = ({ children }: { children: ReactNode }) => {
         setMeta,
         loadSaved,
         startNew,
+        refreshWebsiteImages,
         count: items.reduce((s, i) => s + i.quantity, 0),
         ...totals,
         open,
