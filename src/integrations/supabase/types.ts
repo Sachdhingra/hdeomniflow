@@ -166,6 +166,8 @@ export type Database = {
           issue_description: string
           preferred_callback: string | null
           product_description: string
+          resolved_at: string | null
+          service_job_id: string | null
           status: string
         }
         Insert: {
@@ -176,6 +178,8 @@ export type Database = {
           issue_description: string
           preferred_callback?: string | null
           product_description: string
+          resolved_at?: string | null
+          service_job_id?: string | null
           status?: string
         }
         Update: {
@@ -186,6 +190,8 @@ export type Database = {
           issue_description?: string
           preferred_callback?: string | null
           product_description?: string
+          resolved_at?: string | null
+          service_job_id?: string | null
           status?: string
         }
         Relationships: [
@@ -194,6 +200,13 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "elite_customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "app_service_requests_service_job_id_fkey"
+            columns: ["service_job_id"]
+            isOneToOne: false
+            referencedRelation: "service_jobs"
             referencedColumns: ["id"]
           },
         ]

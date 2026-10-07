@@ -87,7 +87,7 @@ interface DataContextType {
   permanentDeleteLead: (id: string) => Promise<void>;
   hardDeleteLead: (id: string, reason?: string) => Promise<void>;
   assignDelivery: (leadId: string, deliveryDate: string, deliveryNotes: string, assignedTo: string) => Promise<void>;
-  addServiceJob: (job: TablesInsert<"service_jobs">) => Promise<void>;
+  addServiceJob: (job: TablesInsert<"service_jobs">) => Promise<ServiceJob | null>;
   updateServiceJob: (id: string, updates: Partial<ServiceJob>) => Promise<void>;
   softDeleteServiceJob: (id: string) => Promise<void>;
   restoreServiceJob: (id: string) => Promise<void>;
@@ -568,6 +568,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     const { data, error } = await supabase.from("service_jobs").insert(job).select().single();
     if (error) throw error;
     if (data) setServiceJobs(prev => [data, ...prev]);
+    return data ?? null;
   };
 
   const updateServiceJob = async (id: string, updates: Partial<ServiceJob>) => {
