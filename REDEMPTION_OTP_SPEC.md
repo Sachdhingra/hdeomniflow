@@ -1,9 +1,10 @@
 # OTP-Gated Point Redemption
 
 Replaces the accounts pre-approval flow with an OTP verified at the counter.
-Status: ledger fix, customer write hardening, points rules and the OTP BACKEND are LIVE
-(see the last sections). The STAFF screen and the referral bonus are built (referral
-migration pending on production). The customer screen is not built yet.
+Status: ledger fix, customer write hardening, points rules, the OTP backend and the referral
+bonus are LIVE on production. The staff screen and the customer screen are built and pushed
+(branch `claude/redemption-message-after-approval-yhol1j` in both repos) but NOT yet merged or
+deployed. See the last sections.
 
 ## Why this exists
 
@@ -400,12 +401,46 @@ only for a member the caller added in the last 24 hours (admin: anyone), active
 referrer only, no self-referral. Points expire after 6 months, unlike the old
 client insert which set no expiry. Amount from `card_settings.referral_bonus_points`.
 
-### Pending on production (the Lovable connection dropped)
+### Applied to production
 
-`20260912040000_referral_bonus.sql` is written and tested (26 assertions plus a
-concurrent double-submit) but NOT applied. Until it is, the staff app reports
-honestly that the referral bonus could not be credited, instead of the old false
-"20 bonus pts credited". Apply it, then verify with a rolled-back probe.
+`20260912040000_referral_bonus.sql` was applied on 8 Oct 2026 and verified with a rolled-back probe of
+the real enrolment flow: the referrer got +20 (75 to 95) expiring in 182 days; a repeat was refused;
+the customer login, anon and a different salesperson were refused; a member added 3 days earlier was
+too late; an unknown code was reported, not paid. Production was unchanged afterwards.
 
-Open question: is there a limit on how many referrals one member can earn per
-month? Every award is recorded in `referral_awards` so it can be reported on.
+Decided: there is NO limit on how many referral bonuses one member can earn per month. The bonus is
+credited at the moment the new member is entered with a referral code. Every award is still recorded
+in `referral_awards` for reporting.
+
+
+## Customer screen (built, 8 Oct 2026)
+
+`home-decor-insider`: `src/routes/redeem.tsx` rebuilt, `src/components/RedeemedStamp.tsx`,
+`src/components/RedemptionAlert.tsx` (Home banner), `src/lib/redemption-core.ts` (pure logic, 13 tests via
+`npm test`), `src/lib/redemption.ts` (calls), a small deep link in `src/lib/push.ts`.
+
+The screen has nothing to type or submit. The store starts a redemption; it appears here and on Home;
+the customer taps an option (only options that fit the bill are shown; ones they cannot afford are
+disabled with the shortfall); a 4-digit code appears; staff confirm it; a REDEEMED stamp lands, carrying
+the amount and the exact date and time. A code cannot be shown again after a reload (only a hash is
+stored), so reopening offers "Show my code", which issues a fresh one. Old pending/approved rows from the
+request flow are labelled "Old request", never "Approved".
+
+Verified in a throwaway jsdom harness (21 tests, mutation-checked) and by rendering every state in mobile
+Chromium. That found and fixed a real fragility: the first-load effect depended on `navigate`, so a
+router that returned a new function each render re-snapshotted the redemptions already seen and the stamp
+was skipped. Not yet exercised against the live database, and the Home banner and push deep link have
+not been tried on a real device.
+
+### Deployment order (both apps are on a feature branch)
+
+1. Merge/deploy BOTH apps together. The staff Redeem button without the customer screen leaves customers
+   a notification that points at nothing.
+2. Then drop the customer INSERT policy on `redemption_requests` (the new screen never inserts).
+
+### Still to build
+
+1. Reversal on a rejected or returned bill (`fn_release_points`, restore the bill's net, mark the request
+   `reversed`). 2. Remove the legacy redemption branch in `fn_credit_or_reverse_points`. 3. Daily report and
+   the admin override for a customer who cannot show a code. 4. Decide what to do with the one old
+   `approved` test row (it now shows as "Old request").
