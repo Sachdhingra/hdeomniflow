@@ -116,6 +116,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/outreach", label: "Follow-up Outreach", icon: <MessageSquare className="w-5 h-5" /> },
       ELITE_NAV,
       CARD_BILLS_NAV,
+      LOYALTY_POINTS_NAV,   // read-only for sales: approving is limited to admin/accounts on the page and by RLS
       INVENTORY_NAV,
       LOGISTICS_NAV,
       { to: "/pipeline", label: "Pipeline", icon: <BarChart3 className="w-5 h-5" /> },
