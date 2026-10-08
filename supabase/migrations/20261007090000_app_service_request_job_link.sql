@@ -45,8 +45,7 @@ CREATE TRIGGER trg_sync_app_service_request_from_job
 -- action copied the phone verbatim and built the description as "<product> — <issue>",
 -- and the job was created after the request; take the earliest such job.
 UPDATE public.app_service_requests r
-   SET service_job_id = j.id
-  FROM LATERAL (
+   SET service_job_id = (
     SELECT sj.id
       FROM public.service_jobs sj
      WHERE sj.customer_phone = r.contact_phone
@@ -58,7 +57,7 @@ UPDATE public.app_service_requests r
        )
      ORDER BY sj.created_at
      LIMIT 1
-  ) j
+  )
  WHERE r.service_job_id IS NULL
    AND r.status <> 'open';
 
