@@ -41,10 +41,10 @@ GRANT ALL ON public.t_ids TO authenticated, anon, service_role;
 DO $$
 DECLARE c uuid; d uuid; uc uuid := gen_random_uuid(); ud uuid := gen_random_uuid();
 BEGIN
-  INSERT INTO elite_customers (customer_name, current_points, lifetime_points, status)
-    VALUES ('G-cust', 10, 10, 'active') RETURNING id INTO c;
-  INSERT INTO elite_customers (customer_name, current_points, lifetime_points, status)
-    VALUES ('G-other', 10, 10, 'active') RETURNING id INTO d;
+  INSERT INTO elite_customers (customer_name, current_points, lifetime_points, status, card_issue_date)
+    VALUES ('G-cust', 10, 10, 'active', '2024-01-01') RETURNING id INTO c;
+  INSERT INTO elite_customers (customer_name, current_points, lifetime_points, status, card_issue_date)
+    VALUES ('G-other', 10, 10, 'active', '2024-01-01') RETURNING id INTO d;
   INSERT INTO app_users VALUES (uc, c), (ud, d);
   INSERT INTO user_roles VALUES
     (gen_random_uuid(), 'sales');   -- placeholder so the table is never empty
@@ -94,7 +94,7 @@ BEGIN
   SELECT v INTO uc FROM t_ids WHERE k='uc';  SELECT v INTO ud FROM t_ids WHERE k='ud';
   SELECT v INTO s  FROM t_ids WHERE k='sales'; SELECT v INTO a FROM t_ids WHERE k='accounts';
   SELECT v INTO ad FROM t_ids WHERE k='admin'; SELECT v INTO h FROM t_ids WHERE k='head';
-  UPDATE elite_customers SET current_points = 10, status = 'active', card_issue_date = NULL WHERE id IN (c, d);
+  UPDATE elite_customers SET current_points = 10, status = 'active', card_issue_date = '2024-01-01' WHERE id IN (c, d);
 
   -- what customers legitimately do
   PERFORM chk('B1 customer edits date_of_birth + anniversary_date',
@@ -102,6 +102,8 @@ BEGIN
       'UPDATE elite_customers SET date_of_birth = ''1990-05-01'', anniversary_date = ''2015-02-14'' WHERE id=%L', c)), 'ok');
   PERFORM chk('B1 ...and the values saved',
     (SELECT date_of_birth::text FROM elite_customers WHERE id=c), '1990-05-01');
+  PERFORM chk('B1b generated column card_expiry_date is populated (so the diff could misfire)',
+    (SELECT card_expiry_date IS NOT NULL FROM elite_customers WHERE id=c), true);
   PERFORM chk('B15 no-op update is allowed',
     test_as('authenticated', uc, format('UPDATE elite_customers SET current_points = current_points WHERE id=%L', c)), 'ok');
 

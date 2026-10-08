@@ -31,7 +31,10 @@ GRANT EXECUTE ON FUNCTION public.has_role(UUID, public.app_role) TO anon, authen
 CREATE TABLE public.elite_customers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   customer_name TEXT, phone_1 TEXT,
-  card_issue_date DATE, card_expiry_date DATE,
+  card_issue_date DATE,
+  -- GENERATED in production: (card_issue_date + '3 years'). Postgres computes it after BEFORE
+  -- triggers run, so NEW.card_expiry_date inside a BEFORE trigger differs from OLD.
+  card_expiry_date DATE GENERATED ALWAYS AS (card_issue_date + 1095) STORED,
   status TEXT DEFAULT 'active',
   app_activated BOOLEAN DEFAULT false,
   referral_code TEXT, card_tier TEXT, card_number TEXT,

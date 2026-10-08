@@ -65,10 +65,18 @@ BEGIN
     RETURN NEW;
   END IF;
 
+  -- Generated columns (card_expiry_date = card_issue_date + 3 years) are
+  -- computed AFTER BEFORE-triggers run, so inside this trigger NEW holds a stale
+  -- value and always looks "changed". They cannot be written directly, so they
+  -- are skipped; every other column is still compared (fail-closed).
   SELECT string_agg(n.key, ', ' ORDER BY n.key) INTO v_blocked
   FROM jsonb_each(to_jsonb(NEW)) AS n(key, value)
   WHERE n.value IS DISTINCT FROM (to_jsonb(OLD) -> n.key)
-    AND n.key NOT IN ('date_of_birth', 'anniversary_date', 'updated_at');
+    AND n.key NOT IN ('date_of_birth', 'anniversary_date', 'updated_at')
+    AND n.key NOT IN (
+      SELECT a.attname::text FROM pg_attribute a
+      WHERE a.attrelid = TG_RELID AND a.attgenerated <> '' AND NOT a.attisdropped
+    );
 
   IF v_blocked IS NOT NULL THEN
     RAISE EXCEPTION 'CUSTOMER_FIELD_LOCKED: customers cannot change %', v_blocked
