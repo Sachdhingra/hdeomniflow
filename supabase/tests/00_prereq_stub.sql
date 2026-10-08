@@ -42,6 +42,8 @@ CREATE TABLE public.elite_customers (
   lifetime_points INTEGER NOT NULL DEFAULT 0,
   date_of_birth DATE, anniversary_date DATE,
   notes TEXT,
+  created_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
