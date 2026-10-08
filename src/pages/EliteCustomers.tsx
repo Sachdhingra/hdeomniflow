@@ -5,13 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Star, Plus, Upload, Pencil, Search, Loader2, Download, CheckCircle2, XCircle, Lock, Trash2, AlertTriangle, ChevronLeft, ChevronRight, Smartphone, QrCode, Copy } from "lucide-react";
+import { Star, Plus, Upload, Pencil, Search, Loader2, Download, CheckCircle2, XCircle, Lock, Trash2, AlertTriangle, ChevronLeft, ChevronRight, Smartphone, QrCode, Copy, RotateCcw } from "lucide-react";
 import { toast } from "@/lib/toast";
 import PhoneInput from "@/components/PhoneInput";
 import { extractTenDigits, isValidIndianMobile, toCanonicalPhone, formatPhoneDisplay } from "@/lib/phone";
@@ -77,6 +78,10 @@ function computeStatus(row: EliteRow): ComputedStatus {
   return "active";
 }
 
+// Expired cards are admin-only (sales must never see them, to avoid discounts on a lapsed card).
+// The database enforces this too; this keeps the UI correct regardless.
+const isExpired = (row: EliteRow) => daysBetween(row.card_expiry_date) < 0;
+
 const STATUS_META: Record<ComputedStatus, { label: string; cls: string }> = {
   active: { label: "Active", cls: "bg-success/15 text-success border-success/30" },
   expiring: { label: "Expiring Soon", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30" },
@@ -113,6 +118,7 @@ const EliteCustomers = () => {
   const [deleteRow, setDeleteRow] = useState<EliteRow | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [reactivateRow, setReactivateRow] = useState<EliteRow | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -131,10 +137,11 @@ const EliteCustomers = () => {
       if (!data || data.length < PAGE) break;
       pg++;
     }
-    setRows(all);
+    const visible = isAdmin ? all : all.filter(r => !isExpired(r));
+    setRows(visible);
 
     // Fetch linked leads in batches of 500 (safe limit for .in())
-    const leadIds = all.map(r => r.lead_id).filter(Boolean) as string[];
+    const leadIds = visible.map(r => r.lead_id).filter(Boolean) as string[];
     const map: Record<string, LeadLite> = {};
     const BATCH = 500;
     for (let i = 0; i < leadIds.length; i += BATCH) {
@@ -146,7 +153,7 @@ const EliteCustomers = () => {
     }
     setLeads(leadIds.length > 0 ? map : {});
     setLoading(false);
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => {
@@ -240,7 +247,7 @@ const EliteCustomers = () => {
         <StatCard label="Total Members" value={stats.total} color="text-foreground" />
         <StatCard label="Active" value={stats.active} color="text-success" />
         <StatCard label="Expiring Soon" value={stats.expiring} color="text-amber-600 dark:text-amber-400" />
-        <StatCard label="Expired" value={stats.expired} color="text-destructive" />
+        {isAdmin && <StatCard label="Expired" value={stats.expired} color="text-destructive" />}
       </div>
 
       <div className="flex items-center gap-2">
@@ -253,7 +260,7 @@ const EliteCustomers = () => {
       <div className="flex gap-2 flex-wrap">
         {([
           ["all", "All"], ["active", "Active"], ["expiring", "Expiring Soon"], ["expired", "Expired"], ["opted_out", "Opted Out"],
-        ] as [FilterTab, string][]).map(([k, label]) => (
+        ] as [FilterTab, string][]).filter(([k]) => isAdmin || k !== "expired").map(([k, label]) => (
           <button
             key={k}
             onClick={() => setTab(k)}
@@ -340,6 +347,11 @@ const EliteCustomers = () => {
                                 )}
                                 {canEdit && (
                                   <Button size="sm" variant="ghost" onClick={() => setEditRow(r)}><Pencil className="w-3.5 h-3.5" /></Button>
+                                )}
+                                {isAdmin && status === "expired" && (
+                                  <Button size="sm" variant="ghost" title="Reactivate card (new 3-year term after payment)" onClick={() => setReactivateRow(r)}>
+                                    <RotateCcw className="w-3.5 h-3.5 text-success" />
+                                  </Button>
                                 )}
                                 {isAdmin && (
                                   <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setDeleteRow(r)}>
@@ -428,6 +440,14 @@ const EliteCustomers = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {isAdmin && (
+        <ReactivateDialog
+          row={reactivateRow}
+          onOpenChange={(v) => !v && setReactivateRow(null)}
+          onDone={() => { setReactivateRow(null); fetchData(); }}
+        />
+      )}
 
       <InsiderActivityDialog
         open={!!insiderRow}
@@ -535,7 +555,16 @@ const MemberFormDialog = ({
           notes: notes.trim() || null,
           created_by: userId,
         }).select("id").single() as any);
-        if (error) throw error;
+        if (error) {
+          // Expired cards are hidden from non-admins, so the duplicate guard above can't see
+          // them; the unique phone index catches it here.
+          if ((error as any).code === "23505") {
+            setDupError("This number already has an Elite record. If this is an old member whose card expired, ask an admin to reactivate it.");
+            setSaving(false);
+            return;
+          }
+          throw error;
+        }
 
         // Send WhatsApp invite link to customer (fire-and-forget; don't block the UI)
         supabase.functions.invoke("send-app-invite", {
@@ -716,6 +745,74 @@ const MemberFormDialog = ({
           </div>
           <Button className="w-full gradient-primary" onClick={save} disabled={saving}>
             {saving ? "Saving…" : isEdit ? "Save Changes" : "Add Member"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+/* ---------------- Reactivate expired card (admin only) ---------------- */
+const ReactivateDialog = ({
+  row, onOpenChange, onDone,
+}: {
+  row: EliteRow | null;
+  onOpenChange: (v: boolean) => void;
+  onDone: () => void;
+}) => {
+  const [tier, setTier] = useState<EliteTier>("silver");
+  const [paid, setPaid] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!row) return;
+    setTier((((row as any).card_tier as EliteTier) || "silver"));
+    setPaid(false);
+  }, [row]);
+
+  const confirm = async () => {
+    if (!row) return;
+    setSaving(true);
+    const { error } = await (supabase.rpc("reactivate_elite_card" as any, { p_customer_id: row.id, p_tier: tier }) as any);
+    setSaving(false);
+    if (error) { toast.error(error.message || "Failed to reactivate"); return; }
+    toast.success(`⭐ ${row.customer_name} reactivated — new 3-year term from today`);
+    onDone();
+  };
+
+  return (
+    <Dialog open={!!row} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>Reactivate Elite Card</DialogTitle></DialogHeader>
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            <strong>{row?.customer_name}</strong>'s card expired on {row ? formatDate(row.card_expiry_date) : ""}.
+            Reactivating starts a new 3-year term from today and makes the member visible to sales again.
+          </p>
+          <div className="space-y-1.5">
+            <Label>Card Tier</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {ELITE_TIERS.map(t => (
+                <button
+                  key={t.value}
+                  type="button"
+                  onClick={() => setTier(t.value)}
+                  className={`border-2 rounded-md p-2 text-xs font-medium text-left transition-colors ${
+                    tier === t.value ? t.activeCls : "border-border bg-background text-muted-foreground hover:bg-muted/50"
+                  }`}
+                >{t.label}</button>
+              ))}
+            </div>
+            {TIER_META[tier].fee > 0 && (
+              <p className="text-[11px] text-muted-foreground">Joining fee: ₹{TIER_META[tier].fee.toLocaleString("en-IN")}</p>
+            )}
+          </div>
+          <label className="flex items-start gap-2 text-sm cursor-pointer">
+            <Checkbox checked={paid} onCheckedChange={(v) => setPaid(v === true)} className="mt-0.5" />
+            <span>Payment for the new card term has been collected</span>
+          </label>
+          <Button className="w-full gradient-primary" onClick={confirm} disabled={!paid || saving}>
+            {saving ? "Reactivating…" : "Reactivate Card"}
           </Button>
         </div>
       </DialogContent>
