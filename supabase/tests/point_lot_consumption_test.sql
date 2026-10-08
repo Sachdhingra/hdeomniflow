@@ -1,45 +1,36 @@
 -- Ledger tests for point lot consumption (see REDEMPTION_OTP_SPEC.md).
 --
 -- Run after 00_prereq_stub.sql and the 20260912000000 migration. Every check
--- raises on mismatch, so a clean run means all assertions held.
+-- raises on mismatch, so a clean run means every assertion held.
 --
--- T0 deliberately exercises the PRE-FIX expiry function and asserts the -100
+-- T0 deliberately runs the PRE-FIX live expiry function and asserts the
 -- double-deduction, so the suite proves the fix changed the outcome rather
 -- than merely agreeing with itself.
-
 \set ON_ERROR_STOP on
 \pset pager off
 
-CREATE OR REPLACE FUNCTION chk(label TEXT, got ANYELEMENT, want ANYELEMENT)
-RETURNS VOID LANGUAGE plpgsql AS $$
-BEGIN
-  IF got IS DISTINCT FROM want THEN
-    RAISE EXCEPTION 'FAIL % : got %, want %', label, got, want;
-  END IF;
-  RAISE NOTICE 'pass  %  (%)', label, got;
-END $$;
-
--- ────────────────────────────────────────────────────────────────
--- T0  Reproduce the ORIGINAL bug with the pre-fix expiry function
--- ────────────────────────────────────────────────────────────────
+-- T0  The original bug, reproduced with the pre-fix live expiry function.
+--     The ledger goes to -100, but the DISPLAYED balance is clamped at 0, so
+--     the customer sees nothing wrong -- and the next points they earn vanish.
 DO $$
 DECLARE c UUID; r UUID;
 BEGIN
   INSERT INTO elite_customers (customer_name) VALUES ('T0') RETURNING id INTO c;
   INSERT INTO card_points (customer_id, points, transaction_type, expires_at)
-    VALUES (c, 100, 'purchase', now() - interval '1 day');
-  INSERT INTO redemption_requests (customer_id, points_requested, rupee_value)
-    VALUES (c, 100, 750) RETURNING id INTO r;
-  -- redemption ledger row, as the fixed flow will write it
+    VALUES (c, 100, 'purchase', now() + interval '1 day');
   INSERT INTO card_points (customer_id, points, transaction_type) VALUES (c, -100, 'redemption');
-  PERFORM chk('T0 balance after redeem', bal(c), 0);
+  UPDATE card_points SET expires_at = now() - interval '1 day' WHERE customer_id = c AND points > 0;
   PERFORM fn_expire_points_OLD();
-  PERFORM chk('T0 OLD expiry double-deducts -> balance', bal(c), -100);
+  PERFORM chk('T0 OLD expiry: ledger balance', bal(c), -100);
+  PERFORM chk('T0 OLD expiry: displayed balance is clamped, hiding it',
+    (SELECT current_points FROM elite_customers WHERE id=c), 0);
+  INSERT INTO card_points (customer_id, points, transaction_type, expires_at)
+    VALUES (c, 50, 'purchase', now() + interval '10 days');
+  PERFORM chk('T0 OLD expiry: 50 freshly earned points are swallowed',
+    (SELECT current_points FROM elite_customers WHERE id=c), 0);
 END $$;
 
--- ────────────────────────────────────────────────────────────────
--- T1  Same scenario, new code path: consume lots, then expire
--- ────────────────────────────────────────────────────────────────
+-- T1  Same scenario through the new path: consume, then expire.
 DO $$
 DECLARE c UUID; r UUID;
 BEGIN
@@ -50,21 +41,21 @@ BEGIN
     VALUES (c, 100, 750) RETURNING id INTO r;
 
   PERFORM fn_consume_points(c, 100, r);
-  INSERT INTO card_points (customer_id, points, transaction_type) VALUES (c, -100, 'redemption');
   PERFORM chk('T1 balance after redeem', bal(c), 0);
+  PERFORM chk('T1 consume wrote the ledger row itself',
+    (SELECT count(*)::int FROM card_points WHERE customer_id=c AND transaction_type='redemption'), 1);
 
-  -- lot now falls past its expiry
   UPDATE card_points SET expires_at = now() - interval '1 day'
     WHERE customer_id = c AND transaction_type = 'purchase';
   PERFORM fn_expire_points();
   PERFORM chk('T1 balance after expiry (was -100)', bal(c), 0);
   PERFORM chk('T1 no expiry ledger row written',
     (SELECT count(*)::int FROM card_points WHERE customer_id=c AND transaction_type='expiry'), 0);
+  PERFORM chk('T1 lot marked expired',
+    (SELECT is_expired FROM card_points WHERE customer_id=c AND transaction_type='purchase'), true);
 END $$;
 
--- ────────────────────────────────────────────────────────────────
--- T2  Regression: unredeemed points still expire exactly as before
--- ────────────────────────────────────────────────────────────────
+-- T2  Regression: unredeemed points still expire exactly as before.
 DO $$
 DECLARE c UUID;
 BEGIN
@@ -75,11 +66,11 @@ BEGIN
   PERFORM chk('T2 unspent points fully expire', bal(c), 0);
   PERFORM chk('T2 expiry row is -100',
     (SELECT points FROM card_points WHERE customer_id=c AND transaction_type='expiry'), -100);
+  PERFORM chk('T2 expiry note matches the live wording',
+    (SELECT notes LIKE 'Auto-expiry of points from %' FROM card_points WHERE customer_id=c AND transaction_type='expiry'), true);
 END $$;
 
--- ────────────────────────────────────────────────────────────────
--- T3  Partial consumption: only the remainder expires
--- ────────────────────────────────────────────────────────────────
+-- T3  Partial consumption: only the remainder expires.
 DO $$
 DECLARE c UUID; r UUID;
 BEGIN
@@ -89,8 +80,6 @@ BEGIN
   INSERT INTO redemption_requests (customer_id, points_requested, rupee_value)
     VALUES (c, 40, 300) RETURNING id INTO r;
   PERFORM fn_consume_points(c, 40, r);
-  INSERT INTO card_points (customer_id, points, transaction_type) VALUES (c, -40, 'redemption');
-
   UPDATE card_points SET expires_at = now() - interval '1 day'
     WHERE customer_id = c AND transaction_type='purchase';
   PERFORM fn_expire_points();
@@ -99,9 +88,7 @@ BEGIN
   PERFORM chk('T3 balance', bal(c), 0);
 END $$;
 
--- ────────────────────────────────────────────────────────────────
--- T4  FIFO: soonest-expiring lot is spent first
--- ────────────────────────────────────────────────────────────────
+-- T4  FIFO: soonest-expiring lot is spent first.
 DO $$
 DECLARE c UUID; r UUID; soon UUID; later UUID;
 BEGIN
@@ -113,18 +100,13 @@ BEGIN
   INSERT INTO redemption_requests (customer_id, points_requested, rupee_value)
     VALUES (c, 75, 500) RETURNING id INTO r;
   PERFORM fn_consume_points(c, 75, r);
-
-  PERFORM chk('T4 soonest lot fully consumed',
-    (SELECT consumed_points FROM card_points WHERE id=soon), 60);
-  PERFORM chk('T4 later lot takes remainder',
-    (SELECT consumed_points FROM card_points WHERE id=later), 15);
-  PERFORM chk('T4 two lot rows recorded',
-    (SELECT count(*)::int FROM redemption_lots WHERE redemption_id=r), 2);
+  PERFORM chk('T4 soonest lot fully consumed', (SELECT consumed_points FROM card_points WHERE id=soon), 60);
+  PERFORM chk('T4 later lot takes remainder',  (SELECT consumed_points FROM card_points WHERE id=later), 15);
+  PERFORM chk('T4 two lot rows recorded', (SELECT count(*)::int FROM redemption_lots WHERE redemption_id=r), 2);
+  PERFORM chk('T4 balance', bal(c), 45);
 END $$;
 
--- ────────────────────────────────────────────────────────────────
--- T5  Reversal returns points to the original lot and expiry date
--- ────────────────────────────────────────────────────────────────
+-- T5  Reversal returns points to the original lot and original expiry date.
 DO $$
 DECLARE c UUID; r UUID; lot UUID; exp_before TIMESTAMPTZ; restored INTEGER;
 BEGIN
@@ -135,23 +117,17 @@ BEGIN
   INSERT INTO redemption_requests (customer_id, points_requested, rupee_value)
     VALUES (c, 100, 750) RETURNING id INTO r;
   PERFORM fn_consume_points(c, 100, r);
-  INSERT INTO card_points (customer_id, points, transaction_type) VALUES (c, -100, 'redemption');
 
   SELECT fn_release_points(r) INTO restored;
-  INSERT INTO card_points (customer_id, points, transaction_type) VALUES (c, restored, 'reversal');
-
   PERFORM chk('T5 restored count', restored, 100);
   PERFORM chk('T5 lot un-consumed', (SELECT consumed_points FROM card_points WHERE id=lot), 0);
-  PERFORM chk('T5 original expiry preserved',
-    (SELECT expires_at FROM card_points WHERE id=lot), exp_before);
+  PERFORM chk('T5 original expiry preserved', (SELECT expires_at FROM card_points WHERE id=lot), exp_before);
   PERFORM chk('T5 balance back to 100', bal(c), 100);
   PERFORM chk('T5 lot row marked released',
     (SELECT count(*)::int FROM redemption_lots WHERE redemption_id=r AND released_at IS NOT NULL), 1);
 END $$;
 
--- ────────────────────────────────────────────────────────────────
--- T6  Reversal does NOT resurrect points whose lot expired meanwhile
--- ────────────────────────────────────────────────────────────────
+-- T6  Reversal does NOT resurrect points whose lot expired meanwhile.
 DO $$
 DECLARE c UUID; r UUID; restored INTEGER;
 BEGIN
@@ -161,20 +137,16 @@ BEGIN
   INSERT INTO redemption_requests (customer_id, points_requested, rupee_value)
     VALUES (c, 100, 750) RETURNING id INTO r;
   PERFORM fn_consume_points(c, 100, r);
-  INSERT INTO card_points (customer_id, points, transaction_type) VALUES (c, -100, 'redemption');
-
-  UPDATE card_points SET expires_at = now() - interval '1 day'
-    WHERE customer_id=c AND transaction_type='purchase';
+  UPDATE card_points SET expires_at = now() - interval '1 day' WHERE customer_id=c AND transaction_type='purchase';
   PERFORM fn_expire_points();
-
   SELECT fn_release_points(r) INTO restored;
   PERFORM chk('T6 expired lot restores nothing', restored, 0);
   PERFORM chk('T6 balance stays 0', bal(c), 0);
+  PERFORM chk('T6 no reversal credit written',
+    (SELECT count(*)::int FROM card_points WHERE customer_id=c AND transaction_type='redemption_reversal'), 0);
 END $$;
 
--- ────────────────────────────────────────────────────────────────
--- T7  Insufficient balance raises and consumes nothing
--- ────────────────────────────────────────────────────────────────
+-- T7  Insufficient balance raises and consumes nothing.
 DO $$
 DECLARE c UUID; r UUID; raised BOOLEAN := false;
 BEGIN
@@ -183,28 +155,16 @@ BEGIN
     VALUES (c, 50, 'purchase', now() + interval '10 days');
   INSERT INTO redemption_requests (customer_id, points_requested, rupee_value)
     VALUES (c, 100, 750) RETURNING id INTO r;
-  BEGIN
-    PERFORM fn_consume_points(c, 100, r);
-  EXCEPTION WHEN check_violation THEN raised := true;
-  END;
+  BEGIN PERFORM fn_consume_points(c, 100, r);
+  EXCEPTION WHEN check_violation THEN raised := true; END;
   PERFORM chk('T7 raised on insufficient points', raised, true);
-END $$;
-
--- T7b  the partial consumption must have been rolled back
-DO $$
-DECLARE c UUID;
-BEGIN
-  SELECT id INTO c FROM elite_customers WHERE customer_name='T7';
-  PERFORM chk('T7b nothing consumed after rollback',
+  PERFORM chk('T7 nothing consumed after rollback',
     (SELECT COALESCE(SUM(consumed_points),0)::int FROM card_points WHERE customer_id=c), 0);
-  PERFORM chk('T7b no orphan lot rows',
-    (SELECT count(*)::int FROM redemption_lots rl
-      JOIN redemption_requests rr ON rr.id=rl.redemption_id WHERE rr.customer_id=c), 0);
+  PERFORM chk('T7 no orphan lot rows', (SELECT count(*)::int FROM redemption_lots WHERE redemption_id=r), 0);
+  PERFORM chk('T7 no ledger row written', (SELECT count(*)::int FROM card_points WHERE customer_id=c AND points<0), 0);
 END $$;
 
--- ────────────────────────────────────────────────────────────────
--- T8  Expired / expiring-now lots are not consumable
--- ────────────────────────────────────────────────────────────────
+-- T8  Past-expiry lots are not spendable.
 DO $$
 DECLARE c UUID; r UUID; raised BOOLEAN := false;
 BEGIN
@@ -218,9 +178,7 @@ BEGIN
   PERFORM chk('T8 past-expiry lot not spendable', raised, true);
 END $$;
 
--- ────────────────────────────────────────────────────────────────
--- T9  Constraint blocks over-consumption
--- ────────────────────────────────────────────────────────────────
+-- T9  Constraint blocks over-consumption.
 DO $$
 DECLARE c UUID; lot UUID; raised BOOLEAN := false;
 BEGIN
@@ -232,31 +190,123 @@ BEGIN
   PERFORM chk('T9 consumed > points rejected', raised, true);
 END $$;
 
--- ────────────────────────────────────────────────────────────────
--- T10  Stacking: two redemptions on one bill draw down correctly
--- ────────────────────────────────────────────────────────────────
+-- T10  Stacking: two redemptions on one bill; reversing one leaves the other.
 DO $$
 DECLARE c UUID; r1 UUID; r2 UUID;
 BEGIN
   INSERT INTO elite_customers (customer_name) VALUES ('T10') RETURNING id INTO c;
   INSERT INTO card_points (customer_id, points, transaction_type, expires_at)
     VALUES (c, 200, 'purchase', now() + interval '10 days');
-  INSERT INTO redemption_requests (customer_id, points_requested, rupee_value)
-    VALUES (c, 100, 750) RETURNING id INTO r1;
-  INSERT INTO redemption_requests (customer_id, points_requested, rupee_value)
-    VALUES (c, 100, 750) RETURNING id INTO r2;
+  INSERT INTO redemption_requests (customer_id, points_requested, rupee_value) VALUES (c, 100, 750) RETURNING id INTO r1;
+  INSERT INTO redemption_requests (customer_id, points_requested, rupee_value) VALUES (c, 100, 750) RETURNING id INTO r2;
   PERFORM fn_consume_points(c, 100, r1);
-  INSERT INTO card_points (customer_id, points, transaction_type) VALUES (c, -100, 'redemption');
   PERFORM fn_consume_points(c, 100, r2);
-  INSERT INTO card_points (customer_id, points, transaction_type) VALUES (c, -100, 'redemption');
   PERFORM chk('T10 balance after stacked redemptions', bal(c), 0);
-  PERFORM chk('T10 lot fully consumed',
-    (SELECT consumed_points FROM card_points WHERE customer_id=c AND transaction_type='purchase'), 200);
-
-  -- reversing only the second leaves the first intact
   PERFORM fn_release_points(r2);
-  INSERT INTO card_points (customer_id, points, transaction_type) VALUES (c, 100, 'reversal');
   PERFORM chk('T10 after reversing one of two', bal(c), 100);
   PERFORM chk('T10 lot consumption back to 100',
     (SELECT consumed_points FROM card_points WHERE customer_id=c AND transaction_type='purchase'), 100);
+END $$;
+
+-- T11  THE CASE THAT BROKE THE FIRST DESIGN: spend after a reversal.
+--      A reversal credit must not itself become a spendable lot, or a customer
+--      could spend more than their balance after a return.
+DO $$
+DECLARE c UUID; r1 UUID; r2 UUID; raised BOOLEAN := false;
+BEGIN
+  INSERT INTO elite_customers (customer_name) VALUES ('T11') RETURNING id INTO c;
+  INSERT INTO card_points (customer_id, points, transaction_type, expires_at)
+    VALUES (c, 100, 'purchase', now() + interval '10 days');
+  INSERT INTO redemption_requests (customer_id, points_requested, rupee_value) VALUES (c, 100, 750) RETURNING id INTO r1;
+  PERFORM fn_consume_points(c, 100, r1);
+  PERFORM fn_release_points(r1);
+  PERFORM chk('T11 balance after reversal', bal(c), 100);
+
+  INSERT INTO redemption_requests (customer_id, points_requested, rupee_value) VALUES (c, 200, 1500) RETURNING id INTO r2;
+  BEGIN PERFORM fn_consume_points(c, 200, r2);
+  EXCEPTION WHEN check_violation THEN raised := true; END;
+  PERFORM chk('T11 cannot spend 200 against a balance of 100', raised, true);
+  PERFORM chk('T11 balance unchanged by the refused spend', bal(c), 100);
+
+  PERFORM fn_consume_points(c, 100, (SELECT id FROM redemption_requests WHERE id=r2));
+  PERFORM chk('T11 can still spend exactly the 100 owned', bal(c), 0);
+END $$;
+
+-- T12  Live expiry types are preserved exactly. anniversary_bonus and referral
+--      expire; welcome_bonus is NOT in the live expiry function and so does not
+--      (pre-existing behaviour, flagged separately and deliberately unchanged).
+DO $$
+DECLARE c UUID;
+BEGIN
+  INSERT INTO elite_customers (customer_name) VALUES ('T12') RETURNING id INTO c;
+  INSERT INTO card_points (customer_id, points, transaction_type, expires_at) VALUES
+    (c, 10, 'anniversary_bonus', now() - interval '1 day'),
+    (c, 20, 'referral',          now() - interval '1 day'),
+    (c, 30, 'welcome_bonus',     now() - interval '1 day');
+  PERFORM fn_expire_points();
+  PERFORM chk('T12 anniversary_bonus expired',
+    (SELECT is_expired FROM card_points WHERE customer_id=c AND transaction_type='anniversary_bonus'), true);
+  PERFORM chk('T12 referral expired',
+    (SELECT is_expired FROM card_points WHERE customer_id=c AND transaction_type='referral'), true);
+  PERFORM chk('T12 welcome_bonus untouched (matches live behaviour)',
+    (SELECT is_expired FROM card_points WHERE customer_id=c AND transaction_type='welcome_bonus'), false);
+END $$;
+
+-- T13  Non-purchase lots (welcome / anniversary) are spendable.
+DO $$
+DECLARE c UUID; r UUID;
+BEGIN
+  INSERT INTO elite_customers (customer_name) VALUES ('T13') RETURNING id INTO c;
+  INSERT INTO card_points (customer_id, points, transaction_type, expires_at) VALUES
+    (c, 50, 'welcome_bonus',     now() + interval '20 days'),
+    (c, 50, 'anniversary_bonus', now() + interval '40 days');
+  INSERT INTO redemption_requests (customer_id, points_requested, rupee_value) VALUES (c, 75, 500) RETURNING id INTO r;
+  PERFORM fn_consume_points(c, 75, r);
+  PERFORM chk('T13 welcome lot drained first (soonest expiry)',
+    (SELECT consumed_points FROM card_points WHERE customer_id=c AND transaction_type='welcome_bonus'), 50);
+  PERFORM chk('T13 anniversary lot takes remainder',
+    (SELECT consumed_points FROM card_points WHERE customer_id=c AND transaction_type='anniversary_bonus'), 25);
+END $$;
+
+-- T14  A redemption can only spend its own customer's points.
+DO $$
+DECLARE a UUID; b UUID; r UUID; raised BOOLEAN := false;
+BEGIN
+  INSERT INTO elite_customers (customer_name) VALUES ('T14a') RETURNING id INTO a;
+  INSERT INTO elite_customers (customer_name) VALUES ('T14b') RETURNING id INTO b;
+  INSERT INTO card_points (customer_id, points, transaction_type, expires_at)
+    VALUES (b, 100, 'purchase', now() + interval '10 days');
+  INSERT INTO redemption_requests (customer_id, points_requested, rupee_value) VALUES (a, 100, 750) RETURNING id INTO r;
+  BEGIN PERFORM fn_consume_points(b, 100, r);
+  EXCEPTION WHEN check_violation THEN raised := true; END;
+  PERFORM chk('T14 cross-customer redemption refused', raised, true);
+  PERFORM chk('T14 victim untouched', bal(b), 100);
+END $$;
+
+-- T15  Reversal is idempotent.
+DO $$
+DECLARE c UUID; r UUID;
+BEGIN
+  INSERT INTO elite_customers (customer_name) VALUES ('T15') RETURNING id INTO c;
+  INSERT INTO card_points (customer_id, points, transaction_type, expires_at)
+    VALUES (c, 100, 'purchase', now() + interval '10 days');
+  INSERT INTO redemption_requests (customer_id, points_requested, rupee_value) VALUES (c, 100, 750) RETURNING id INTO r;
+  PERFORM fn_consume_points(c, 100, r);
+  PERFORM chk('T15 first release restores', fn_release_points(r), 100);
+  PERFORM chk('T15 second release restores nothing', fn_release_points(r), 0);
+  PERFORM chk('T15 balance not double-credited', bal(c), 100);
+END $$;
+
+-- T16  Deleting a customer still works with lots recorded against them.
+DO $$
+DECLARE c UUID; r UUID;
+BEGIN
+  INSERT INTO elite_customers (customer_name) VALUES ('T16') RETURNING id INTO c;
+  INSERT INTO card_points (customer_id, points, transaction_type, expires_at)
+    VALUES (c, 100, 'purchase', now() + interval '10 days');
+  INSERT INTO redemption_requests (customer_id, points_requested, rupee_value) VALUES (c, 100, 750) RETURNING id INTO r;
+  PERFORM fn_consume_points(c, 100, r);
+  DELETE FROM elite_customers WHERE id = c;
+  PERFORM chk('T16 customer delete cascades cleanly',
+    (SELECT count(*)::int FROM redemption_lots WHERE redemption_id = r), 0);
 END $$;
