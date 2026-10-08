@@ -2,7 +2,8 @@
 
 Replaces the accounts pre-approval flow with an OTP verified at the counter.
 Status: ledger fix, customer write hardening, points rules and the OTP BACKEND are LIVE
-(see the last two sections). The staff and customer screens that call it are not built yet.
+(see the last sections). The STAFF screen and the referral bonus are built (referral
+migration pending on production). The customer screen is not built yet.
 
 ## Why this exists
 
@@ -381,3 +382,30 @@ could still read it. `redemption_choose` can be called again to issue a fresh co
 6. **Referral bonus**: the staff app inserts +20 straight into `card_points`, which
    RLS refuses for sales while still showing "20 bonus pts credited". It needs a
    server-side function.
+
+## Staff screen and referral bonus (built, 8 Oct 2026)
+
+**Staff screen** (`src/components/RedeemPointsDialog.tsx`, `src/lib/redemption.ts`,
+wired into `CardBillEntries.tsx`). A Redeem points button appears on pending
+entries for points-earning cards: sales on their own entries, admin on any. The
+dialog runs start, wait for the customer's choice, 4-digit code, done. The limit is
+shown in rupees throughout. The manual form's free-text "Redemption Amount Applied"
+field is removed; redemption happens after saving. Closing the dialog does not
+cancel (the customer's code stays valid); Cancel does. Not yet exercised in a real
+browser against production.
+
+**Referral bonus** (`20260912040000_referral_bonus.sql`). `award_referral_bonus`
+replaces the browser-side insert that RLS refused for sales. Once per new member,
+only for a member the caller added in the last 24 hours (admin: anyone), active
+referrer only, no self-referral. Points expire after 6 months, unlike the old
+client insert which set no expiry. Amount from `card_settings.referral_bonus_points`.
+
+### Pending on production (the Lovable connection dropped)
+
+`20260912040000_referral_bonus.sql` is written and tested (26 assertions plus a
+concurrent double-submit) but NOT applied. Until it is, the staff app reports
+honestly that the referral bonus could not be credited, instead of the old false
+"20 bonus pts credited". Apply it, then verify with a rolled-back probe.
+
+Open question: is there a limit on how many referrals one member can earn per
+month? Every award is recorded in `referral_awards` so it can be reported on.
