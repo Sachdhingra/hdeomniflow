@@ -69,7 +69,8 @@ describe("error codes", () => {
 
 describe("formatting", () => {
   it("shows rupees in the Indian grouping, never a percentage", () => {
-    expect(inr(3346.6)).toBe("₹3,346.6");
+    expect(inr(3346.6)).toBe("₹3,346.60");
+    expect(inr(0.5)).toBe("₹0.50");
     expect(inr(125000)).toBe("₹1,25,000");
     expect(inr("750.00")).toBe("₹750");
   });

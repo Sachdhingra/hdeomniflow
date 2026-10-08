@@ -60,9 +60,9 @@ describe("starting", () => {
     expect(screen.getByTestId("phase-waiting")).toBeInTheDocument();
     const reminder = screen.getByTestId("cap-reminder").textContent!;
     expect(reminder).toContain("5% of ₹66,932");
-    expect(reminder).toContain("₹3,346.6");
+    expect(reminder).toContain("₹3,346.60");
     expect(reminder).toContain("₹0 ");              // nothing redeemed yet
-    expect(reminder).toContain("₹3,346.6 left");
+    expect(reminder).toContain("₹3,346.60 left");
     expect(m.notifyCustomer).toHaveBeenCalledTimes(1);
     expect(m.notifyCustomer).toHaveBeenCalledWith("c1", "redemption_started");
   });
@@ -114,7 +114,7 @@ describe("the counter flow", () => {
 
     expect(m.verifyRedemption).toHaveBeenCalledWith("s1", "4821");
     expect(screen.getByTestId("phase-done")).toHaveTextContent("₹750 redeemed (100 points)");
-    expect(screen.getByTestId("cap-reminder")).toHaveTextContent("₹2,596.6 left");
+    expect(screen.getByTestId("cap-reminder")).toHaveTextContent("₹2,596.60 left");
     expect(screen.getByTestId("cap-reminder")).toHaveTextContent("Already redeemed ₹750");
     expect(onChanged).toHaveBeenCalledTimes(1);
     expect(m.notifyCustomer).toHaveBeenLastCalledWith("c1", "redemption_used", { rupees: 750, points: 100 });

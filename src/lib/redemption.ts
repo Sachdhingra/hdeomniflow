@@ -34,8 +34,17 @@ export type VerifyResult =
   | { ok: true; redemption_id: string; points: number; rupees: number; headroom_left: number; customer_id: string }
   | { ok: false; reason: string; attempts_left?: number; status?: string; headroom?: number };
 
-export const inr = (n: number | string) =>
-  "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+/** Money: whole rupees without decimals, otherwise always two (₹750, ₹3,346.60). */
+export const inr = (n: number | string) => {
+  const v = Number(n);
+  return (
+    "₹" +
+    v.toLocaleString("en-IN", {
+      minimumFractionDigits: Number.isInteger(v) ? 0 : 2,
+      maximumFractionDigits: 2,
+    })
+  );
+};
 
 /** "BILL_BELOW_MINIMUM: redemption needs ..." -> "BILL_BELOW_MINIMUM" */
 export function errorCode(message?: string | null): string {
