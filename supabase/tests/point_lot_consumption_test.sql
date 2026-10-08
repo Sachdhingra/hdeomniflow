@@ -232,9 +232,8 @@ BEGIN
   PERFORM chk('T11 can still spend exactly the 100 owned', bal(c), 0);
 END $$;
 
--- T12  Live expiry types are preserved exactly. anniversary_bonus and referral
---      expire; welcome_bonus is NOT in the live expiry function and so does not
---      (pre-existing behaviour, flagged separately and deliberately unchanged).
+-- T12  Expiry covers every earned type. welcome_bonus joined the list on
+--      8 Oct 2026 (it carried an expires_at but was never expired).
 DO $$
 DECLARE c UUID;
 BEGIN
@@ -248,8 +247,25 @@ BEGIN
     (SELECT is_expired FROM card_points WHERE customer_id=c AND transaction_type='anniversary_bonus'), true);
   PERFORM chk('T12 referral expired',
     (SELECT is_expired FROM card_points WHERE customer_id=c AND transaction_type='referral'), true);
-  PERFORM chk('T12 welcome_bonus untouched (matches live behaviour)',
-    (SELECT is_expired FROM card_points WHERE customer_id=c AND transaction_type='welcome_bonus'), false);
+  PERFORM chk('T12 welcome_bonus now expires',
+    (SELECT is_expired FROM card_points WHERE customer_id=c AND transaction_type='welcome_bonus'), true);
+  PERFORM chk('T12 balance is zero after all three expire', bal(c), 0);
+END $$;
+
+-- T12b  A welcome lot that was partly spent expires only its unspent remainder.
+DO $$
+DECLARE c UUID; r UUID;
+BEGIN
+  INSERT INTO elite_customers (customer_name) VALUES ('T12b') RETURNING id INTO c;
+  INSERT INTO card_points (customer_id, points, transaction_type, expires_at)
+    VALUES (c, 50, 'welcome_bonus', now() + interval '1 day');
+  INSERT INTO redemption_requests (customer_id, points_requested, rupee_value) VALUES (c, 30, 200) RETURNING id INTO r;
+  PERFORM fn_consume_points(c, 30, r);
+  UPDATE card_points SET expires_at = now() - interval '1 day' WHERE customer_id=c AND transaction_type='welcome_bonus';
+  PERFORM fn_expire_points();
+  PERFORM chk('T12b only the unspent 20 expire',
+    (SELECT points FROM card_points WHERE customer_id=c AND transaction_type='expiry'), -20);
+  PERFORM chk('T12b balance 0, not -30', bal(c), 0);
 END $$;
 
 -- T13  Non-purchase lots (welcome / anniversary) are spendable.

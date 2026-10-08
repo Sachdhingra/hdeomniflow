@@ -60,6 +60,7 @@ END $$;
 
 -- ═══ PHASE A: the pre-hardening live state ═══════════════════════════════
 DROP TRIGGER IF EXISTS trg_guard_customer_self_update ON public.elite_customers;
+DROP TRIGGER IF EXISTS trg_lock_points_columns ON public.elite_customers;   -- added later (Phase C)
 DROP POLICY IF EXISTS "redemption: customer insert own" ON public.redemption_requests;
 CREATE POLICY "redemption: customer insert own" ON public.redemption_requests
   FOR INSERT TO public WITH CHECK (customer_id = public.get_loyalty_customer_id(auth.uid()));
@@ -130,12 +131,12 @@ BEGIN
   PERFORM chk('B10 anon (no login) cannot update',
     test_as('anon', NULL, format('UPDATE elite_customers SET current_points = 99999 WHERE id=%L', c)), '42501');
 
-  -- who must keep working
-  PERFORM chk('B11 sales can still edit points',    test_as('authenticated', s,  format('UPDATE elite_customers SET current_points = 20 WHERE id=%L', c)), 'ok');
+  -- staff keep their access to everything EXCEPT points (points: see Phase C)
+  PERFORM chk('B11 sales can still edit non-points fields', test_as('authenticated', s,  format('UPDATE elite_customers SET notes = ''called'' WHERE id=%L', c)), 'ok');
   PERFORM chk('B11 accounts can still edit',        test_as('authenticated', a,  format('UPDATE elite_customers SET status = ''active'' WHERE id=%L', c)), 'ok');
-  PERFORM chk('B11 admin can still edit',           test_as('authenticated', ad, format('UPDATE elite_customers SET current_points = 10 WHERE id=%L', c)), 'ok');
+  PERFORM chk('B11 admin can still edit',           test_as('authenticated', ad, format('UPDATE elite_customers SET notes = ''x'' WHERE id=%L', c)), 'ok');
   PERFORM chk('B11 service_head is NOT staff for writes',
-    test_as('authenticated', h, format('UPDATE elite_customers SET current_points = 7 WHERE id=%L', c)), '42501');
+    test_as('authenticated', h, format('UPDATE elite_customers SET notes = ''changed by service_head'' WHERE id=%L', c)), '42501');
   PERFORM chk('B12 service_role (edge functions) unaffected',
     test_as('service_role', NULL, format('UPDATE elite_customers SET current_points = 10 WHERE id=%L', c)), 'ok');
   PERFORM chk('B13 SECURITY DEFINER RPC (link_loyalty_app_user) still activates',
@@ -163,4 +164,38 @@ BEGIN
       'INSERT INTO redemption_requests (customer_id, points_requested, rupee_value, status) VALUES (%L, 100, 750, ''pending'')', c)), 'ok');
   PERFORM chk('R5 no new approved rows after hardening',
     (SELECT count(*)::int FROM redemption_requests WHERE customer_id=c AND status='approved' AND requested_at > now() - interval '1 minute' AND rupee_value=1), 0);
+END $$;
+
+-- ═══ PHASE C: staff can view points but not edit them (20260912020000) ════
+\ir ../migrations/20260912020000_points_rules.sql
+
+DO $$
+DECLARE c uuid; s uuid; a uuid; ad uuid; uc uuid;
+BEGIN
+  SELECT v INTO c  FROM t_ids WHERE k='c';    SELECT v INTO uc FROM t_ids WHERE k='uc';
+  SELECT v INTO s  FROM t_ids WHERE k='sales'; SELECT v INTO a  FROM t_ids WHERE k='accounts';
+  SELECT v INTO ad FROM t_ids WHERE k='admin';
+  DELETE FROM card_points WHERE customer_id = c;
+  INSERT INTO card_points (customer_id, points, transaction_type) VALUES (c, 40, 'purchase');
+
+  PERFORM chk('C1 sales cannot set current_points',
+    test_as('authenticated', s,  format('UPDATE elite_customers SET current_points = 9999 WHERE id=%L', c)), '42501');
+  PERFORM chk('C2 sales cannot set lifetime_points',
+    test_as('authenticated', s,  format('UPDATE elite_customers SET lifetime_points = 9999 WHERE id=%L', c)), '42501');
+  PERFORM chk('C3 accounts cannot set current_points',
+    test_as('authenticated', a,  format('UPDATE elite_customers SET current_points = 9999 WHERE id=%L', c)), '42501');
+  PERFORM chk('C4 admin cannot set current_points directly either (ledger is the only way)',
+    test_as('authenticated', ad, format('UPDATE elite_customers SET current_points = 9999 WHERE id=%L', c)), '42501');
+  PERFORM chk('C5 balance untouched by every refused attempt', (SELECT current_points FROM elite_customers WHERE id=c), 40);
+  PERFORM chk('C6 a no-op write of the same points value is harmless',
+    test_as('authenticated', s,  format('UPDATE elite_customers SET current_points = current_points WHERE id=%L', c)), 'ok');
+  PERFORM chk('C7 sales can still edit other fields in the same row',
+    test_as('authenticated', s,  format('UPDATE elite_customers SET notes = ''follow up'' WHERE id=%L', c)), 'ok');
+  PERFORM chk('C8 service_role (edge functions) can still write points',
+    test_as('service_role', NULL, format('UPDATE elite_customers SET current_points = 40 WHERE id=%L', c)), 'ok');
+  PERFORM chk('C9 admin adjusts points the right way: a ledger row, reflected by the sync trigger',
+    test_as('authenticated', ad, format('INSERT INTO card_points (customer_id, points, transaction_type) VALUES (%L, 10, ''purchase'')', c)), 'ok');
+  PERFORM chk('C9 ...balance follows the ledger', (SELECT current_points FROM elite_customers WHERE id=c), 50);
+  PERFORM chk('C10 customer still cannot set points either',
+    test_as('authenticated', uc, format('UPDATE elite_customers SET current_points = 9999 WHERE id=%L', c)), '42501');
 END $$;
