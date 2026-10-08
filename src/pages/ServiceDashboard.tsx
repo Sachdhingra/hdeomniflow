@@ -34,6 +34,8 @@ type AppServiceRequest = {
   preferred_callback: string | null;
   status: string;
   created_at: string;
+  service_job_id: string | null;
+  resolved_at: string | null;
   customer_name?: string;
 };
 
@@ -110,7 +112,7 @@ const ServiceDashboard = () => {
   const handleConvertToJob = async (req: AppServiceRequest) => {
     setConvertingId(req.id);
     try {
-      await addServiceJob({
+      const job = await addServiceJob({
         customer_name: req.customer_name ?? "—",
         customer_phone: req.contact_phone,
         description: `${req.product_description} — ${req.issue_description}`,
@@ -122,7 +124,7 @@ const ServiceDashboard = () => {
       });
       await (supabase
         .from("app_service_requests" as any)
-        .update({ status: "in_progress" })
+        .update({ status: "in_progress", service_job_id: job?.id ?? null })
         .eq("id", req.id) as any);
       toast.success("Service job created from app request");
       fetchAppRequests();
