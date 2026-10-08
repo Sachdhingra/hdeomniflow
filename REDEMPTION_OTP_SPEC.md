@@ -1,7 +1,8 @@
 # OTP-Gated Point Redemption
 
 Replaces the accounts pre-approval flow with an OTP verified at the counter.
-Status: design agreed, not yet implemented.
+Status: design agreed. Ledger fix and customer write hardening are LIVE (see
+"Live database findings" at the end). OTP flow itself not yet implemented.
 
 ## Why this exists
 
@@ -246,3 +247,69 @@ saved entry gains a Redeem points action and shows live cap arithmetic.
 - SMS/WhatsApp fallback if push fails — `whatsapp-otp` already exists and could
   carry the code. Decide whether that is in scope for v1 or whether the manager
   override covers it.
+
+## Live database findings (8 Oct 2026)
+
+Read directly from production through Lovable. Where this section disagrees with
+anything above, this section wins.
+
+### Already applied to production
+
+| Migration | What it does |
+|---|---|
+| `20260912010000_lock_customer_self_writes.sql` | Restores `status = 'pending'` on the customer INSERT policy for `redemption_requests`, and adds a guard trigger limiting direct customer sessions to `date_of_birth` / `anniversary_date` on `elite_customers`. |
+| `20260912000000_point_lot_consumption.sql` | `consumed_points` on `card_points`, `redemption_lots`, `fn_consume_points`, `fn_release_points`, and an expiry function that writes off only the unconsumed remainder. Purely additive: `consumed_points` defaults to 0, so expiry behaves exactly as before. |
+
+Both are idempotent, so re-running them from the repo is safe. Rollback text is
+in each file's header. Verified three ways: 49 + 34 assertions on a local
+Postgres 16, a concurrent double-tap test, and probes against production that
+run inside a `DO` block ending in `RAISE EXCEPTION` so nothing persists.
+
+Why the guard exists: the live INSERT policy had no status check, so a customer
+could file an already-approved request for any amount, and the UPDATE policy
+allowed every column of `elite_customers` (only `card_tier` was locked), so a
+customer could set their own points, status, or card issue date (the
+cooling-window anchor). Before the fix these were reproduced locally; no sign
+of past use in production (every balance matches its ledger).
+
+### Corrections to the design above
+
+- **The repo does not match production.** `card_points` has no `bill_id` and no
+  `transaction_type` check; live `fn_expire_points` expires `purchase`,
+  `anniversary_bonus` and `referral`, not just `purchase`; `card_expiry_date` is
+  a generated column. Treat the live schema as the source of truth and verify
+  against it before every migration. A first draft of the lot migration copied
+  the repo's expiry function and would have stopped anniversary and referral
+  points expiring.
+- **`fn_consume_points` / `fn_release_points` write their own ledger rows**
+  (`redemption` and `redemption_reversal`). Callers do not insert them. The
+  reversal credit is excluded from spendable lots; otherwise a customer could
+  spend more than their balance after a return.
+- **Bill entries are not created by staff.** All 105 existing entries came from
+  the won-lead trigger; none from the manual form. Sales have no INSERT or
+  UPDATE right on `card_bill_entries`. So "save the bill, then redeem" means
+  redemption attaches to the auto-created entry and its gross, and must be
+  re-validated if accounts edits the amount at approval. Redeem therefore runs
+  through a `SECURITY DEFINER` function, as planned.
+- **OTP storage:** a separate table with RLS on and no client privileges at all,
+  rather than columns on `redemption_requests`. Reachable only through
+  `SECURITY DEFINER` functions, so no policy mistake can expose the code.
+- **Customer INSERT on `redemption_requests`** is kept (pending-only) so today's
+  screen keeps working. Drop it when the staff-initiated flow ships; customers
+  never need to insert in the new design.
+- **The old redemption branch in `fn_credit_or_reverse_points`** writes a
+  `-points` row without consuming lots. Unreachable today, but it must be
+  removed in step 6 or it will double-deduct alongside the new path.
+- **The earlier claim that discounts were leaking was wrong.** No bill carries a
+  redemption amount; the single request is a test. Nothing to reconcile.
+
+### Open decisions
+
+- **`welcome_bonus` points never expire** (35 rows) although they carry an
+  `expires_at`; the live expiry function does not list that type. Preserved as
+  is. Lapsed ones are not spendable by `fn_consume_points` but still count in
+  the displayed balance. Decide whether they should expire.
+- **Staff can still edit `current_points` directly** (sales included). Tightening
+  that is separate from this work.
+- The ledger clamps the displayed balance at 0 (`GREATEST(0, ...)`), which is
+  what would have hidden the double-expiry bug on screen.
