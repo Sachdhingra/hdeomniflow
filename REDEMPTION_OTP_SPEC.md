@@ -1,8 +1,8 @@
 # OTP-Gated Point Redemption
 
 Replaces the accounts pre-approval flow with an OTP verified at the counter.
-Status: design agreed. Ledger fix and customer write hardening are LIVE (see
-"Live database findings" at the end). OTP flow itself not yet implemented.
+Status: ledger fix, customer write hardening, points rules and the OTP BACKEND are LIVE
+(see the last two sections). The staff and customer screens that call it are not built yet.
 
 ## Why this exists
 
@@ -313,3 +313,71 @@ of past use in production (every balance matches its ledger).
   that is separate from this work.
 - The ledger clamps the displayed balance at 0 (`GREATEST(0, ...)`), which is
   what would have hidden the double-expiry bug on screen.
+
+### Points rules (live, 8 Oct 2026)
+
+`20260912020000_points_rules.sql`. Welcome points now expire 6 months after issue
+(the expiry date was already stamped; the expiry function just ignored the type;
+nothing is past expiry today). Staff, admin included, can no longer set
+`current_points` / `lifetime_points` directly; points change only through ledger
+rows, which the sync trigger reflects. An admin adjusts points by inserting a
+`card_points` row.
+
+## OTP backend (live, 8 Oct 2026)
+
+`20260912030000_otp_redemption.sql`. Three tables (`redemption_options`,
+`redemption_sessions`, `redemption_otps`) and six functions. No screen calls them
+yet.
+
+| Function | Caller | Purpose |
+|---|---|---|
+| `redemption_start(bill_entry_id)` | sales (own bills) / admin | Open a session on a PENDING bill entry |
+| `redemption_customer_session()` | customer | The open session and which options fit |
+| `redemption_choose(session_id, points)` | customer | Pick an option; the ONLY call that returns the code |
+| `redemption_verify(session_id, code)` | the staff member who started it / admin | Check the code and move everything in one transaction |
+| `redemption_cancel(session_id)` | initiator, admin, or the customer | Close a session |
+| `redemption_expire_stale()` | service_role (cron) | Close abandoned sessions |
+
+Refusals from `redemption_start` raise with a stable code before the first colon
+(`BILL_BELOW_MINIMUM`, `WAITING_PERIOD`, `CAP_REACHED`, `INSUFFICIENT_POINTS`,
+`CUSTOMER_APP_NOT_ACTIVATED`, `TIER_NOT_ELIGIBLE`, `BILL_NOT_YOURS`,
+`BILL_ALREADY_DECIDED`, `BILL_IS_RETURN`, `SESSION_IN_PROGRESS`, `RATE_LIMITED`).
+`choose` and `verify` return `{ok:false, reason}` instead of raising, because an
+exception would roll back the attempt counter and allow unlimited guesses
+(`WRONG_CODE` with `attempts_left`, `TOO_MANY_ATTEMPTS`, `SESSION_EXPIRED`,
+`BAD_FORMAT`, `BILL_CHANGED`, `EXCEEDS_CAP`, `NOT_AWAITING_CODE`).
+
+Rules, all read from `card_settings` so they change without a deploy:
+`redemption_min_bill` 30000, `redemption_cap_pct_of_bill` 5, `redemption_otp_minutes`
+10, `redemption_otp_max_attempts` 3, `redemption_sessions_per_hour` 5. The menu of
+options per tier lives in `redemption_options`.
+
+What `redemption_verify` does on success, atomically: inserts a `redemption_requests`
+row as `used` linked to the bill, spends the points FIFO from the soonest-expiring
+lots, adds the rupees to the bill's `redemption_amount` AND subtracts them from
+`net_bill_amount` (accounts' approval screen pre-fills net, and points are earned
+on it), and deletes the code. `redemption_request_id` on the bill is left NULL on
+purpose so the legacy branch in `fn_credit_or_reverse_points` cannot deduct again.
+
+Security notes. The code is stored as a salted SHA-256 hash, but with only 10,000
+possible codes that hash would not stand up to offline guessing; the protection is
+access control (no client privilege on `redemption_otps`, one function that ever
+reveals the code, three attempts per code). Anyone with direct database access
+could still read it. `redemption_choose` can be called again to issue a fresh code
+(which resets the attempt counter); only the customer can do that, never staff.
+
+### Still to build
+
+1. **Staff screen** (`CardBillEntries.tsx`): Redeem button on a pending entry that
+   shows rupees-not-percentages ("cap Rs 3,347, Rs 750 used, Rs 2,597 left"), the
+   four-box code entry, and calls `send-push` after start so the customer is told.
+2. **Customer screen** (`redeem.tsx`): replace the request form with the option
+   picker and code display, plus the REDEEMED stamp on used entries.
+3. **Reversal** on a rejected or returned bill: `fn_release_points` plus restoring
+   the bill's net, and mark the request `reversed`.
+4. **Remove** the legacy redemption branch in `fn_credit_or_reverse_points`, and
+   drop the customer INSERT policy on `redemption_requests`.
+5. **Daily report** and the **admin override** for a customer who cannot show a code.
+6. **Referral bonus**: the staff app inserts +20 straight into `card_points`, which
+   RLS refuses for sales while still showing "20 bonus pts credited". It needs a
+   server-side function.
