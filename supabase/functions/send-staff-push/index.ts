@@ -15,7 +15,10 @@
  *   data     : object   (optional) — forwarded to the app; `url` drives the
  *              deep link opened when the notification is tapped
  *
- * Returns { sent: number, targeted: number, error?: string }
+ * Lead and order alerts are also mirrored to each recipient's WhatsApp (see
+ * _shared/staff-whatsapp.ts); chat alerts stay push-only.
+ *
+ * Returns { sent: number, targeted: number, whatsapp_sent: number, error?: string }
  *
  * Invocation patterns:
  *   - From the notifications / chat_messages database triggers
@@ -24,6 +27,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
+import { mirrorStaffAlertToWhatsApp } from "../_shared/staff-whatsapp.ts";
 
 const SUPABASE_URL      = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE      = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -143,6 +147,15 @@ Deno.serve(async (req: Request) => {
     return json({ error: "No recipients: pass user_ids or roles" }, 400);
   }
 
+  // Important alerts also go to each person's WhatsApp. Runs alongside the
+  // push and does not depend on a registered device, so staff who never
+  // connected a phone still hear about new leads and orders.
+  const whatsapp = mirrorStaffAlertToWhatsApp(supabase, [...targetUserIds], { type, title, message })
+    .catch((e) => {
+      console.error("Staff WhatsApp mirror failed:", String(e));
+      return 0;
+    });
+
   // ── 2. Look up their enabled devices ────────────────────────────────────
   const { data: devices, error: devErr } = await supabase
     .from("staff_push_devices")
@@ -152,7 +165,7 @@ Deno.serve(async (req: Request) => {
 
   if (devErr) {
     console.error("staff_push_devices lookup error:", devErr.message);
-    return json({ error: devErr.message }, 500);
+    return json({ error: devErr.message, whatsapp_sent: await whatsapp }, 500);
   }
 
   // One person can have several devices; de-duplicate the player IDs.
@@ -165,7 +178,12 @@ Deno.serve(async (req: Request) => {
   });
 
   if (targets.length === 0) {
-    return json({ sent: 0, targeted: 0, error: "No registered staff devices for these recipients." });
+    return json({
+      sent: 0,
+      targeted: 0,
+      whatsapp_sent: await whatsapp,
+      error: "No registered staff devices for these recipients.",
+    });
   }
 
   // ── 3. Send via OneSignal in batches ────────────────────────────────────
@@ -222,11 +240,13 @@ Deno.serve(async (req: Request) => {
     if (logErr) console.error("Log insert error:", logErr.message);
   }
 
+  const whatsappSent = await whatsapp;
   return json({
-    sent:     sentCount,
-    targeted: targets.length,
+    sent:          sentCount,
+    targeted:      targets.length,
+    whatsapp_sent: whatsappSent,
     ...(lastError ? { error: lastError } : {}),
-  }, sentCount === 0 ? 502 : 200);
+  }, sentCount === 0 && whatsappSent === 0 ? 502 : 200);
 });
 
 /** OneSignal needs an absolute launch URL; triggers pass app-relative paths. */

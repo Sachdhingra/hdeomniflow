@@ -9,11 +9,29 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/lib/toast";
+import { WA_TEMPLATES } from "@/lib/whatsappTemplates";
 
 type StageRow = { stage: string; count: number; avg_days: number };
 type LogRow = { id: string; event_type: string; success: boolean; details: any; error_message: string | null; executed_at: string; lead_id: string | null };
 type MsgRow = { id: string; lead_id: string; message_type: string; journey_stage: string | null; status: string; created_at: string; sent_at: string | null; message_kind: string | null };
 type FailRow = { id: string; lead_id: string | null; error_message: string | null; executed_at: string; details: any };
+
+const waitForFinalTwilioStatus = async (messageId: string) => {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    await new Promise((resolve) => window.setTimeout(resolve, 1_000));
+    const { data } = await supabase
+      .from("message_logs")
+      .select("status, error_message")
+      .eq("provider_message_id", messageId)
+      .maybeSingle();
+
+    if (data?.status === "delivered" || data?.status === "read") return { delivered: true, status: data.status, error: null };
+    if (data?.status === "failed" || data?.status === "undelivered") {
+      return { delivered: false, status: data.status, error: data.error_message };
+    }
+  }
+  return { delivered: null, status: "submitted", error: null };
+};
 
 const STAGES = ["new", "contacted", "follow_up", "negotiation", "overdue"] as const;
 type ActiveStage = typeof STAGES[number];
@@ -30,6 +48,7 @@ const AdminAutomation = () => {
   const [testOpen, setTestOpen] = useState(false);
   const [testPhone, setTestPhone] = useState("");
   const [testing, setTesting] = useState(false);
+  const [lastRun, setLastRun] = useState<LogRow | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -66,6 +85,7 @@ const AdminAutomation = () => {
         .order("executed_at", { ascending: false })
         .limit(30);
       setLogs((logsData ?? []) as LogRow[]);
+      setLastRun(((logsData ?? []).find(l => l.event_type === "engine_run" && l.success) as LogRow | undefined) ?? null);
 
       const { data: msgsData } = await supabase
         .from("lead_messages")
@@ -155,9 +175,14 @@ const AdminAutomation = () => {
       const { data, error } = await supabase.functions.invoke("send-whatsapp", {
         body: {
           phone: testPhone.trim(),
-          message: `✅ Twilio WhatsApp test from Omni at ${new Date().toLocaleString()}`,
+          content_sid: WA_TEMPLATES.followUpYesNo,
+          content_variables: {
+            "1": "Admin",
+            "2": "an update from Home Decor Enterprises",
+          },
           user_id: user?.id,
           user_name: user?.name,
+          message_kind: "twilio_delivery_test",
         },
       });
       if (error) {
@@ -168,8 +193,17 @@ const AdminAutomation = () => {
         return;
       }
       if (data?.success) {
-        toast.success(`Test sent! Message SID: ${data.message_id}`);
-        setTestOpen(false);
+        toast.info("Test submitted. Checking final WhatsApp delivery…");
+        const outcome = await waitForFinalTwilioStatus(data.message_id);
+        if (outcome.delivered) {
+          toast.success("Test delivered to WhatsApp.");
+          setTestOpen(false);
+        } else if (outcome.delivered === false) {
+          toast.error(`Test was not delivered${outcome.error ? `: ${outcome.error}` : "."}`);
+        } else {
+          toast.info("Test submitted; final delivery is still pending. Check Recent messages shortly.");
+          setTestOpen(false);
+        }
       } else {
         toast.error(`Failed: ${data?.error || "unknown error"}`);
       }
@@ -190,6 +224,12 @@ const AdminAutomation = () => {
         <div>
           <h1 className="text-2xl font-bold">Automation Monitor</h1>
           <p className="text-sm text-muted-foreground">Autonomous nurture engine — daily scoring, stage moves, and message queue.</p>
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <Badge variant="secondary">Automatic · active</Badge>
+            <Badge variant="outline">YES/NO template · Meta approved</Badge>
+            <span className="text-xs text-muted-foreground">Runs daily at 6:00 PM and 8:00 PM India time</span>
+            {lastRun && <span className="text-xs text-muted-foreground">· Last run {new Date(lastRun.executed_at).toLocaleString()}</span>}
+          </div>
         </div>
         <div className="flex gap-2 flex-wrap">
           <Button onClick={() => setTestOpen(true)} variant="outline" className="gap-2">
@@ -326,7 +366,7 @@ const AdminAutomation = () => {
           <DialogHeader>
             <DialogTitle>Test Twilio WhatsApp Send</DialogTitle>
             <DialogDescription>
-              Sends a test WhatsApp message via Twilio. Use your own number (with country code) to verify delivery.
+              Sends an approved WhatsApp template and checks its final delivery result. Use your own number with country code.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-2">

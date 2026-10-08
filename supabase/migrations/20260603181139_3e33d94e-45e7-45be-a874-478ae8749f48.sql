@@ -32,7 +32,20 @@ CREATE POLICY "Users can remove their own reactions"
 ON public.message_reactions FOR DELETE TO authenticated
 USING (user_id = auth.uid());
 
-ALTER PUBLICATION supabase_realtime ADD TABLE public.message_reactions;
+-- ADD TABLE errors on a table already in the publication, which fails the
+-- whole migration on a re-run. Only add it when it isn't a member yet.
+DO $realtime$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+     WHERE pubname = 'supabase_realtime'
+       AND schemaname = 'public'
+       AND tablename = 'message_reactions'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.message_reactions;
+  END IF;
+END
+$realtime$;
 ALTER TABLE public.message_reactions REPLICA IDENTITY FULL;
 
 -- user_status (away message)
@@ -59,7 +72,20 @@ ON public.user_status FOR UPDATE TO authenticated
 USING (user_id = auth.uid())
 WITH CHECK (user_id = auth.uid());
 
-ALTER PUBLICATION supabase_realtime ADD TABLE public.user_status;
+-- ADD TABLE errors on a table already in the publication, which fails the
+-- whole migration on a re-run. Only add it when it isn't a member yet.
+DO $realtime$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+     WHERE pubname = 'supabase_realtime'
+       AND schemaname = 'public'
+       AND tablename = 'user_status'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.user_status;
+  END IF;
+END
+$realtime$;
 
 -- edit/delete columns on chat_messages
 ALTER TABLE public.chat_messages

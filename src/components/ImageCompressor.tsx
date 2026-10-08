@@ -6,7 +6,11 @@ const MAX_SIZE_KB = 300;
 const MAX_FILES = 5;
 const MAX_DIMENSION = 1280;
 
-async function compressImage(file: File, maxSizeKB: number): Promise<File> {
+async function compressImage(
+  file: File,
+  maxSizeKB: number,
+  maxDimension: number = MAX_DIMENSION,
+): Promise<File> {
   return new Promise((resolve) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
@@ -15,8 +19,8 @@ async function compressImage(file: File, maxSizeKB: number): Promise<File> {
       const canvas = document.createElement("canvas");
       let { width, height } = img;
 
-      if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
-        const ratio = Math.min(MAX_DIMENSION / width, MAX_DIMENSION / height);
+      if (width > maxDimension || height > maxDimension) {
+        const ratio = Math.min(maxDimension / width, maxDimension / height);
         width = Math.round(width * ratio);
         height = Math.round(height * ratio);
       }

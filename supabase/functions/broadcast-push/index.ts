@@ -17,7 +17,8 @@
  *   title            : string                        (required)
  *   message          : string                        (required)
  *   image_url        : string   (optional — shown as big picture for banner/offer)
- *   link_url         : string   (optional — opened when notification is tapped)
+ *   link_url         : string   (optional — customer pushes show it as a button on
+ *                                 the Insider home screen; staff pushes open it on tap)
  *   offer_code       : string   (optional — forwarded in data payload)
  *   offer_expires_at : ISO date (optional — forwarded in data payload)
  *
@@ -26,6 +27,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 import { mirrorToWhatsApp } from "../_shared/whatsapp-mirror.ts";
+import { mirrorStaffAlertToWhatsApp } from "../_shared/staff-whatsapp.ts";
 
 const SUPABASE_URL      = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE      = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -38,6 +40,11 @@ const ONESIGNAL_APP_ID  = Deno.env.get("ONESIGNAL_APP_ID")!;
 // mismatched credentials.
 const STAFF_APP_ID  = Deno.env.get("ONESIGNAL_STAFF_APP_ID")  ?? "4e6e57c1-7555-4f05-81e2-efdb9d6e19d4";
 const STAFF_API_KEY = Deno.env.get("ONESIGNAL_STAFF_API_KEY") ?? "";
+
+// Tapping a customer broadcast opens the Insider home screen, where the push
+// stays on show for 24 hours (see push_notifications_log.expires_at).
+const PWA_URL = Deno.env.get("PWA_URL") ?? "https://homedecorinsider.lovable.app";
+const IN_APP_TTL_MS = 24 * 60 * 60 * 1000;
 
 const ONESIGNAL_URL = "https://onesignal.com/api/v1/notifications";
 // OneSignal accepts at most 2000 player IDs per create-notification call.
@@ -113,34 +120,39 @@ Deno.serve(async (req: Request) => {
     if (!ONESIGNAL_APP_ID || !ONESIGNAL_API_KEY) {
       return json({ error: "Push service is not configured yet." }, 503);
     }
-    // Staff reach comes from our own device table — OneSignal's device list
-    // spans both apps when they share an app ID and can't tell them apart.
+    // Staff reach comes from our own device table.
     const { count: staffReachable } = await supabase
       .from("staff_push_devices")
       .select("id", { count: "exact", head: true })
       .eq("push_enabled", true);
 
-    // How many Insider customers the app knows are unreachable right now.
+    // Customer reach is counted from the same place a broadcast sends to: the
+    // push tokens the Insider app saved on app_users. OneSignal's legacy
+    // /players endpoint returns nothing for apps on its User Model, which is
+    // what left this badge stuck at 0 while broadcasts were being delivered.
+    const { data: tokenRows, error: tokenErr } = await supabase
+      .from("app_users")
+      .select("onesignal_player_id")
+      .not("onesignal_player_id", "is", null);
+    if (tokenErr) {
+      console.error("Could not count Insider push tokens:", tokenErr.message);
+      return json({ error: "Could not read registered Insider devices." }, 502);
+    }
+    const customerReachable = new Set(
+      (tokenRows ?? []).map((r) => r.onesignal_player_id as string),
+    ).size;
+
+    // Unreachable customers: no saved token, or the browser said no / never
+    // answered. A saved token with a blank push_permission is an account that
+    // registered before permission tracking existed — it is reachable.
     const { count: needsOptIn } = await supabase
       .from("app_users")
       .select("id", { count: "exact", head: true })
-      .or("push_permission.is.null,push_permission.neq.granted");
-
-    const reachable = await getOneSignalReachableCount();
-    if (reachable === null) {
-      return json({ error: "Could not read registered devices from OneSignal." }, 502);
-    }
-
-    // When both apps share one OneSignal app, its device list covers staff
-    // too. Take those out so the Insider badge counts customers only.
-    const staffCount = staffReachable ?? 0;
-    const customerReachable = STAFF_APP_ID === ONESIGNAL_APP_ID
-      ? Math.max(0, reachable - staffCount)
-      : reachable;
+      .or("onesignal_player_id.is.null,push_permission.in.(denied,default)");
 
     return json({
       reachable: customerReachable,
-      staff_reachable: staffCount,
+      staff_reachable: staffReachable ?? 0,
       needs_opt_in: needsOptIn ?? 0,
     });
   }
@@ -208,6 +220,25 @@ Deno.serve(async (req: Request) => {
   type Recipient = { customer_id: string | null; onesignal_player_id: string };
   let recipients: Recipient[] = [];
 
+  // A staff broadcast also goes to WhatsApp for the desk roles (sales,
+  // service_head, accounts — see staff-whatsapp.ts), including
+  // those who never connected a phone for push. Runs alongside the push.
+  let staffWhatsApp: Promise<number> = Promise.resolve(0);
+  if (audience === "staff") {
+    staffWhatsApp = (async () => {
+      const { data: staffRows, error: staffErr } = await supabase.from("user_roles").select("user_id");
+      if (staffErr) throw new Error(staffErr.message);
+      return mirrorStaffAlertToWhatsApp(
+        supabase,
+        (staffRows ?? []).map((r) => r.user_id as string),
+        { type: `broadcast_${campaign_type}`, title, message },
+      );
+    })().catch((e) => {
+      console.error("Staff WhatsApp broadcast failed:", String(e));
+      return 0;
+    });
+  }
+
   if (audience === "staff") {
     const { data, error: recErr } = await supabase
       .from("staff_push_devices")
@@ -254,6 +285,13 @@ Deno.serve(async (req: Request) => {
     ...(link_url ? { link_url } : {}),
   };
 
+  // Where a tap lands. Customers go to the Insider home screen with this
+  // campaign highlighted; any link_url becomes a button on that card. Staff
+  // keep the old behaviour of opening link_url directly.
+  const clickUrl = audience === "staff"
+    ? (link_url || undefined)
+    : `${PWA_URL}/home?push=${campaign.id}`;
+
   let sentCount = 0;
   let lastError: string | undefined;
 
@@ -271,7 +309,7 @@ Deno.serve(async (req: Request) => {
       headings: { en: title },
       contents: { en: message },
       data: dataPayload,
-      ...(link_url ? { url: link_url } : {}),
+      ...(clickUrl ? { url: clickUrl } : {}),
       ...(image_url
         ? {
             big_picture: image_url,
@@ -307,6 +345,15 @@ Deno.serve(async (req: Request) => {
       lastError = String(e);
     }
 
+    // The segment send has no per-device list, so give every Insider customer
+    // the in-app copy — otherwise the home screen would have nothing to show
+    // when they tap the push. The nudge is about switching notifications on
+    // and has nothing to show in-app.
+    if (!isReengagement && sentCount > 0) {
+      await logInAppCopies(campaign.id, {
+        campaign_type, title, message, image_url, link_url, offer_code, offer_expires_at,
+      });
+    }
 
     // Stamp the nudge so the dashboard can show when it last went out.
     if (isReengagement && sentCount > 0) {
@@ -345,7 +392,11 @@ Deno.serve(async (req: Request) => {
   if (targets.length === 0) {
     const err = "No staff device is registered for push yet. Staff must sign in to OmniFlow and allow notifications first.";
     await failCampaign(campaign.id, err);
-    return json({ campaign_id: campaign.id, targeted: 0, sent: 0, error: err }, 502);
+    const whatsappSent = await staffWhatsApp;
+    return json(
+      { campaign_id: campaign.id, targeted: 0, sent: 0, whatsapp_sent: whatsappSent, error: err },
+      whatsappSent > 0 ? 200 : 502,
+    );
   }
 
   for (let i = 0; i < targets.length; i += BATCH_SIZE) {
@@ -356,7 +407,7 @@ Deno.serve(async (req: Request) => {
       headings:           { en: title },
       contents:           { en: message },
       data:               dataPayload,
-      ...(link_url ? { url: link_url } : {}),
+      ...(clickUrl ? { url: clickUrl } : {}),
       // Rich image for banner/offer pushes across platforms
       ...(image_url
         ? {
@@ -408,7 +459,7 @@ Deno.serve(async (req: Request) => {
       offer_code:        offer_code || null,
       offer_expires_at:  offer_expires_at || null,
       campaign_id:       campaign.id,
-      expires_at:        new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      expires_at:        new Date(Date.now() + IN_APP_TTL_MS).toISOString(),
       delivery_status:   batchOk ? "sent" : "failed",
     }));
     const { error: logErr } = await supabase.from("push_notifications_log").insert(logRows);
@@ -442,13 +493,62 @@ Deno.serve(async (req: Request) => {
     })
     .eq("id", campaign.id);
 
+  const whatsappSent = await staffWhatsApp;
   return json({
-    campaign_id: campaign.id,
-    targeted:    targets.length,
-    sent:        sentCount,
+    campaign_id:   campaign.id,
+    targeted:      targets.length,
+    sent:          sentCount,
+    ...(audience === "staff" ? { whatsapp_sent: whatsappSent } : {}),
     ...(lastError ? { error: lastError } : {}),
-  }, status === "failed" ? 502 : 200);
+  }, status === "failed" && whatsappSent === 0 ? 502 : 200);
 });
+
+type InAppFields = {
+  campaign_type: string;
+  title: string;
+  message: string;
+  image_url?: string;
+  link_url?: string;
+  offer_code?: string;
+  offer_expires_at?: string;
+};
+
+/** One push_notifications_log row per Insider customer, shown in-app for 24 hours. */
+async function logInAppCopies(campaignId: string, f: InAppFields): Promise<void> {
+  const { data, error } = await supabase
+    .from("app_users")
+    .select("customer_id")
+    .not("customer_id", "is", null);
+  if (error) {
+    console.error("In-app copy recipients error:", error.message);
+    return;
+  }
+
+  const customerIds = [...new Set((data ?? []).map((r) => r.customer_id as string))];
+  const nowIso = new Date().toISOString();
+  const expiresIso = new Date(Date.now() + IN_APP_TTL_MS).toISOString();
+  const rows = customerIds.map((customer_id) => ({
+    customer_id,
+    notification_type: `broadcast_${f.campaign_type}`,
+    title:             f.title,
+    message:           f.message,
+    sent_at:           nowIso,
+    image_url:         f.image_url || null,
+    link_url:          f.link_url || null,
+    offer_code:        f.offer_code || null,
+    offer_expires_at:  f.offer_expires_at || null,
+    campaign_id:       campaignId,
+    expires_at:        expiresIso,
+    delivery_status:   "sent",
+  }));
+
+  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+    const { error: logErr } = await supabase
+      .from("push_notifications_log")
+      .insert(rows.slice(i, i + BATCH_SIZE));
+    if (logErr) console.error("In-app copy insert error:", logErr.message);
+  }
+}
 
 async function failCampaign(id: string, error: string): Promise<void> {
   await supabase
@@ -456,41 +556,6 @@ async function failCampaign(id: string, error: string): Promise<void> {
     .update({ status: "failed", error })
     .eq("id", id);
 }
-
-async function getOneSignalReachableCount(): Promise<number | null> {
-  try {
-    // Count only devices that actually hold a push subscription
-    // (notification_types > 0). Records with null/negative values exist in
-    // OneSignal but cannot receive anything — counting them is misleading.
-    let offset = 0;
-    let reachable = 0;
-    for (let page = 0; page < 10; page++) {
-      const response = await fetch(
-        `https://onesignal.com/api/v1/players?app_id=${encodeURIComponent(ONESIGNAL_APP_ID)}&limit=300&offset=${offset}`,
-        { headers: { "Authorization": `Key ${ONESIGNAL_API_KEY}` } },
-      );
-      if (!response.ok) {
-        console.error("OneSignal device count error:", response.status, await response.text());
-        return null;
-      }
-      const result = await response.json() as {
-        total_count?: number;
-        players?: { notification_types?: number | null; invalid_identifier?: boolean }[];
-      };
-      const players = result.players ?? [];
-      reachable += players.filter(
-        (p) => !p.invalid_identifier && typeof p.notification_types === "number" && p.notification_types > 0,
-      ).length;
-      offset += players.length;
-      if (players.length === 0 || offset >= (result.total_count ?? 0)) break;
-    }
-    return reachable;
-  } catch (error) {
-    console.error("OneSignal device count failed:", String(error));
-    return null;
-  }
-}
-
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {

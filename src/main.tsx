@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
+import { ensureAppWorker } from "./lib/appWorker";
 
 // Clickjacking protection: meta-tag CSP cannot express frame-ancestors,
 // so break out if the app is loaded inside a hostile iframe.
@@ -16,7 +17,7 @@ if (window.self !== window.top) {
 // backgrounded on Android Chrome (new Notification() is dropped on mobile).
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch(() => {});
+    ensureAppWorker().catch(() => {});
   });
 }
 

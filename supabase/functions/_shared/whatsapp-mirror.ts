@@ -8,6 +8,7 @@
 // Mirroring is best-effort: any failure is logged and swallowed so a WhatsApp
 // problem can never block or fail a push notification.
 import { TWILIO_TEMPLATES, whatsappFrom } from "./twilio-templates.ts";
+import { normalizeIndianPhone } from "./indian-phone.ts";
 
 const MAX_CONCURRENCY = 5;
 
@@ -18,9 +19,7 @@ export type MirrorTarget = {
 };
 
 function normalizePhone(raw: string): string {
-  const digits = (raw || "").replace(/\D/g, "");
-  if (!digits) return "";
-  return digits.length > 10 ? `+${digits}` : `+91${digits}`;
+  return normalizeIndianPhone(raw);
 }
 
 function firstName(name: string | null): string {

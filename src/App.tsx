@@ -28,9 +28,11 @@ const AdminCategories = lazy(() => import("@/pages/AdminCategories"));
 const AdminProducts = lazy(() => import("@/pages/AdminProducts"));
 const ProductsView = lazy(() => import("@/pages/ProductsView"));
 const ProductLibrary = lazy(() => import("@/pages/ProductLibrary"));
+const SavedQuotes = lazy(() => import("@/pages/SavedQuotes"));
 const AdminProductLibrary = lazy(() => import("@/pages/AdminProductLibrary"));
 
 const LeadsBoard = lazy(() => import("@/pages/LeadsBoard"));
+const LeadToDealPipeline = lazy(() => import("@/pages/LeadToDealPipeline"));
 const AdminAutomation = lazy(() => import("@/pages/AdminAutomation"));
 const LeadOutreach = lazy(() => import("@/pages/LeadOutreach"));
 const AdminMessageTemplates = lazy(() => import("@/pages/AdminMessageTemplates"));
@@ -47,6 +49,7 @@ const FeedbackKiosk = lazy(() => import("@/pages/FeedbackKiosk"));
 const FeedbackAnalyticsDashboard = lazy(() => import("@/pages/FeedbackAnalyticsDashboard"));
 const AdminSchemeBanners = lazy(() => import("@/pages/AdminSchemeBanners"));
 const AdminLoginBanners = lazy(() => import("@/pages/AdminLoginBanners"));
+const AdminWebsiteGallery = lazy(() => import("@/pages/AdminWebsiteGallery"));
 const AdminPushNotifications = lazy(() => import("@/pages/AdminPushNotifications"));
 const AdminCompanyPurchases = lazy(() => import("@/pages/AdminCompanyPurchases"));
 const AdminSuppliers = lazy(() => import("@/pages/AdminSuppliers"));
@@ -112,6 +115,7 @@ const AppRoutes = () => {
             <Route path="/products" element={<AdminProducts />} />
             <Route path="/admin/products" element={<AdminProducts />} />
             <Route path="/leads/board" element={<LeadsBoard />} />
+            <Route path="/leads/deals" element={<LeadToDealPipeline />} />
             <Route path="/admin/automation" element={<AdminAutomation />} />
             <Route path="/outreach" element={<LeadOutreach />} />
             <Route path="/admin/templates" element={<AdminMessageTemplates />} />
@@ -125,6 +129,7 @@ const AppRoutes = () => {
             <Route path="/dashboard/feedback-analytics" element={<FeedbackAnalyticsDashboard />} />
             <Route path="/admin/kiosk-banners" element={<AdminSchemeBanners />} />
             <Route path="/admin/login-banners" element={<AdminLoginBanners />} />
+            <Route path="/admin/website-gallery" element={<AdminWebsiteGallery />} />
             <Route path="/admin/push-notifications" element={<AdminPushNotifications />} />
             <Route path="/accounts/purchases" element={<AdminCompanyPurchases />} />
             <Route path="/accounts/suppliers" element={<AdminSuppliers />} />
@@ -150,6 +155,7 @@ const AppRoutes = () => {
             <Route path="/" element={<SalesDashboard />} />
             <Route path="/leads" element={<SalesDashboard />} />
             <Route path="/leads/board" element={<LeadsBoard />} />
+            <Route path="/leads/deals" element={<LeadToDealPipeline />} />
             <Route path="/pipeline" element={<SalesPipeline />} />
             <Route path="/outreach" element={<LeadOutreach />} />
             <Route path="/products" element={<ProductsView />} />
@@ -215,6 +221,7 @@ const AppRoutes = () => {
             <Route path="/logistics-calculator/history" element={<LogisticsHistory />} />
             <Route path="/logistics-calculator/settings" element={<LogisticsCalculatorSettings />} />
             <Route path="/product-library" element={<ProductLibrary />} />
+            <Route path="/product-library/quotes" element={<SavedQuotes />} />
             <Route path="/admin/product-library" element={<AdminProductLibrary />} />
 
             <Route path="*" element={<NotFound />} />

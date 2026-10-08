@@ -213,4 +213,17 @@ $$;
 
 -- 5) Realtime for scheme banners
 ALTER TABLE public.scheme_banners REPLICA IDENTITY FULL;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.scheme_banners;
+-- ADD TABLE errors on a table already in the publication, which fails the
+-- whole migration on a re-run. Only add it when it isn't a member yet.
+DO $realtime$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+     WHERE pubname = 'supabase_realtime'
+       AND schemaname = 'public'
+       AND tablename = 'scheme_banners'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.scheme_banners;
+  END IF;
+END
+$realtime$;

@@ -73,11 +73,15 @@ export function validateTextInput(value: string, maxLength = 2000): ValidationRe
 export function validatePhone(value: string): ValidationResult {
   const digits = (value || '').replace(/\D/g, '');
   const issues: string[] = [];
+  const nationalNumber = digits.slice(-10);
 
   if (digits.length < 10) issues.push('phone number must have at least 10 digits');
-  if (digits.length > 13) issues.push('phone number too long');
+  if (digits.length > 14) issues.push('phone number too long');
+  if (digits.length >= 10 && !/^[6-9]\d{9}$/.test(nationalNumber)) {
+    issues.push('invalid Indian mobile number');
+  }
 
-  const canonical = digits.length >= 10 ? `+91${digits.slice(-10)}` : '';
+  const canonical = digits.length >= 10 ? `+91${nationalNumber}` : '';
   return { valid: issues.length === 0, sanitized: canonical, issues };
 }
 

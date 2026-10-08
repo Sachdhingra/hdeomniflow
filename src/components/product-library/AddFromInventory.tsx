@@ -17,6 +17,7 @@ import { toast } from "@/lib/toast";
 interface InvResult {
   id: string;
   sku: string;
+  line_code: string | null;
   product_name: string;
   net_price: number;
   photo_url: string | null;
@@ -38,14 +39,16 @@ const AddFromInventory = () => {
       try {
         let q = plDb
           .from("products")
-          .select("id, sku, product_name, net_price")
+          .select("id, sku, line_code, product_name, net_price")
           .eq("status", "active")
           .is("deleted_at", null)
           .order("product_name")
           .limit(25);
         const term = query.trim();
         if (term) {
-          q = q.or(`product_name.ilike.%${term}%,sku.ilike.%${term}%`);
+          q = q.or(
+            `product_name.ilike.%${term}%,sku.ilike.%${term}%,line_code.ilike.%${term}%`,
+          );
         }
         const { data, error } = await q;
         if (error) throw error;
@@ -69,17 +72,22 @@ const AddFromInventory = () => {
   }, [query, open]);
 
   const pick = (p: InvResult) => {
-    addItem({
-      product_id: null,
-      variant_id: null,
-      image_url: p.photo_url,
-      product_name: p.product_name,
-      sku: p.sku,
-      description: null,
-      quantity: 1,
-      unit_price: Number(p.net_price) || 0,
-      gst_percent: 18,
-    });
+    // Inventory net price includes GST. The Interio line code helps match the website photo.
+    addItem(
+      {
+        product_id: null,
+        variant_id: null,
+        image_url: p.photo_url,
+        image_source: p.photo_url ? "inventory" : null,
+        product_name: p.product_name,
+        sku: p.sku,
+        description: null,
+        quantity: 1,
+        unit_price: Number(p.net_price) || 0,
+        gst_percent: 18,
+      },
+      [p.line_code],
+    );
     toast.success(`Added ${p.product_name}`);
     setOpen(false);
     setQuery("");

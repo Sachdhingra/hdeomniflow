@@ -1,0 +1,347 @@
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
+
+/**
+ * Regression cover for src/lib/push.ts — staff device registration.
+ *
+ * The bug these guard: a slow OneSignal.init() used to have its cached promise
+ * thrown away on timeout, so the next "Connect this phone" tap started a
+ * SECOND init while the first was still running. The SDK rebuilt its internals
+ * underneath the first call and every later API call died inside the minified
+ * CDN bundle with "Cannot read properties of undefined (reading 'Qe')" — which
+ * is what sales phones showed instead of ever registering.
+ */
+
+type Subscription = {
+  id: string | null;
+  optedIn: boolean;
+  optIn: ReturnType<typeof vi.fn>;
+  optOut: ReturnType<typeof vi.fn>;
+  addEventListener: ReturnType<typeof vi.fn>;
+  removeEventListener: ReturnType<typeof vi.fn>;
+};
+
+const subscription: Subscription = {
+  id: null,
+  optedIn: false,
+  optIn: vi.fn(),
+  optOut: vi.fn(),
+  addEventListener: vi.fn(),
+  removeEventListener: vi.fn(),
+};
+
+const oneSignal = {
+  init: vi.fn(),
+  login: vi.fn(),
+  logout: vi.fn(),
+  Debug: { setLogLevel: vi.fn() },
+  Notifications: {
+    permission: true,
+    requestPermission: vi.fn(),
+  },
+  User: { PushSubscription: subscription },
+};
+
+const rpc = vi.fn();
+
+vi.mock("react-onesignal", () => ({ default: oneSignal }));
+vi.mock("@/integrations/supabase/client", () => ({
+  supabase: {
+    rpc: (...args: unknown[]) => rpc(...args),
+    from: () => ({ update: () => ({ eq: () => Promise.resolve({ error: null }) }) }),
+  },
+}));
+
+/** Fresh module state per test — push.ts caches the SDK client at module scope. */
+async function loadPush() {
+  vi.resetModules();
+  return import("@/lib/push");
+}
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.clearAllMocks();
+
+  subscription.id = null;
+  subscription.optedIn = false;
+  subscription.optIn.mockResolvedValue(undefined);
+  oneSignal.init.mockResolvedValue(undefined);
+  oneSignal.login.mockResolvedValue(undefined);
+  oneSignal.Notifications.permission = true;
+  oneSignal.Notifications.requestPermission.mockResolvedValue(undefined);
+  rpc.mockResolvedValue({ error: null });
+  sessionStorage.clear();
+  // No OneSignal app config by default, so the site check stands aside.
+  vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+
+  delete (window as { __omniflowOneSignalInit?: unknown }).__omniflowOneSignalInit;
+  // Stands in for the CDN bundle having executed.
+  (window as { OneSignal?: unknown }).OneSignal = oneSignal;
+  Object.defineProperty(window, "PushManager", { value: class {}, configurable: true });
+  Object.defineProperty(navigator, "serviceWorker", {
+    value: {
+      register: vi.fn().mockResolvedValue({}),
+      getRegistration: vi.fn().mockResolvedValue(undefined),
+      ready: Promise.resolve({}),
+    },
+    configurable: true,
+  });
+  Object.defineProperty(window, "Notification", {
+    value: { permission: "granted" },
+    configurable: true,
+  });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
+describe("registerStaffPush", () => {
+  it("stores the subscription against the signed-in staff user", async () => {
+    subscription.optIn.mockImplementation(async () => {
+      subscription.id = "player-123";
+      subscription.optedIn = true;
+    });
+
+    const push = await loadPush();
+    const result = push.registerStaffPush("user-1", "sales");
+    await vi.runAllTimersAsync();
+
+    expect(await result).toBe(true);
+    expect(oneSignal.login).toHaveBeenCalledWith("user-1");
+    expect(rpc).toHaveBeenCalledWith(
+      "register_staff_push_device",
+      expect.objectContaining({ _player_id: "player-123", _role: "sales" }),
+    );
+    expect(push.staffPushRegistrationError()).toBeNull();
+    expect(push.pushDeliversSystemNotifications()).toBe(true);
+  });
+
+  it("never starts a second init when a slow one outruns the startup timeout", async () => {
+    // An init that never settles — a phone on weak mobile data.
+    oneSignal.init.mockReturnValue(new Promise<void>(() => {}));
+
+    const push = await loadPush();
+    const first = push.registerStaffPush("user-1", "sales");
+    await vi.advanceTimersByTimeAsync(31_000);
+
+    expect(await first).toBe(false);
+    expect(push.staffPushRegistrationError()).toMatch(/Notification service startup timed out/);
+    expect(oneSignal.init).toHaveBeenCalledTimes(1);
+
+    // The tap the sales person makes next must reuse the in-flight init.
+    const second = push.registerStaffPush("user-1", "sales");
+    await vi.advanceTimersByTimeAsync(31_000);
+
+    expect(await second).toBe(false);
+    expect(oneSignal.init).toHaveBeenCalledTimes(1);
+    expect(oneSignal.login).not.toHaveBeenCalled();
+  });
+
+  it("retries init once it has genuinely failed", async () => {
+    oneSignal.init.mockRejectedValueOnce(new Error("Service worker registration failed"));
+
+    const push = await loadPush();
+    const first = push.registerStaffPush("user-1", "sales");
+    await vi.runAllTimersAsync();
+    expect(await first).toBe(false);
+
+    subscription.optIn.mockImplementation(async () => {
+      subscription.id = "player-456";
+      subscription.optedIn = true;
+    });
+    const second = push.registerStaffPush("user-1", "sales");
+    await vi.runAllTimersAsync();
+
+    expect(await second).toBe(true);
+    expect(oneSignal.init).toHaveBeenCalledTimes(2);
+  });
+
+  it("resets OneSignal's storage and reloads after its first internal crash", async () => {
+    const deleteDatabase = vi.fn(() => {
+      const request = {} as { onsuccess?: () => void };
+      queueMicrotask(() => request.onsuccess?.());
+      return request;
+    });
+    // A healthy database for the pre-init probe; the crash comes later.
+    const open = vi.fn(() => {
+      const request = {
+        result: { version: 7, close: vi.fn() },
+      } as unknown as { onsuccess?: () => void };
+      queueMicrotask(() => request.onsuccess?.());
+      return request;
+    });
+    vi.stubGlobal("indexedDB", { open, deleteDatabase });
+    oneSignal.login.mockRejectedValue(
+      new TypeError("Cannot read properties of undefined (reading 'Qe')"),
+    );
+
+    const push = await loadPush();
+    const result = push.registerStaffPush("user-1", "sales");
+    await vi.runAllTimersAsync();
+
+    expect(await result).toBe(false);
+    expect(deleteDatabase).toHaveBeenCalledWith("ONE_SIGNAL_SDK_DB");
+    expect(sessionStorage.getItem("omniflow_onesignal_repaired")).toBe("1");
+    expect(push.staffPushRegistrationError()).toContain("reload");
+  });
+
+  it("explains the opaque crash thrown inside the OneSignal bundle", async () => {
+    // Already reset once this session, so the crash is reported, not retried.
+    sessionStorage.setItem("omniflow_onesignal_repaired", "1");
+    oneSignal.login.mockRejectedValue(
+      new TypeError("Cannot read properties of undefined (reading 'Qe')"),
+    );
+
+    const push = await loadPush();
+    const result = push.registerStaffPush("user-1", "sales");
+    await vi.runAllTimersAsync();
+
+    expect(await result).toBe(false);
+    const message = push.staffPushRegistrationError() ?? "";
+    expect(message).toContain("reading 'Qe'");
+    expect(message).toContain("cdn.onesignal.com");
+  });
+
+  it("names the wrong Site URL instead of letting the SDK crash on it", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          success: true,
+          features: { restrict_origin: { enable: true } },
+          config: { origin: "https://homedecorinsider.lovable.app" },
+        }),
+      }),
+    );
+
+    const push = await loadPush();
+    const result = push.registerStaffPush("user-1", "sales");
+    await vi.runAllTimersAsync();
+
+    expect(await result).toBe(false);
+    expect(oneSignal.init).not.toHaveBeenCalled();
+    const message = push.staffPushRegistrationError() ?? "";
+    expect(message).toContain("https://homedecorinsider.lovable.app");
+    expect(message).toContain(window.location.origin);
+    expect(message).toContain("Site URL");
+  });
+
+  it("carries on when the configured Site URL matches this origin", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: true, config: { origin: window.location.origin } }),
+      }),
+    );
+    subscription.optIn.mockImplementation(async () => {
+      subscription.id = "player-9";
+      subscription.optedIn = true;
+    });
+
+    const push = await loadPush();
+    const result = push.registerStaffPush("user-1", "sales");
+    await vi.runAllTimersAsync();
+
+    expect(await result).toBe(true);
+    expect(oneSignal.init).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the failing step and what OneSignal logged alongside its crash", async () => {
+    sessionStorage.setItem("omniflow_onesignal_repaired", "1");
+    oneSignal.login.mockImplementation(async () => {
+      console.error("IndexedDB unavailable, close & reopen the page to retry init");
+      throw new TypeError("Cannot read properties of undefined (reading 'Qe')");
+    });
+
+    const push = await loadPush();
+    const result = push.registerStaffPush("user-1", "sales");
+    await vi.runAllTimersAsync();
+
+    expect(await result).toBe(false);
+    const message = push.staffPushRegistrationError() ?? "";
+    expect(message).toContain("step: login");
+    expect(message).toContain("IndexedDB unavailable");
+  });
+
+  it("reports that the SDK never loaded rather than crashing later", async () => {
+    delete (window as { OneSignal?: unknown }).OneSignal;
+
+    const push = await loadPush();
+    const result = push.registerStaffPush("user-1", "sales");
+    await vi.runAllTimersAsync();
+
+    expect(await result).toBe(false);
+    expect(push.staffPushRegistrationError()).toMatch(/could not be reached/);
+    expect(oneSignal.login).not.toHaveBeenCalled();
+  });
+
+  it("picks up a subscription that arrives without a change event", async () => {
+    // OneSignal's wrapper queues addEventListener through OneSignalDeferred, so
+    // the event can fire before the listener is attached. Polling covers it.
+    subscription.optIn.mockImplementation(async () => {
+      setTimeout(() => {
+        subscription.id = "player-late";
+        subscription.optedIn = true;
+      }, 2_000);
+    });
+
+    const push = await loadPush();
+    const result = push.registerStaffPush("user-1", "sales");
+    await vi.runAllTimersAsync();
+
+    expect(await result).toBe(true);
+    expect(rpc).toHaveBeenCalledWith(
+      "register_staff_push_device",
+      expect.objectContaining({ _player_id: "player-late" }),
+    );
+  });
+
+  it("keeps the innermost failure instead of the outer wrapper's message", async () => {
+    rpc.mockResolvedValue({ error: { message: "permission denied for function" } });
+    subscription.optIn.mockImplementation(async () => {
+      subscription.id = "player-789";
+      subscription.optedIn = true;
+    });
+
+    const push = await loadPush();
+    const result = push.registerStaffPush("user-1", "sales");
+    await vi.runAllTimersAsync();
+
+    expect(await result).toBe(false);
+    expect(push.staffPushRegistrationError()).toBe(
+      "The device subscription could not be saved: permission denied for function",
+    );
+  });
+});
+
+describe("restoreStaffPush", () => {
+  it("re-saves an existing subscription without prompting", async () => {
+    subscription.id = "player-existing";
+    subscription.optedIn = true;
+
+    const push = await loadPush();
+    const result = push.restoreStaffPush("user-2", "sales");
+    await vi.runAllTimersAsync();
+
+    expect(await result).toBe(true);
+    expect(oneSignal.Notifications.requestPermission).not.toHaveBeenCalled();
+    expect(rpc).toHaveBeenCalledWith(
+      "register_staff_push_device",
+      expect.objectContaining({ _player_id: "player-existing", _role: "sales" }),
+    );
+  });
+
+  it("does not touch the SDK before the browser has granted permission", async () => {
+    Object.defineProperty(window, "Notification", {
+      value: { permission: "default" },
+      configurable: true,
+    });
+
+    const push = await loadPush();
+    expect(await push.restoreStaffPush("user-2", "sales")).toBe(false);
+    expect(oneSignal.init).not.toHaveBeenCalled();
+  });
+});

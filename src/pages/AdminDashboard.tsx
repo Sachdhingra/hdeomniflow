@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useData, LEAD_CATEGORIES } from "@/contexts/DataContext";
+import { websiteLink, copyWebsiteLink, hasWebsiteLink } from "@/components/WebsiteLinkCard";
 import CategoryInsights from "@/components/CategoryInsights";
 import { useAuth, User } from "@/contexts/AuthContext";
 import StatCard from "@/components/StatCard";
@@ -20,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, Wrench, IndianRupee, TrendingUp, MapPin, UserPlus, Trophy, Truck, KeyRound, Ban, CheckCircle, Trash2, Loader2, Download, Archive, Locate, Search, MessageSquare, Send, ShieldAlert, Target, ExternalLink } from "lucide-react";
+import { Users, Wrench, IndianRupee, TrendingUp, MapPin, UserPlus, Trophy, Truck, KeyRound, Ban, CheckCircle, Trash2, Loader2, Download, Archive, Locate, Search, MessageSquare, Send, ShieldAlert, Target, ExternalLink, Copy } from "lucide-react";
 import { toast } from "@/lib/toast";
 import { supabase } from "@/integrations/supabase/client";
 import LoadingError from "@/components/LoadingError";
@@ -90,7 +91,7 @@ const MessageLogsPanel = () => {
           </TableHeader>
           <TableBody>
             {logs.length === 0 && (
-              <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">No messages yet</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">No messages yet</TableCell></TableRow>
             )}
             {logs.map(log => (
               <TableRow key={log.id}>
@@ -265,7 +266,7 @@ const AdminDashboard = () => {
 
   const allUsersWithStatus = useMemo(() => allProfiles.map(p => {
     const profile = profiles.find(pr => pr.id === p.id);
-    return { ...p, active: profile?.active ?? true, phone_number: profile?.phone_number || "" };
+    return { ...p, active: profile?.active ?? true, phone_number: profile?.phone_number || "", website_ref_code: profile?.website_ref_code || null };
   }), [allProfiles, profiles]);
 
   const handleUpdatePhone = async (userId: string) => {
@@ -704,6 +705,7 @@ const AdminDashboard = () => {
                       <TableHead>Name</TableHead>
                       <TableHead>Role</TableHead>
                       <TableHead>Phone</TableHead>
+                      <TableHead>Website link</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
@@ -734,6 +736,19 @@ const AdminDashboard = () => {
                             >
                               {u.phone_number || "Add phone"}
                             </button>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {u.website_ref_code && hasWebsiteLink(u.role) ? (
+                            <button
+                              className="text-xs text-muted-foreground hover:text-foreground hover:underline inline-flex items-center gap-1"
+                              title={websiteLink(u.website_ref_code)}
+                              onClick={() => copyWebsiteLink(u.website_ref_code!, u.name)}
+                            >
+                              <Copy className="w-3 h-3" />?ref={u.website_ref_code}
+                            </button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">-</span>
                           )}
                         </TableCell>
                         <TableCell>

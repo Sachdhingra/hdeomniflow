@@ -61,8 +61,31 @@ export interface InboundAnalysis {
   keywords_matched: string[];
 }
 
+export type BinaryReply = "yes" | "no" | null;
+
+/** Exact, punctuation-tolerant recognition for the follow-up quick replies. */
+export function detectBinaryReply(raw: string): BinaryReply {
+  const text = (raw || "")
+    .toLowerCase()
+    .replace(/[’']/g, "")
+    .replace(/[^a-z0-9\u0900-\u097f]+/g, " ")
+    .trim();
+
+  const yesReplies = new Set([
+    "yes", "yes interested", "interested", "haan", "han", "ha", "जी हाँ", "हाँ",
+    "hde interest yes",
+  ]);
+  const noReplies = new Set([
+    "no", "no not now", "not interested", "nahi", "nahin", "नहीं", "hde interest no",
+  ]);
+  if (yesReplies.has(text)) return "yes";
+  if (noReplies.has(text)) return "no";
+  return null;
+}
+
 export function analyzeInbound(raw: string): InboundAnalysis {
   const text = (raw || "").toLowerCase().trim();
+  const binaryReply = detectBinaryReply(raw);
   const len = text.length;
   const length_category: LengthCategory = len < 20 ? "short" : len > 50 ? "long" : "medium";
 
@@ -73,7 +96,9 @@ export function analyzeInbound(raw: string): InboundAnalysis {
 
   // Intent
   let intent: Intent = "neutral";
-  if (READY.some(w => text.includes(w))) intent = "ready_to_buy";
+  if (binaryReply === "yes") intent = "interested";
+  else if (binaryReply === "no") intent = "not_interested";
+  else if (READY.some(w => text.includes(w))) intent = "ready_to_buy";
   else if (negHits > posHits) intent = text.includes("not interested") || text.includes("nahi chahiye") ? "not_interested" : "objection";
   else if (QUESTION_MARK.test(text) || INTENT_BUDGET_QUESTION.test(text) || INTENT_DELIVERY_QUESTION.test(text) || INTENT_CUSTOMIZE.test(text) || INTENT_COMPARE.test(text)) intent = "question";
   else if (posHits > 0) intent = "interested";

@@ -1,11 +1,12 @@
 import ExcelJS from "exceljs";
-import { BUCKET_IMAGES, resolveUrl } from "@/lib/productLibrary";
+import { BUCKET_IMAGES, priceBreakdown, resolveUrl } from "@/lib/productLibrary";
+import { fetchWebsiteImage, isWebsiteImageUrl } from "@/lib/websiteCatalog";
 
 export interface QuoteExcelLine {
   image_url: string | null;
   product_name: string;
   sku: string | null;
-  unit_price: number; // list / unit price before discount
+  unit_price: number; // Omniflow price before discount, already INCLUDING GST
   discount_percent: number; // special price discount
   gst_percent: number;
   quantity: number;
@@ -21,24 +22,28 @@ export interface QuoteExcelMeta {
   contactLine: string;
 }
 
-const INTRO = `To,
-{{NAME}}
+export const QUOTE_SUBJECT = "SUBJECT :QUOTE FOR GODREJ FURNITURE";
 
-SUBJECT :QUOTE FOR GODREJ FURNITURE 
-
-A workplace should be invigorating, inspiring and engaging. 
+export const INTRO_BODY = `A workplace should be invigorating, inspiring and engaging. 
 At Godrej Interio, we specialize in offering workspace solutions that are aesthetically pleasant as they are functionally efficient. We offer all this through a wide range of products that are designed to optimize space and increase convenience through thoughtful features and technological innovations. From seating, desking, storages to modular work stations and lab / healthcare, security — our furniture doesn't just make workplaces, it transforms them.
 As a market leader in the country, we bring to you reliable processes in design-development, manufacturing, marketing, and service to ensure excellence in products and services in line with your expectations that will give you lasting value over time. 
 
 We are pleased to offer you our quote as below.`;
 
-const NOTE = `Note:-
+const INTRO = `To,
+{{NAME}}
+
+${QUOTE_SUBJECT} 
+
+${INTRO_BODY}`;
+
+export const NOTE = `Note:-
 1. The Images Provided in the Quotation are Indicative.
 2. The delivery of the products will happen from one or more of the manufacturing locations viz. Bhagwanpur, Shriwal, Haridwar and Mumbai. 
 3. Our products are packed and delivered in 'knocked down' condition to avoid damage during transportation. Kindly ensure the payment is released on receipt of goods in knocked down condition at respective location/s mentioned in the PO. (applicable where payment is against delivery)
 4. Payment should be released if products cannot be delivered due to installation site not being ready and material has to be kept at site in packed condition or at Godrej w/h till site is made suitable for installation (applicable where payment is on installation)`;
 
-const TERMS: string[] = [
+export const TERMS: string[] = [
   `Prices : Unit prices stated are FOR Destination (within the municipal limits of the branch or dealer town, till ground floor of the premises) in India in Indian Rupees (Rs.) and Inclusive of GST. Prices quoted are for the standard range of finishes. Should there be any change in government levies between acceptance of the contract and delivery, the changed levies [duties & taxes] applicable at time of delivery shall be binding on the client.
 
 Delivery: The delivery at site will be effected within 6-8 weeks from the date of technically and commercially clear purchase order which includes receipt of approved colour schemes from our standard range and fulfilling the agreed payment terms. Any change in selection of product or quantity may impact the committed delivery time. Partial deliveries may be made. Each partial delivery may be invoiced separately. The delivery of Furniture / Workstation(s) shall be made from our warehouses in unassembled / assembled form to be assembled at site. The Company will not incur any obligation or liability for failure to deliver by specified date unless it has committed to an agreed ex-factory date in a separately signed document executed by its authorized personnel.`,
@@ -59,7 +64,7 @@ Material Handling and Storage at Site: The client will provide adequate space fo
   `Acceptance: Placement of a Purchase Order against this quotation shall be deemed as acceptance of all the terms and conditions stated herein.`,
 ];
 
-const FOOTER_LINES = [
+export const FOOTER_LINES = [
   "Rates : The rates mentioned are inclusive of GST.",
   "Validity : Offer valid for 30 days.",
   "", // delivery block placeholder
@@ -69,11 +74,34 @@ const FOOTER_LINES = [
   "BANK DETAILS : HDFC BANK LTD. A/C# 50200081341475, RAJPUR ROAD, DEHRADUN-248001. IFSC CODE: HDFC0000225",
 ];
 
+/** Delivery block of the quotation footer (FOOTER_LINES[2]). */
+export const deliveryText = (contactLine: string) => `Delivery Period : Material will commence in 6-8 weeks and will be completed as per readiness of site.
+${contactLine}
+Delivery period will start once the following details are shared with us:
+1. Colour shades selected
+2. Final furniture layout
+3. Typical Module Drawings
+4. Switch samples along with positions marked in typical module drawings
+5. Electrical Layout. Any delay in sharing sign off details will affect committed delivery period. Hence request you to share these details along with PO copy wherever applicable.`;
+
 const THIN = { style: "thin" as const, color: { argb: "FF000000" } };
 const BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
 
-async function fetchImage(path: string | null): Promise<{ base64: string; ext: "png" | "jpeg" } | null> {
+export type EmbeddedImage = { base64: string; ext: "png" | "jpeg" };
+
+const extOf = (type: string): EmbeddedImage["ext"] => (type.includes("png") ? "png" : "jpeg");
+
+export async function fetchImage(path: string | null): Promise<EmbeddedImage | null> {
   try {
+    if (!path) return null;
+    // Photo uploaded by hand on the quote: already a data URL.
+    const inline = /^data:(image\/[\w+.-]+);base64,(.+)$/i.exec(path);
+    if (inline) return { base64: inline[2], ext: extOf(inline[1]) };
+    // Website / interio.com photos send no CORS headers, so fetch them server-side.
+    if (isWebsiteImageUrl(path)) {
+      const img = await fetchWebsiteImage(path);
+      return img ? { base64: img.base64, ext: extOf(img.type) } : null;
+    }
     const url = await resolveUrl(BUCKET_IMAGES, path);
     if (!url) return null;
     const res = await fetch(url);
@@ -83,10 +111,7 @@ async function fetchImage(path: string | null): Promise<{ base64: string; ext: "
     let binary = "";
     const bytes = new Uint8Array(buf);
     for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-    return {
-      base64: btoa(binary),
-      ext: blob.type.includes("png") ? "png" : "jpeg",
-    };
+    return { base64: btoa(binary), ext: extOf(blob.type) };
   } catch {
     return null;
   }
@@ -139,8 +164,8 @@ export async function buildQuoteWorkbook(lines: QuoteExcelLine[], meta: QuoteExc
     ["B", "SR.NO"],
     ["C", " REF. IMAGE"],
     ["D", "GODREJ PRODUCT"],
-    ["F", "UNIT PRICE"],
-    ["G", "SPECIAL PRICE"],
+    ["F", "UNIT PRICE\n(EXCL. GST)"],
+    ["G", "SPECIAL PRICE\n(EXCL. GST)"],
     ["H", "GST PRICE"],
     ["I", "UNIT PRICE"],
     ["J", "QTY"],
@@ -187,12 +212,17 @@ export async function buildQuoteWorkbook(lines: QuoteExcelLine[], meta: QuoteExc
     ws.mergeCells(`D${top + 1}:E${top + 1}`);
     ws.mergeCells(`D${top + 2}:E${bottom}`);
 
-    ws.getCell(`F${top}`).value = l.unit_price;
-    ws.getCell(`G${top}`).value = { formula: `F${top}-(F${top}*${(l.discount_percent || 0) / 100})` };
-    ws.getCell(`H${top}`).value = { formula: `G${top}*${(l.gst_percent || 0) / 100}` };
-    ws.getCell(`I${top}`).value = { formula: `G${top}+H${top}` };
+    // Omniflow prices include GST: F works back to the basic price, G applies the discount,
+    // H adds GST again, so with no discount I lands exactly on the Omniflow price.
+    const gstRate = (l.gst_percent || 0) / 100;
+    const discRate = (l.discount_percent || 0) / 100;
+    const b = priceBreakdown(l.unit_price, l.gst_percent, l.discount_percent || 0);
+    ws.getCell(`F${top}`).value = { formula: `${l.unit_price || 0}/(1+${gstRate})`, result: b.unitBasic };
+    ws.getCell(`G${top}`).value = { formula: `F${top}-(F${top}*${discRate})`, result: b.specialBasic };
+    ws.getCell(`H${top}`).value = { formula: `G${top}*${gstRate}`, result: b.unitGst };
+    ws.getCell(`I${top}`).value = { formula: `G${top}+H${top}`, result: b.unitInclusive };
     ws.getCell(`J${top}`).value = l.quantity;
-    ws.getCell(`K${top}`).value = { formula: `I${top}*J${top}` };
+    ws.getCell(`K${top}`).value = { formula: `I${top}*J${top}`, result: b.unitInclusive * l.quantity };
 
     for (let r = top; r <= bottom; r++) {
       for (let c = 2; c <= 11; c++) {
@@ -261,14 +291,7 @@ export async function buildQuoteWorkbook(lines: QuoteExcelLine[], meta: QuoteExc
   ws.getRow(row).height = 110;
   row += 2;
 
-  const delivery = `Delivery Period : Material will commence in 6-8 weeks and will be completed as per readiness of site.
-${meta.contactLine}
-Delivery period will start once the following details are shared with us:
-1. Colour shades selected
-2. Final furniture layout
-3. Typical Module Drawings
-4. Switch samples along with positions marked in typical module drawings
-5. Electrical Layout. Any delay in sharing sign off details will affect committed delivery period. Hence request you to share these details along with PO copy wherever applicable.`;
+  const delivery = deliveryText(meta.contactLine);
 
   FOOTER_LINES.forEach((line, i) => {
     const text = i === 2 ? delivery : line;

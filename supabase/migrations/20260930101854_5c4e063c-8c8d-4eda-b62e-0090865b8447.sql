@@ -1,0 +1,12 @@
+REVOKE ALL ON FUNCTION public.advance_lead_deal(uuid, text, text, timestamptz) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.track_lead_deal_history() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.sync_lead_to_deal() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.sync_contact_to_deal() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.sync_visit_to_deal() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.sync_quote_to_deal() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.advance_lead_deal(uuid, text, text, timestamptz) TO service_role;
+GRANT EXECUTE ON FUNCTION public.track_lead_deal_history() TO service_role;
+GRANT EXECUTE ON FUNCTION public.sync_lead_to_deal() TO service_role;
+GRANT EXECUTE ON FUNCTION public.sync_contact_to_deal() TO service_role;
+GRANT EXECUTE ON FUNCTION public.sync_visit_to_deal() TO service_role;
+GRANT EXECUTE ON FUNCTION public.sync_quote_to_deal() TO service_role;

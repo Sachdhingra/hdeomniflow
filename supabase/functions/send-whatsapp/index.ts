@@ -2,6 +2,7 @@
 // Reads secrets fresh per-request so updates apply immediately.
 // Same input contract so all existing callers (nurture-engine, SendTemplateDialog, etc.) keep working.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
+import { normalizeIndianPhone } from "../_shared/indian-phone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -31,10 +32,7 @@ interface SendResult {
 
 // Normalize a phone string into E.164 form. Default country code is 91 (India).
 function normalizePhone(raw: string): { e164: string } {
-  const digits = (raw || "").replace(/\D/g, "");
-  if (!digits) return { e164: "" };
-  if (digits.length > 10) return { e164: `+${digits}` };
-  return { e164: `+91${digits}` };
+  return { e164: normalizeIndianPhone(raw) };
 }
 
 async function sendViaTwilio(params: {
@@ -158,6 +156,9 @@ Deno.serve(async (req) => {
       template_name,
       template_body_values,
       template_id,
+      lead_message_id,
+      outreach_source,
+      message_kind,
     } = body || {};
 
     if (!phone) {
@@ -203,18 +204,27 @@ Deno.serve(async (req) => {
       sent_at: result.success ? new Date().toISOString() : null,
     });
 
-    if (lead_id && result.success) {
-      await supabase.from("lead_messages").insert({
+    if (lead_id) {
+      const leadMessage = {
         lead_id,
         message_type: "outbound",
         message_body: storedBody,
         template_used: template_name || (content_sid ? `twilio:${content_sid}` : null),
         template_id: template_id || null,
-        status: "sent",
+        status: result.success ? "sent" : "failed",
         provider_message_id: result.message_id || null,
         sent_at: new Date().toISOString(),
+        failed_at: result.success ? null : new Date().toISOString(),
+        error_message: result.error || null,
         created_by: user_id || null,
-      });
+        outreach_source: outreach_source || "manual",
+        message_kind: message_kind || null,
+      };
+      const leadMessageQuery = lead_message_id
+        ? supabase.from("lead_messages").update(leadMessage).eq("id", lead_message_id)
+        : supabase.from("lead_messages").insert(leadMessage);
+      const { error: leadMessageError } = await leadMessageQuery;
+      if (leadMessageError) console.error("[send-whatsapp] lead message log failed:", leadMessageError);
     }
 
     return new Response(

@@ -281,8 +281,9 @@ const AdminPushNotifications = () => {
       {reach === 0 && (installed ?? 0) > 0 && (
         <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
           All {installed} linked app account{installed === 1 ? " is" : "s are"} opted in to
-          notifications by default, but no device has saved its push token yet. Broadcasts will be
-          sent to every device subscribed in the push provider until tokens start syncing.
+          notifications by default, but no device has saved its push token yet, so customer
+          broadcasts have nobody to reach. Tokens are saved when a customer allows notifications in
+          the Insider app.
         </div>
       )}
 
@@ -436,6 +437,10 @@ const AdminPushNotifications = () => {
                 onChange={(e) => setForm((f) => ({ ...f, link_url: e.target.value }))}
                 placeholder="https://…"
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                Tapping a customer push opens the Insider home screen, where it stays for 24 hours.
+                This link shows there as a button.
+              </p>
             </div>
 
             {isOffer && (

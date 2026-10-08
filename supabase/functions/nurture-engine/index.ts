@@ -2,6 +2,8 @@
 // Now driven by conversation context (sentiment / concern / intent / no-response timing).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 import { pickTemplateTitle } from "../_shared/conversation-analysis.ts";
+import { TWILIO_TEMPLATES } from "../_shared/twilio-templates.ts";
+import { followUpProduct } from "../_shared/follow-up-product.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,6 +47,7 @@ interface Lead {
   conversation_message_count: number | null;
   needs_personal_call: boolean | null;
   dead_lead: boolean | null;
+  automation_paused: boolean | null;
 }
 
 const daysBetween = (iso: string | null, now: Date) => {
@@ -68,39 +71,27 @@ const journeyToStatus = (j: JourneyStage): Stage | null => {
   }
 };
 
-const SPACE_BY_CATEGORY: Record<string, string> = {
-  sofa: "living room", coffee_table: "living room", chair: "living room",
-  almirah: "bedroom", bed: "bedroom", mattress: "bedroom",
-  dining: "dining area", kitchen: "kitchen", office_table: "office",
-};
-
-function fillVars(body: string, lead: Lead): string {
-  const map: Record<string, string> = {
-    name: lead.customer_name || "there",
-    phone: lead.customer_phone,
-    neighborhood: lead.neighborhood || "your area",
-    product: lead.product_viewed || lead.liked_product || "the piece you liked",
-    budget_range: lead.budget_range || "",
-    stated_need: lead.stated_need || "",
-    family_type: lead.family_situation || "",
-    space: lead.category ? (SPACE_BY_CATEGORY[lead.category] || "your home") : "your home",
-    amount: Number(lead.value_in_rupees || 0).toLocaleString("en-IN"),
-  };
-  return body.replace(/{{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*}}/g, (_, n) => map[n] ?? "");
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  const requestBody = await req.json().catch(() => ({}));
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
   const internalSecret = Deno.env.get("NURTURE_ENGINE_SECRET");
+  const serviceClient = createClient(supabaseUrl, serviceKey);
 
   const headerSecret = req.headers.get("x-internal-secret");
   let authorized = false;
   if (internalSecret && headerSecret && headerSecret === internalSecret) authorized = true;
-  else {
+  if (!authorized && headerSecret) {
+    const { data: validScheduledSecret } = await serviceClient.rpc("verify_nurture_engine_secret", {
+      candidate: headerSecret,
+    });
+    if (validScheduledSecret === true) authorized = true;
+  }
+  if (!authorized) {
     const authHeader = req.headers.get("Authorization");
     if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.replace("Bearer ", "");
@@ -122,7 +113,13 @@ Deno.serve(async (req) => {
     });
   }
 
-  const supabase = createClient(supabaseUrl, serviceKey);
+  if (requestBody?.dry_run === true) {
+    return new Response(JSON.stringify({ ok: true, authorized: true, dry_run: true }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const supabase = serviceClient;
 
   const summary = {
     processed: 0, scored: 0, moved_to_overdue: 0, journey_moved: 0,
@@ -147,24 +144,13 @@ Deno.serve(async (req) => {
       templatesByStage.set(t.stage, arr);
     }
 
-    // Variants by template_id
-    const { data: variantRows } = await supabase
-      .from("message_template_variants")
-      .select("id, template_id, variant_label, body, is_active, sent_count")
-      .eq("is_active", true);
-    const variantsByTemplate = new Map<string, { id: string; label: string; body: string; sent: number }[]>();
-    for (const v of variantRows ?? []) {
-      const arr = variantsByTemplate.get(v.template_id) ?? [];
-      arr.push({ id: v.id, label: v.variant_label, body: v.body, sent: v.sent_count ?? 0 });
-      variantsByTemplate.set(v.template_id, arr);
-    }
-
     const { data: leads, error: fetchErr } = await supabase
       .from("leads")
-      .select("id, customer_name, customer_phone, status, journey_stage, liked_product, product_viewed, neighborhood, budget_range, decision_timeline, family_situation, stated_need, value_in_rupees, concern_type, objection_type, barrier_addressed, response_time_minutes, last_message_at, last_response_at, last_payment_link_sent_at, stage_changed_at, journey_stage_changed_at, created_at, created_by, assigned_to, category, last_inbound_sentiment, last_inbound_concern, last_inbound_intent, unanswered_outbound_count, conversation_message_count, needs_personal_call, dead_lead")
+      .select("id, customer_name, customer_phone, status, journey_stage, liked_product, product_viewed, neighborhood, budget_range, decision_timeline, family_situation, stated_need, value_in_rupees, concern_type, objection_type, barrier_addressed, response_time_minutes, last_message_at, last_response_at, last_payment_link_sent_at, stage_changed_at, journey_stage_changed_at, created_at, created_by, assigned_to, category, last_inbound_sentiment, last_inbound_concern, last_inbound_intent, unanswered_outbound_count, conversation_message_count, needs_personal_call, dead_lead, automation_paused")
       .is("deleted_at", null)
       .not("status", "in", "(won,lost,converted)")
       .eq("dead_lead", false)
+      .eq("automation_paused", false)
       .limit(2000);
 
     if (fetchErr) throw fetchErr;
@@ -198,6 +184,7 @@ Deno.serve(async (req) => {
         // 3. Decide next message
         const daysSinceInbound = lead.last_response_at ? daysBetween(lead.last_response_at, now) : daysBetween(lead.created_at, now);
         const unanswered = lead.unanswered_outbound_count ?? 0;
+        let sentThisRun = 0;
         const pick = pickTemplateTitle({
           journeyStage: newJourney,
           concern: (lead.last_inbound_concern as any) ?? null,
@@ -217,30 +204,27 @@ Deno.serve(async (req) => {
         }
 
         if (tpl) {
-          // Pick variant: round-robin by lowest sent_count
-          const variants = variantsByTemplate.get(tpl.id) ?? [];
-          let bodySource = tpl.body;
-          let variantLabel: string | null = null;
-          let variantId: string | null = null;
-          if (variants.length > 0) {
-            const v = [...variants].sort((a, b) => a.sent - b.sent)[0];
-            bodySource = v.body;
-            variantLabel = v.label;
-            variantId = v.id;
-          }
-          const body = fillVars(bodySource, lead);
+          // The approved WhatsApp template is the content customers actually
+          // receive. Keep the audit row identical to that content rather than
+          // recording an internal draft that was never sent.
+          const customerFirstName = (lead.customer_name || "there").trim().split(/\s+/)[0] || "there";
+          const product = followUpProduct(lead);
+          const body = `Hi ${customerFirstName}! Are you still interested in ${product}?\n\nPlease reply YES and we’ll have your salesperson assist you, or reply NO and tell us if it is because of price, timing, or the product.`;
 
-          // Skip if this template already sent in last 24h
+          // One reply-led follow-up per customer in 24h, even though the engine
+          // checks twice daily. This protects against duplicate evening sends.
           const { data: recentSent } = await supabase
             .from("lead_messages")
             .select("id")
             .eq("lead_id", lead.id)
-            .eq("template_id", tpl.id)
+            .eq("message_kind", "follow_up_yes_no")
             .gte("created_at", new Date(now.getTime() - 24 * 3600 * 1000).toISOString())
             .limit(1);
 
-          // Only send if journey changed OR concern detected OR escalation due
-          const shouldSend = journeyChanged
+          // Follow-up, negotiation and overdue leads receive a daily reply-led
+          // question; other stages retain the conversation-driven rules.
+          const isDailyFollowUp = lead.status === "follow_up" || lead.status === "negotiation" || lead.status === "overdue";
+          const shouldSend = isDailyFollowUp || journeyChanged
             || pick.messageKind.startsWith("no_response")
             || pick.messageKind.startsWith("objection")
             || pick.messageKind.startsWith("concern")
@@ -252,12 +236,12 @@ Deno.serve(async (req) => {
               lead_id: lead.id,
               message_type: "outbound",
               message_body: body,
-              template_id: tpl.id,
-              template_used: tpl.title,
+              template_id: null,
+              template_used: "hde_followup_yes_no_v1",
               journey_stage: newJourney,
               status: "pending",
-              variant: variantLabel,
-              message_kind: pick.messageKind,
+              variant: null,
+              message_kind: "follow_up_yes_no",
               sequence_number: seq,
               created_by: lead.assigned_to || lead.created_by,
             }).select("id").single();
@@ -266,7 +250,21 @@ Deno.serve(async (req) => {
               const sendRes = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceKey}` },
-                body: JSON.stringify({ phone: lead.customer_phone, message: body }),
+                body: JSON.stringify({
+                  phone: lead.customer_phone,
+                  content_sid: TWILIO_TEMPLATES.followUpYesNo,
+                  content_variables: {
+                    "1": customerFirstName,
+                    "2": product,
+                  },
+                  lead_id: lead.id,
+                  lead_message_id: inserted?.id,
+                  user_id: lead.assigned_to || lead.created_by,
+                  template_id: null,
+                  template_name: "hde_followup_yes_no_v1",
+                  outreach_source: "automatic",
+                  message_kind: "follow_up_yes_no",
+                }),
               });
               const sendJson = await sendRes.json().catch(() => ({}));
               const ok = sendRes.ok && sendJson?.success === true;
@@ -278,8 +276,8 @@ Deno.serve(async (req) => {
                 }).eq("id", inserted.id);
               }
               if (ok) {
+                sentThisRun = 1;
                 summary.auto_sent++;
-                if (variantId) await supabase.rpc("bump_variant_sent", { _variant_id: variantId });
                 await supabase.from("leads").update({
                   conversation_message_count: seq,
                   unanswered_outbound_count: unanswered + 1,
@@ -294,7 +292,7 @@ Deno.serve(async (req) => {
                   details: {
                     customer_name: lead.customer_name,
                     phone: lead.customer_phone,
-                    template: tpl.title,
+                    template: "hde_followup_yes_no_v1",
                     journey_stage: newJourney,
                   },
                 });
@@ -309,7 +307,7 @@ Deno.serve(async (req) => {
                 event_type: "send_failed",
                 success: false,
                 error_message: msg,
-                details: { customer_name: lead.customer_name, phone: lead.customer_phone, template: tpl.title },
+                details: { customer_name: lead.customer_name, phone: lead.customer_phone, template: "hde_followup_yes_no_v1" },
               });
               console.error("send-whatsapp failed:", msg);
             }
@@ -317,7 +315,7 @@ Deno.serve(async (req) => {
         }
 
         // 4. Escalation flags
-        const newUnanswered = (unanswered + (tpl ? 1 : 0));
+        const newUnanswered = unanswered + sentThisRun;
         if (newUnanswered >= 5 && !lead.dead_lead) {
           await supabase.from("leads").update({ dead_lead: true, journey_stage: "cold", needs_personal_call: false }).eq("id", lead.id);
           summary.dead_leads_flagged++;

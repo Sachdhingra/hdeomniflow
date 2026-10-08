@@ -3,7 +3,7 @@
 //   GET  — hub verification challenge required by Meta when registering a webhook
 //   POST — inbound customer messages and delivery/read status updates
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
-import { analyzeInbound } from "../_shared/conversation-analysis.ts";
+import { analyzeInbound, detectBinaryReply } from "../_shared/conversation-analysis.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -40,20 +40,20 @@ async function verifyMetaSignature(rawBody: string, sigHeader: string | null): P
   return actual === expected;
 }
 
-async function findLeadByPhone(supabase: any, phone: string): Promise<{ id: string; sequence: number } | null> {
+async function findLeadByPhone(supabase: any, phone: string): Promise<{ id: string; sequence: number; assigned_to: string | null; created_by: string | null; customer_name: string } | null> {
   if (!phone) return null;
   const last10 = normalizePhone(phone).slice(-10);
   if (!last10) return null;
   // Push suffix match to DB via ILIKE — avoids the 50-lead client-side cap
   const { data } = await supabase
     .from("leads")
-    .select("id, conversation_message_count")
+    .select("id, conversation_message_count, assigned_to, created_by, customer_name")
     .is("deleted_at", null)
     .ilike("customer_phone", `%${last10}`)
     .order("created_at", { ascending: false })
     .limit(1);
   if (!data?.length) return null;
-  return { id: data[0].id, sequence: data[0].conversation_message_count ?? 0 };
+  return { id: data[0].id, sequence: data[0].conversation_message_count ?? 0, assigned_to: data[0].assigned_to, created_by: data[0].created_by, customer_name: data[0].customer_name || "Customer" };
 }
 
 Deno.serve(async (req) => {
@@ -126,7 +126,9 @@ Deno.serve(async (req) => {
             const lead = await findLeadByPhone(supabase, phone);
             if (lead) {
               const analysis = analyzeInbound(String(text));
+              const binaryReply = detectBinaryReply(String(text));
               const seq = (lead.sequence ?? 0) + 1;
+              const now = new Date().toISOString();
 
               await supabase.from("lead_messages").insert({
                 lead_id: lead.id,
@@ -151,8 +153,17 @@ Deno.serve(async (req) => {
                 conversation_message_count: seq,
                 unanswered_outbound_count: 0,
               };
+              if (binaryReply === "yes") {
+                leadUpdate.follow_up_reply_state = "interested";
+                leadUpdate.follow_up_reply_at = now;
+                leadUpdate.automation_paused = false;
+              } else if (binaryReply === "no") {
+                leadUpdate.follow_up_reply_state = "reason_requested";
+                leadUpdate.follow_up_reply_at = now;
+                leadUpdate.automation_paused = true;
+              }
               // Only clear dead_lead / needs_personal_call on positive engagement
-              if (analysis.intent === "interested" || analysis.intent === "ready_to_buy" || analysis.intent === "question") {
+              if (analysis.intent === "interested" || analysis.intent === "ready_to_buy") {
                 leadUpdate.dead_lead = false;
                 leadUpdate.needs_personal_call = false;
               }
@@ -162,6 +173,46 @@ Deno.serve(async (req) => {
                 leadUpdate.objection_type = analysis.concern ?? "general";
               }
               await supabase.from("leads").update(leadUpdate).eq("id", lead.id);
+
+              const notifyUser = lead.assigned_to || lead.created_by;
+              if (notifyUser) {
+                await supabase.from("notifications").insert({
+                  user_id: notifyUser,
+                  type: binaryReply === "yes" ? "whatsapp_interested" : binaryReply === "no" ? "whatsapp_reason_requested" : "whatsapp_reply",
+                  message: binaryReply === "yes" ? `🔥 ${lead.customer_name} is interested — reply now` : binaryReply === "no" ? `${lead.customer_name} said no — reason requested for salesperson review` : `New WhatsApp reply from ${lead.customer_name}: ${String(text).slice(0, 120)}`,
+                  link: "/leads",
+                });
+              }
+              const alertType = binaryReply === "yes" ? "whatsapp_interested" : binaryReply === "no" ? "whatsapp_reason_requested" : "whatsapp_reply";
+              const { data: existingAlert } = await supabase.from("lead_alerts").select("id")
+                .eq("lead_id", lead.id).eq("alert_type", alertType).eq("resolved", false).limit(1);
+              if (!existingAlert?.length) {
+                await supabase.from("lead_alerts").insert({
+                  lead_id: lead.id,
+                  alert_type: alertType,
+                  severity: binaryReply === "yes" ? "critical" : binaryReply === "no" ? "warning" : "info",
+                  message: binaryReply === "yes" ? "Interested — reply now" : binaryReply === "no" ? "Customer said no — ask the reason" : `New WhatsApp reply: ${String(text).slice(0, 160)}`,
+                });
+              }
+              if (binaryReply === "no") {
+                const { data: priorReason } = await supabase.from("lead_messages").select("id")
+                  .eq("lead_id", lead.id).eq("message_kind", "negative_reason_request")
+                  .gte("created_at", new Date(Date.now() - 24 * 3600000).toISOString()).limit(1);
+                if (!priorReason?.length) {
+                  await fetch(`${supabaseUrl}/functions/v1/send-whatsapp`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceRoleKey}` },
+                    body: JSON.stringify({
+                      phone,
+                      message: "Thank you for letting us know. What is the main reason — price, timing, or the product? Reply with one option and your salesperson will help accordingly.",
+                      lead_id: lead.id,
+                      user_id: notifyUser,
+                      outreach_source: "automatic",
+                      message_kind: "negative_reason_request",
+                    }),
+                  }).catch((error) => console.error("[interakt-webhook] reason request failed:", error));
+                }
+              }
 
               // Increment reply_count on the most recent outbound variant (A/B tracking)
               const { data: lastOut } = await supabase

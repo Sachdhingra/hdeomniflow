@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { normalizeIndianPhone } from "../_shared/indian-phone.ts";
 import { TWILIO_TEMPLATES, whatsappFrom } from "../_shared/twilio-templates.ts";
 
 const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "";
@@ -36,7 +37,12 @@ serve(async (req: Request) => {
     return new Response("Missing phone or otp", { status: 400 });
   }
 
-  const to = `whatsapp:${phone}`;
+  const normalizedPhone = normalizeIndianPhone(phone);
+  if (!normalizedPhone) {
+    return new Response("Invalid Indian mobile number", { status: 400 });
+  }
+
+  const to = `whatsapp:${normalizedPhone}`;
   const from = whatsappFrom();
 
   // Business-initiated message → must use the approved authentication template.

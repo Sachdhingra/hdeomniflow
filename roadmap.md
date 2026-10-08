@@ -1,0 +1,44 @@
+# Roadmap
+- [x] Unify WhatsApp send records and exact delivery status matching
+- [x] Capture and surface inbound replies reliably
+- [x] Add lead-board reply indicators and read handling
+- [x] Add outreach performance, filters, replies, and failures
+- [x] Add automation schedule/status visibility and safe template sending
+- [x] Deploy functions and verify database, build, and public route behavior
+- [x] Make staff notification activation a bounded one-click flow
+- [x] Add exact Yes/No follow-up intent handling and pause after No
+- [x] Route interested replies to the assigned salesperson with priority app/push alerts
+- [x] Prioritize interested and reason-requested replies on the Kanban board
+- [x] Deploy, test, and verify the reply-led follow-up workflow
+- [x] Activate the Meta-approved YES/NO template for automatic and manual follow-ups
+- [x] Tailor follow-up product wording and enforce one send per customer per 24 hours
+- [x] Deploy and verify the daily follow-up engine
+- [x] Diagnose Twilio test delivery and switch the test to an approved WhatsApp template
+- [x] Report the test's final delivered or failed status instead of Twilio submission alone
+- [x] Send a personalised WhatsApp thank-you the moment a kiosk customer enters their name and number
+- [x] Ask happy customers for a Google review with a live QR, and skip the ask for those who already reviewed
+- [x] Run a monthly lucky draw among review entries, only in months with at least 50 entries
+- [x] Announce the winner on WhatsApp and surface draws in the admin Customer Feedback tab
+- [x] Confirm Meta approval and repair duplicate +91 WhatsApp number formatting
+- [x] Restore signed Twilio inbound and delivery callbacks
+- [x] Normalize every Twilio Indian-number send path
+- [x] Recover the seven missed YES/NO replies and salesperson alerts
+- [x] Deploy and verify the repaired WhatsApp circuit
+- [x] Add WhatsApp mirroring to staff push and staff broadcasts
+- [x] Create and submit the hde_staff_alert Utility template to Meta
+- [x] Confirm Meta approval and verify a live staff WhatsApp alert
+- [x] Add every Insider app account and complete points history to the daily 8 PM Excel backup
+- [x] Deploy and verify the updated daily report without changing its schedule or existing sheets
+- [x] Restore authorized 6 PM and 8 PM lead outreach runs
+- [x] Correct reply, reached, and conversion reporting from actual messages
+- [x] Add prioritized respond-now, call-next, and WhatsApp-next queues
+- [x] Show delivery status and recommended action on each lead card
+- [x] Deploy and verify the repaired outreach circuit without bulk sending
+
+- [x] Make outreach replies clickable for admins with customer, message, time, and salesperson details
+- [x] Add secure YES lead-to-deal records and stage history
+- [x] Auto-create and advance deals from YES replies, visits, quotes, and lead outcomes
+- [x] Add Admin/Sales Lead-to-Deal board with dates, next steps, ownership, and timeline
+- [x] Backfill existing interested leads and verify the complete pipeline
+- [x] Restore and secure the kiosk Google-review confirmation action
+- [x] Repair and approve rating-aware kiosk review and website WhatsApp templates

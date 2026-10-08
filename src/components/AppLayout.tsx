@@ -5,7 +5,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import {
   Building2, LayoutDashboard, Users, Wrench, Navigation, MapPin,
   LogOut, Menu, X, ChevronRight, CalendarDays, BarChart3,
-  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot, ShieldCheck, MessageSquare, TrendingUp, ShoppingBag, MessagesSquare, Sparkles, Clock, Star, Receipt, Trophy, UserCircle, BookUser, Boxes, Truck, Calculator, CreditCard, Coins, BarChart2, AudioLines, BellRing, LibraryBig
+  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot, ShieldCheck, MessageSquare, TrendingUp, ShoppingBag, MessagesSquare, Sparkles, Clock, Star, Receipt, Trophy, UserCircle, BookUser, Boxes, Truck, Calculator, CreditCard, Coins, BarChart2, AudioLines, BellRing, LibraryBig, MonitorPlay, GalleryHorizontalEnd, Globe
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useStaffProfile } from "@/hooks/useStaffProfile";
@@ -75,6 +75,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       PRODUCT_LIBRARY_NAV,
       { to: "/sales", label: "Sales", icon: <Users className="w-5 h-5" />, badge: overdueCount || undefined },
       { to: "/leads/board", label: "Leads Board", icon: <KanbanSquare className="w-5 h-5" /> },
+      { to: "/leads/deals", label: "Lead-to-Deal", icon: <TrendingUp className="w-5 h-5" /> },
       { to: "/outreach", label: "Follow-up Outreach", icon: <MessageSquare className="w-5 h-5" /> },
       ELITE_NAV,
       CARD_BILLS_NAV,
@@ -99,6 +100,9 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/admin/funnel-analytics", label: "Funnel Analytics", icon: <TrendingUp className="w-5 h-5" /> },
       { to: "/admin/orders", label: "Orders", icon: <ShoppingBag className="w-5 h-5" /> },
       { to: "/admin/feedback", label: "Customer Feedback", icon: <Star className="w-5 h-5" /> },
+      { to: "/admin/kiosk-banners", label: "Kiosk Banners", icon: <MonitorPlay className="w-5 h-5" /> },
+      { to: "/admin/login-banners", label: "Login Banners", icon: <GalleryHorizontalEnd className="w-5 h-5" /> },
+      { to: "/admin/website-gallery", label: "Website Gallery", icon: <Globe className="w-5 h-5" /> },
       { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" />, badge: chatUnread || undefined },
       { to: "/ai-assistant", label: "AI Assistant", icon: <Sparkles className="w-5 h-5" /> },
       { to: "/jarvis", label: "Jarvis Voice", icon: <AudioLines className="w-5 h-5" /> },
@@ -108,6 +112,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       PRODUCT_LIBRARY_NAV,
       { to: "/leads", label: "My Leads", icon: <ClipboardList className="w-5 h-5" /> },
       { to: "/leads/board", label: "Leads Board", icon: <KanbanSquare className="w-5 h-5" /> },
+      { to: "/leads/deals", label: "Lead-to-Deal", icon: <TrendingUp className="w-5 h-5" /> },
       { to: "/outreach", label: "Follow-up Outreach", icon: <MessageSquare className="w-5 h-5" /> },
       ELITE_NAV,
       CARD_BILLS_NAV,
@@ -176,7 +181,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
 
   return (
     <div className="min-h-screen flex bg-background">
-      <StaffPushRegistrar />
+      {user.role === "admin" && <StaffPushRegistrar />}
       <ChatNotifier />
       <LeadNotifier />
       <OrderNotifier />
