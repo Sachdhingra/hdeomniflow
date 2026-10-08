@@ -19,6 +19,7 @@ import { formatDate } from "@/lib/dateFormat";
 import InsiderActivityDialog from "@/components/InsiderActivityDialog";
 import InviteQRDialog from "@/components/InviteQRDialog";
 import { ELITE_TIERS, EliteTier, TIER_META } from "@/lib/eliteTiers";
+import { awardReferralBonus, describeReferralFailure } from "@/lib/redemption";
 
 interface EliteRow {
   id: string;
@@ -554,23 +555,20 @@ const MemberFormDialog = ({
           }) as any);
         }
 
-        // Referral bonus — if a referral code was entered, credit 20 pts to the referrer
+        // Referral bonus: credited by a server function, because staff cannot write points
+        // directly. The toast reports what actually happened, not what we hoped for.
         const code = referralCode.trim().toUpperCase();
         if (code) {
-          const { data: referrer } = await (supabase
-            .from("elite_customers" as any)
-            .select("id, customer_name")
-            .eq("referral_code", code)
-            .maybeSingle() as any);
-          if (referrer) {
-            await (supabase.from("card_points" as any).insert({
-              customer_id: referrer.id,
-              points: 20,
-              transaction_type: "referral",
-            }) as any);
-            toast.success(`⭐ ${name.trim()} added — 20 bonus pts credited to ${referrer.customer_name}`);
-          } else {
-            toast.warning(`⭐ ${name.trim()} added — referral code "${code}" not found, no bonus credited`);
+          try {
+            const award = await awardReferralBonus(inserted.id, code);
+            if (award.ok) {
+              toast.success(`⭐ ${name.trim()} added — ${award.points} bonus pts credited to ${award.referrer_name}`);
+            } else {
+              toast.warning(`⭐ ${name.trim()} added — ${describeReferralFailure(award.reason, code)}`);
+            }
+          } catch (e: any) {
+            console.warn("[referral]", e?.message);
+            toast.warning(`⭐ ${name.trim()} added — the referral bonus could not be credited (${e?.message ?? "unknown error"}). Ask an admin to add it.`);
           }
         } else {
           toast.success(`⭐ ${name.trim()} added as Elite Member`);
@@ -708,7 +706,7 @@ const MemberFormDialog = ({
                 className="font-mono tracking-widest"
               />
               <p className="text-[11px] text-muted-foreground">
-                If the new member was referred by an existing member, enter their referral code. 20 bonus points will be credited automatically.
+                If the new member was referred by an existing member, enter their referral code. Bonus points are credited to the referrer automatically.
               </p>
             </div>
           )}

@@ -11,8 +11,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  AlertTriangle, CheckCircle2, XCircle, IndianRupee, Loader2, Plus, Search
+  AlertTriangle, CheckCircle2, XCircle, Gift, IndianRupee, Loader2, Plus, Search
 } from "lucide-react";
+import RedeemPointsDialog from "@/components/RedeemPointsDialog";
+import { canRedeemOn } from "@/lib/redemption";
 import { toast } from "@/lib/toast";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -114,7 +116,6 @@ export default function CardBillEntries() {
   const [billDate, setBillDate] = useState(todayISO());
   const [grossAmount, setGrossAmount] = useState("");
   const [baseSchemePct, setBaseSchemePct] = useState("");
-  const [redemptionAmt, setRedemptionAmt] = useState("");
   const [isCardSale, setIsCardSale] = useState(false);
   const [isReturn, setIsReturn] = useState(false);
   const [notes, setNotes] = useState("");
@@ -126,6 +127,9 @@ export default function CardBillEntries() {
   const [actionNetAmount, setActionNetAmount] = useState("");
   const [actionSaving, setActionSaving] = useState(false);
 
+  // Redeem-points dialog (OTP flow)
+  const [redeemEntry, setRedeemEntry] = useState<BillEntry | null>(null);
+
   // Tabs + filter
   const [tab, setTab] = useState(isSales ? "mine" : "pending");
   const [filterSearch, setFilterSearch] = useState("");
@@ -134,7 +138,6 @@ export default function CardBillEntries() {
 
   const gross = parseFloat(grossAmount) || 0;
   const basePct = parseFloat(baseSchemePct) || 0;
-  const redemption = parseFloat(redemptionAmt) || 0;
   const tierDiscount = selectedCustomer?.card_tier
     ? (TIER_EXTRA_DISCOUNT[selectedCustomer.card_tier] ?? 0)
     : 0;
@@ -148,14 +151,10 @@ export default function CardBillEntries() {
     !isReturn && !ceilingBreached && tierDiscount > 0 &&
     basePct + tierDiscount > discountCeiling;
 
-  const redemptionCap = gross * 0.05;
-  const effectiveRedemption = isReturn ? 0 : Math.min(redemption, redemptionCap);
-  const redemptionCapped = !isReturn && redemption > redemptionCap && redemption > 0;
-
   const netAmount = isReturn
     ? -gross
     : parseFloat(
-        (gross * (1 - (basePct + effectiveCardDiscount) / 100) - effectiveRedemption).toFixed(2)
+        (gross * (1 - (basePct + effectiveCardDiscount) / 100)).toFixed(2)
       );
 
   // ── Load settings ─────────────────────────────────────────────────────────
@@ -249,7 +248,6 @@ export default function CardBillEntries() {
     setBillDate(todayISO());
     setGrossAmount("");
     setBaseSchemePct("");
-    setRedemptionAmt("");
     setIsCardSale(false);
     setIsReturn(false);
     setNotes("");
@@ -270,7 +268,7 @@ export default function CardBillEntries() {
         gross_bill_amount: gross,
         base_scheme_discount_pct: basePct,
         card_discount_pct: effectiveCardDiscount,
-        redemption_amount: effectiveRedemption,
+        redemption_amount: 0,   // points are redeemed AFTER saving, through the OTP flow
         net_bill_amount: netAmount,
         is_card_sale: isCardSale,
         is_return: isReturn,
@@ -482,6 +480,19 @@ export default function CardBillEntries() {
 
         {entry.notes && (
           <p className="text-xs text-muted-foreground italic border-t pt-1">{entry.notes}</p>
+        )}
+
+        {canRedeemOn(entry, user) && (
+          <div className="pt-1">
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1 border-amber-300 text-amber-800 hover:bg-amber-50"
+              onClick={() => setRedeemEntry(entry)}
+            >
+              <Gift className="w-4 h-4" /> Redeem points
+            </Button>
+          </div>
         )}
 
         {showActions && entry.approval_status === "pending" && (
@@ -717,14 +728,6 @@ export default function CardBillEntries() {
                         </span>
                       </span>
                     </div>
-                    {effectiveRedemption > 0 && (
-                      <div className="flex justify-between text-muted-foreground">
-                        <span>Redemption</span>
-                        <span className="font-medium text-foreground">
-                          − {fmtInr(effectiveRedemption)}
-                        </span>
-                      </div>
-                    )}
                     <div className="flex justify-between font-semibold border-t pt-1.5">
                       <span>Net Amount</span>
                       <span>{fmtInr(netAmount)}</span>
@@ -742,12 +745,6 @@ export default function CardBillEntries() {
                         Card discount trimmed to {effectiveCardDiscount.toFixed(1)}% to stay within ceiling
                       </div>
                     )}
-                    {redemptionCapped && (
-                      <div className="flex gap-2 p-2 rounded-md bg-amber-50 border border-amber-200 text-xs text-amber-800">
-                        <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                        Redemption capped at 5% of gross ({fmtInr(redemptionCap)})
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -763,23 +760,12 @@ export default function CardBillEntries() {
                   </div>
                 )}
 
-                {/* Redemption (hidden on returns) */}
+                {/* Redemption is never typed in: it needs the customer's OTP, so it happens after saving */}
                 {!isReturn && (
-                  <div className="space-y-1">
-                    <Label>Redemption Amount Applied (₹)</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      placeholder="0.00"
-                      value={redemptionAmt}
-                      onChange={e => setRedemptionAmt(e.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Max 5% of gross ={" "}
-                      {gross > 0 ? fmtInr(redemptionCap) : "₹0.00"}
-                    </p>
-                  </div>
+                  <p className="text-xs text-muted-foreground flex items-start gap-1.5">
+                    <Gift className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    To redeem loyalty points, save this entry, then tap <strong>Redeem points</strong> on it.
+                  </p>
                 )}
 
                 {/* Flags */}
@@ -800,7 +786,7 @@ export default function CardBillEntries() {
                       checked={isReturn}
                       onCheckedChange={v => {
                         setIsReturn(!!v);
-                        if (v) { setRedemptionAmt(""); setBaseSchemePct(""); }
+                        if (v) { setBaseSchemePct(""); }
                       }}
                     />
                     <Label htmlFor="isReturn" className="cursor-pointer font-normal text-red-600">
@@ -872,6 +858,15 @@ export default function CardBillEntries() {
       </Tabs>
 
       {/* ── APPROVAL DIALOG ──────────────────────────────────────────────── */}
+      {redeemEntry && (
+        <RedeemPointsDialog
+          entry={redeemEntry}
+          open
+          onClose={() => setRedeemEntry(null)}
+          onChanged={() => { void loadEntries(); }}
+        />
+      )}
+
       <Dialog open={!!actionEntry} onOpenChange={o => { if (!o) setActionEntry(null); }}>
         <DialogContent>
           <DialogHeader>
