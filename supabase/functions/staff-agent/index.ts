@@ -115,6 +115,11 @@ async function buildSalesContext(userId: string) {
   const leads = openLeads ?? [];
   const today = ist.date;
   const nameById = new Map(leads.map((l: any) => [l.id, l.customer_name]));
+  const missing = [...new Set((stageToday ?? []).map((x: any) => x.lead_id))].filter((id) => !nameById.has(id));
+  if (missing.length) {
+    const { data: extra } = await admin.from("leads").select("id,customer_name").in("id", missing);
+    (extra ?? []).forEach((l: any) => nameById.set(l.id, l.customer_name));
+  }
   const daysSince = (iso: string | null) =>
     iso ? Math.floor((now.getTime() - new Date(iso).getTime()) / 86400000) : null;
 
@@ -179,7 +184,9 @@ WHEN THE REP REPLIES
 
 OUTPUT: respond with a single JSON object and nothing else:
 {"reply":"<message to the rep>","actions":[ ... ]}
-For check-ins "actions" must be [].`;
+For check-ins "actions" must be [].
+
+CHECK-IN FORMAT: for a [SYSTEM CHECK-IN] message, ignore the JSON output rule and write the message to the rep as plain text only.`;
 
 async function callLLM(messages: { role: string; content: string }[]): Promise<string> {
   const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -196,11 +203,28 @@ async function callLLM(messages: { role: string; content: string }[]): Promise<s
 }
 
 function parseAgentJson(raw: string): { reply: string; actions: any[] } {
-  const stripped = raw.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
-  try {
-    const o = JSON.parse(stripped);
-    if (typeof o?.reply === "string") return { reply: o.reply, actions: Array.isArray(o.actions) ? o.actions : [] };
-  } catch { /* fall through */ }
+  const stripped = raw.replace(/^\s*```(?:json)?/i, "").replace(/```\s*$/, "").trim();
+  // Models often emit JSON with raw newlines or unescaped quotes inside the
+  // reply, which JSON.parse rejects — so fall back to pulling the fields out.
+  const start = stripped.indexOf("{");
+  const end = stripped.lastIndexOf("}");
+  if (start !== -1 && end > start) {
+    const candidate = stripped.slice(start, end + 1);
+    try {
+      const o = JSON.parse(candidate);
+      if (typeof o?.reply === "string") return { reply: o.reply, actions: Array.isArray(o.actions) ? o.actions : [] };
+    } catch { /* fall through */ }
+    const m = candidate.match(/"reply"\s*:\s*"([\s\S]*?)"\s*,\s*"actions"\s*:\s*(\[[\s\S]*\])\s*\}\s*$/);
+    if (m) {
+      let actions: any[] = [];
+      try { actions = JSON.parse(m[2]); } catch { /* no actions */ }
+      return { reply: m[1].replace(/\\n/g, "\n").replace(/\\"/g, '"'), actions: Array.isArray(actions) ? actions : [] };
+    }
+  }
+  // Never show raw JSON to staff.
+  if (stripped.startsWith("{")) {
+    return { reply: "Sorry, I lost my train of thought — can you say that again?", actions: [] };
+  }
   return { reply: stripped || "Sorry, I lost my train of thought — can you say that again?", actions: [] };
 }
 
@@ -289,7 +313,7 @@ async function handleTick() {
             `CONTEXT:\n${JSON.stringify(ctx)}`,
         },
       ]);
-      const { reply } = parseAgentJson(raw);
+      const reply = parseAgentJson(raw).reply;
 
       const { error } = await admin.from("staff_agent_messages").insert({
         user_id: userId, agent_role: "sales", sender: "agent", kind: "checkin",
