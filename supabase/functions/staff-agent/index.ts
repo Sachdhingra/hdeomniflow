@@ -184,7 +184,7 @@ WHEN THE REP REPLIES
 
 OUTPUT: respond with a single JSON object and nothing else:
 {"reply":"<message to the rep>","actions":[ ... ]}
-For check-ins "actions" must be [].`;
+For check-ins "actions" must be [].
 
 CHECK-IN FORMAT: for a [SYSTEM CHECK-IN] message, ignore the JSON output rule and write the message to the rep as plain text only.`;
 
