@@ -4527,6 +4527,45 @@ export type Database = {
         }
         Relationships: []
       }
+      staff_agent_messages: {
+        Row: {
+          actions: Json
+          agent_role: string
+          content: string
+          created_at: string
+          id: string
+          kind: string
+          read_at: string | null
+          sender: string
+          slot_at: string | null
+          user_id: string
+        }
+        Insert: {
+          actions?: Json
+          agent_role?: string
+          content: string
+          created_at?: string
+          id?: string
+          kind: string
+          read_at?: string | null
+          sender: string
+          slot_at?: string | null
+          user_id: string
+        }
+        Update: {
+          actions?: Json
+          agent_role?: string
+          content?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          read_at?: string | null
+          sender?: string
+          slot_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       staff_profiles: {
         Row: {
           address: string | null
@@ -4871,6 +4910,7 @@ export type Database = {
     Functions: {
       _invoke_daily_excel_report: { Args: never; Returns: number }
       _invoke_feedback_whatsapp: { Args: { _payload?: Json }; Returns: number }
+      _invoke_staff_agent_tick: { Args: never; Returns: number }
       _invoke_staff_push: { Args: { _payload: Json }; Returns: number }
       _staff_push_enabled: { Args: never; Returns: boolean }
       advance_lead_deal: {
