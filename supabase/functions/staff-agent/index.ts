@@ -11,6 +11,7 @@
  * Guardrails
  *   - Only staff with attendance today (clocked in, not clocked out) get a
  *     check-in or can chat. Enforced here, not just in the UI.
+ *   - Pilot allow-list (PILOT_USER_IDS) limits who is enabled.
  *   - Working hours 11:00-20:00 IST for ticks. Chat works whenever present.
  *   - Each agent sees only that person's own leads and targets.
  *   - Actions are limited to the rep's own leads and to add_note /
@@ -30,6 +31,13 @@ const MODEL = "google/gemini-2.5-flash";
 const TZ = "Asia/Kolkata";
 const WORK_START_HOUR = 11;
 const WORK_END_HOUR = 20;
+// Pilot allow-list: only these reps (saurabh, reena) get check-ins and chat.
+// Empty the array to open the coach to every active sales rep.
+const PILOT_USER_IDS: string[] = [
+  "55ace8a7-69c6-49aa-b801-81f6f39b292f", // saurabh
+  "2fc7636b-968a-44a2-973c-bd202952752a", // reena
+];
+const inPilot = (id: string) => PILOT_USER_IDS.length === 0 || PILOT_USER_IDS.includes(id);
 const CLOSED_STATUSES = ["won", "lost"];
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
@@ -237,7 +245,7 @@ async function handleTick() {
   const salesIds = (roleRows ?? []).map((r: any) => r.user_id);
   const { data: profiles } = await admin
     .from("profiles").select("id,name").in("id", salesIds).eq("active", true);
-  const activeIds = (profiles ?? []).map((p: any) => p.id);
+  const activeIds = (profiles ?? []).map((p: any) => p.id).filter(inPilot);
   const nameOf = new Map((profiles ?? []).map((p: any) => [p.id, p.name as string]));
   const present = await presentUserIds(activeIds);
 
@@ -316,6 +324,9 @@ async function handleTick() {
 
 // ── chat ────────────────────────────────────────────────────────────────────
 async function handleChat(userId: string, message: string) {
+  if (!inPilot(userId)) {
+    return json({ error: "not_in_pilot", message: "Your coach isn't switched on for you yet — coming soon!" }, 403);
+  }
   const text = message.trim().slice(0, 2000);
   if (!text) return json({ error: "empty_message" }, 400);
 
