@@ -123,6 +123,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/calendar", label: "Dispatch Calendar", icon: <CalendarDays className="w-5 h-5" /> },
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
       { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" />, badge: chatUnread || undefined },
+      { to: "/my-day", label: "My Day Coach", icon: <Sparkles className="w-5 h-5" /> },
       { to: "/ai-assistant", label: "AI Assistant", icon: <Sparkles className="w-5 h-5" /> },
       { to: "/jarvis", label: "Jarvis Voice", icon: <AudioLines className="w-5 h-5" /> },
     ],

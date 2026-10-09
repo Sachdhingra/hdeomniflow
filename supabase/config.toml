@@ -38,3 +38,8 @@ verify_jwt = false
 # Public gallery feed read by the website (no user JWT); returns published photos only.
 [functions.website-gallery]
 verify_jwt = false
+
+# Called by pg_cron via pg_net (x-internal-secret) and by staff with a user
+# JWT; the function authenticates both itself.
+[functions.staff-agent]
+verify_jwt = false

@@ -43,6 +43,7 @@ const AdminOrdersDashboard = lazy(() => import("@/pages/AdminOrdersDashboard"));
 const ChatPage = lazy(() => import("@/pages/ChatPage"));
 const AIAssistantPage = lazy(() => import("@/pages/AIAssistantPage"));
 const JarvisPage = lazy(() => import("@/pages/JarvisPage"));
+const MyDayCoach = lazy(() => import("@/pages/MyDayCoach"));
 const AttendancePage = lazy(() => import("@/pages/AttendancePage"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 const FeedbackKiosk = lazy(() => import("@/pages/FeedbackKiosk"));
@@ -161,6 +162,7 @@ const AppRoutes = () => {
             <Route path="/products" element={<ProductsView />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/ai-assistant" element={<AIAssistantPage />} />
+            <Route path="/my-day" element={<MyDayCoach />} />
             <Route path="/jarvis" element={<JarvisPage />} />
             <Route path="/calendar" element={<ServiceCalendar />} />
           </>
