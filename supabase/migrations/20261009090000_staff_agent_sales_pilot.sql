@@ -8,7 +8,7 @@
 
 CREATE TABLE IF NOT EXISTS public.staff_agent_messages (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id    uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id    uuid NOT NULL,  -- auth user id (no FK to the auth schema)
   agent_role text NOT NULL DEFAULT 'sales',
   sender     text NOT NULL CHECK (sender IN ('agent','staff')),
   kind       text NOT NULL CHECK (kind IN ('checkin','reply','system')),
@@ -30,6 +30,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_staff_agent_checkin_slot
 
 ALTER TABLE public.staff_agent_messages ENABLE ROW LEVEL SECURITY;
 
+GRANT SELECT, UPDATE ON public.staff_agent_messages TO authenticated;
+GRANT ALL ON public.staff_agent_messages TO service_role;
+
 DROP POLICY IF EXISTS staff_agent_msgs_own_select ON public.staff_agent_messages;
 CREATE POLICY staff_agent_msgs_own_select ON public.staff_agent_messages
   FOR SELECT TO authenticated USING (user_id = auth.uid());
@@ -43,13 +46,13 @@ DROP POLICY IF EXISTS staff_agent_msgs_own_update ON public.staff_agent_messages
 CREATE POLICY staff_agent_msgs_own_update ON public.staff_agent_messages
   FOR UPDATE TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
 
-DO $$
+DO $do$
 BEGIN
   ALTER PUBLICATION supabase_realtime ADD TABLE public.staff_agent_messages;
 EXCEPTION WHEN OTHERS THEN
   RAISE NOTICE 'realtime publication skipped: %', SQLERRM;
 END;
-$$;
+$do$;
 
 -- Dispatch helper, same pattern as _invoke_loyalty_cron.
 CREATE OR REPLACE FUNCTION public._invoke_staff_agent_tick()
@@ -97,7 +100,7 @@ $fn$;
 REVOKE EXECUTE ON FUNCTION public._invoke_staff_agent_tick() FROM PUBLIC, anon, authenticated;
 
 -- 11:30, 13:30, 15:30, 17:30, 19:30 IST = 06:00, 08:00, 10:00, 12:00, 14:00 UTC.
-DO $$
+DO $do$
 BEGIN
   IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'staff-agent-tick') THEN
     PERFORM cron.unschedule('staff-agent-tick');
@@ -106,9 +109,9 @@ BEGIN
   PERFORM cron.schedule(
     'staff-agent-tick',
     '0 6,8,10,12,14 * * *',
-    $$ SELECT public._invoke_staff_agent_tick(); $$
+    $cron$ SELECT public._invoke_staff_agent_tick(); $cron$
   );
 EXCEPTION WHEN OTHERS THEN
   RAISE NOTICE 'pg_cron schedule skipped: %', SQLERRM;
 END;
-$$;
+$do$;
