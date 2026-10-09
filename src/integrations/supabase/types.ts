@@ -621,6 +621,7 @@ export type Database = {
       }
       card_points: {
         Row: {
+          consumed_points: number
           created_at: string
           created_by: string | null
           customer_id: string
@@ -632,6 +633,7 @@ export type Database = {
           transaction_type: string
         }
         Insert: {
+          consumed_points?: number
           created_at?: string
           created_by?: string | null
           customer_id: string
@@ -643,6 +645,7 @@ export type Database = {
           transaction_type?: string
         }
         Update: {
+          consumed_points?: number
           created_at?: string
           created_by?: string | null
           customer_id?: string
@@ -3902,6 +3905,101 @@ export type Database = {
         }
         Relationships: []
       }
+      redemption_lots: {
+        Row: {
+          card_point_id: string
+          created_at: string
+          id: string
+          points: number
+          redemption_id: string
+          released_at: string | null
+        }
+        Insert: {
+          card_point_id: string
+          created_at?: string
+          id?: string
+          points: number
+          redemption_id: string
+          released_at?: string | null
+        }
+        Update: {
+          card_point_id?: string
+          created_at?: string
+          id?: string
+          points?: number
+          redemption_id?: string
+          released_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "redemption_lots_card_point_id_fkey"
+            columns: ["card_point_id"]
+            isOneToOne: false
+            referencedRelation: "card_points"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "redemption_lots_redemption_id_fkey"
+            columns: ["redemption_id"]
+            isOneToOne: false
+            referencedRelation: "redemption_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      redemption_options: {
+        Row: {
+          active: boolean
+          card_tier: string
+          points: number
+          rupee_value: number
+        }
+        Insert: {
+          active?: boolean
+          card_tier: string
+          points: number
+          rupee_value: number
+        }
+        Update: {
+          active?: boolean
+          card_tier?: string
+          points?: number
+          rupee_value?: number
+        }
+        Relationships: []
+      }
+      redemption_otps: {
+        Row: {
+          attempts: number
+          code_hash: string
+          issued_at: string
+          salt: string
+          session_id: string
+        }
+        Insert: {
+          attempts?: number
+          code_hash: string
+          issued_at?: string
+          salt: string
+          session_id: string
+        }
+        Update: {
+          attempts?: number
+          code_hash?: string
+          issued_at?: string
+          salt?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "redemption_otps_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: true
+            referencedRelation: "redemption_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       redemption_requests: {
         Row: {
           customer_id: string
@@ -3943,6 +4041,125 @@ export type Database = {
           {
             foreignKeyName: "redemption_requests_customer_id_fkey"
             columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "elite_customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      redemption_sessions: {
+        Row: {
+          bill_entry_id: string
+          chosen_points: number | null
+          chosen_rupees: number | null
+          created_at: string
+          customer_id: string
+          expires_at: string
+          failed_attempts: number
+          gross_amount: number
+          id: string
+          initiated_by: string
+          redemption_id: string | null
+          status: string
+          verified_at: string | null
+        }
+        Insert: {
+          bill_entry_id: string
+          chosen_points?: number | null
+          chosen_rupees?: number | null
+          created_at?: string
+          customer_id: string
+          expires_at: string
+          failed_attempts?: number
+          gross_amount: number
+          id?: string
+          initiated_by: string
+          redemption_id?: string | null
+          status?: string
+          verified_at?: string | null
+        }
+        Update: {
+          bill_entry_id?: string
+          chosen_points?: number | null
+          chosen_rupees?: number | null
+          created_at?: string
+          customer_id?: string
+          expires_at?: string
+          failed_attempts?: number
+          gross_amount?: number
+          id?: string
+          initiated_by?: string
+          redemption_id?: string | null
+          status?: string
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "redemption_sessions_bill_entry_id_fkey"
+            columns: ["bill_entry_id"]
+            isOneToOne: false
+            referencedRelation: "card_bill_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "redemption_sessions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "elite_customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "redemption_sessions_redemption_id_fkey"
+            columns: ["redemption_id"]
+            isOneToOne: false
+            referencedRelation: "redemption_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referral_awards: {
+        Row: {
+          awarded_by: string
+          card_points_id: string | null
+          created_at: string
+          points: number
+          referred_customer_id: string
+          referrer_customer_id: string
+        }
+        Insert: {
+          awarded_by: string
+          card_points_id?: string | null
+          created_at?: string
+          points: number
+          referred_customer_id: string
+          referrer_customer_id: string
+        }
+        Update: {
+          awarded_by?: string
+          card_points_id?: string | null
+          created_at?: string
+          points?: number
+          referred_customer_id?: string
+          referrer_customer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_awards_card_points_id_fkey"
+            columns: ["card_points_id"]
+            isOneToOne: false
+            referencedRelation: "card_points"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_awards_referred_customer_id_fkey"
+            columns: ["referred_customer_id"]
+            isOneToOne: true
+            referencedRelation: "elite_customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_awards_referrer_customer_id_fkey"
+            columns: ["referrer_customer_id"]
             isOneToOne: false
             referencedRelation: "elite_customers"
             referencedColumns: ["id"]
@@ -4735,6 +4952,10 @@ export type Database = {
           working_hours: number
         }[]
       }
+      award_referral_bonus: {
+        Args: { p_code: string; p_referred_customer: string }
+        Returns: Json
+      }
       bump_variant_reply: { Args: { _variant_id: string }; Returns: undefined }
       bump_variant_sent: { Args: { _variant_id: string }; Returns: undefined }
       calculate_conversion_probability: {
@@ -4775,6 +4996,14 @@ export type Database = {
         Args: { _amount: number; _tier: string }
         Returns: number
       }
+      fn_consume_points: {
+        Args: {
+          p_customer_id: string
+          p_points: number
+          p_redemption_id: string
+        }
+        Returns: number
+      }
       fn_expire_points: { Args: never; Returns: number }
       fn_hde_apply_stock: {
         Args: {
@@ -4793,6 +5022,13 @@ export type Database = {
         Args: { _customer: string; _exclude_entry: string; _issue: string }
         Returns: string
       }
+      fn_redemption_eligible: { Args: { p_customer: string }; Returns: boolean }
+      fn_redemption_headroom: { Args: { p_bill: string }; Returns: number }
+      fn_redemption_setting: {
+        Args: { p_default: number; p_key: string }
+        Returns: number
+      }
+      fn_release_points: { Args: { p_redemption_id: string }; Returns: number }
       fn_resend_draw_winner_message: {
         Args: { p_draw_id: string }
         Returns: Json
@@ -4801,6 +5037,7 @@ export type Database = {
         Args: { p_force?: boolean; p_month?: string }
         Returns: Json
       }
+      fn_spendable_points: { Args: { p_customer: string }; Returns: number }
       generate_hde_order_number: { Args: never; Returns: string }
       generate_website_ref_code: {
         Args: { _name: string; _profile_id: string }
@@ -4851,6 +5088,18 @@ export type Database = {
       link_loyalty_app_user: { Args: { _phone: string }; Returns: string }
       record_google_review: {
         Args: { p_feedback_id: string; p_source?: string }
+        Returns: Json
+      }
+      redemption_cancel: { Args: { p_session_id: string }; Returns: Json }
+      redemption_choose: {
+        Args: { p_points: number; p_session_id: string }
+        Returns: Json
+      }
+      redemption_customer_session: { Args: never; Returns: Json }
+      redemption_expire_stale: { Args: never; Returns: number }
+      redemption_start: { Args: { p_bill_entry_id: string }; Returns: Json }
+      redemption_verify: {
+        Args: { p_code: string; p_session_id: string }
         Returns: Json
       }
       register_staff_push_device: {
