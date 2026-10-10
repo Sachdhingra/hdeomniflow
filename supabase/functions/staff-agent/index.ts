@@ -396,19 +396,21 @@ const READING_INSTRUCTION: Record<string, string> = {
 const plainForSpeech = (t: string) =>
   t.replace(/[*_`#>]+/g, "").replace(/\s*\n+\s*/g, " ").trim();
 
-// Voice fallback chain: Gemini TTS -> ElevenLabs -> (client) browser voice.
-// Returns audio from the first provider that works; if none do, audio is null
-// and the client speaks with the browser's own voice.
+// Voice fallback chain: ElevenLabs -> Gemini TTS -> (client) browser voice.
+// ElevenLabs goes first because the Gemini key is currently rejected (402), and
+// trying it first would add a failed round-trip to every spoken reply. Returns
+// audio from the first provider that works; if none do, audio is null and the
+// client speaks with the browser's own voice.
 async function speak(text: string, o: VoiceOpts) {
   const plain = plainForSpeech(text);
-  const gemini = await synthesizeSpeech(plain, o.ttsVoice, GEMINI_API_KEY, READING_INSTRUCTION[o.language] ?? READING_INSTRUCTION.en);
-  if (gemini.audio) return { audio: gemini.audio, mimeType: gemini.mimeType, provider: "gemini", ttsError: null };
-
   const eleven = await synthesizeElevenLabs(plain);
   if (eleven.audio) return { audio: eleven.audio, mimeType: eleven.mimeType, provider: "elevenlabs", ttsError: null };
 
-  console.error("staff-agent TTS: all server voices failed", { gemini: gemini.error, elevenlabs: eleven.error });
-  return { audio: null, mimeType: null, provider: null, ttsError: `gemini: ${gemini.error}; elevenlabs: ${eleven.error}` };
+  const gemini = await synthesizeSpeech(plain, o.ttsVoice, GEMINI_API_KEY, READING_INSTRUCTION[o.language] ?? READING_INSTRUCTION.en);
+  if (gemini.audio) return { audio: gemini.audio, mimeType: gemini.mimeType, provider: "gemini", ttsError: null };
+
+  console.error("staff-agent TTS: all server voices failed", { elevenlabs: eleven.error, gemini: gemini.error });
+  return { audio: null, mimeType: null, provider: null, ttsError: `elevenlabs: ${eleven.error}; gemini: ${gemini.error}` };
 }
 
 // Cron-secret diagnostic: which voice providers work right now (no audio returned).
