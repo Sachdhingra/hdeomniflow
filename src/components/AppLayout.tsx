@@ -24,6 +24,7 @@ import { useChatUnread } from "@/contexts/ChatUnreadContext";
 import { useFieldAgentDuty } from "@/hooks/useFieldAgentDuty";
 import FieldAgentGpsGuard from "@/components/FieldAgentGpsGuard";
 import JarvisFloatingButton from "@/components/JarvisFloatingButton";
+import CoachPopup from "@/components/coach/CoachPopup";
 import MorningBriefing from "@/components/MorningBriefing";
 import LoyaltyAlertNotifier from "@/components/LoyaltyAlertNotifier";
 import StaffPushRegistrar from "@/components/StaffPushRegistrar";
@@ -279,6 +280,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       <FieldAgentGpsGuard />
       <JarvisFloatingButton />
       <MorningBriefing />
+      <CoachPopup />
     </div>
   );
 };

@@ -4,9 +4,14 @@
  * Two entry points on one function:
  *   { action: "tick" }              pg_cron (x-internal-secret), every 2 hours.
  *                                   Sends each present sales rep a check-in.
- *   { action: "chat", message }     Staff JWT. The rep replies to the agent;
- *                                   the agent answers and may update their
- *                                   own leads (note / follow-up date).
+ *   { action: "chat", message,      Staff JWT. The rep replies to the agent;
+ *     voice?, language?, tts_voice? } the agent answers and may update their
+ *                                   own leads (note / follow-up date). With
+ *                                   voice:true the reply is short, spoken-
+ *                                   style, and returned with Gemini audio.
+ *   { action: "tts_health" }         pg_cron secret. Reports which voice providers work.
+ *   { action: "speak", message_id } Staff JWT. Audio for one of the rep's own
+ *                                   agent messages (reads a check-in aloud).
  *
  * Guardrails
  *   - Only staff with attendance today (clocked in, not clocked out) get a
@@ -21,10 +26,13 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { DEFAULT_TTS_VOICE, GEMINI_TTS_VOICES, synthesizeSpeech } from "../_shared/gemini-tts.ts";
+import { elevenLabsConfigured, synthesizeElevenLabs } from "../_shared/elevenlabs-tts.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
 const INTERNAL_SECRET = Deno.env.get("LOYALTY_CRON_SECRET") ?? "";
 
 const MODEL = "google/gemini-2.5-flash";
@@ -182,11 +190,26 @@ WHEN THE REP REPLIES
   - set_follow_up: {"type":"set_follow_up","lead_id":"...","date":"YYYY-MM-DD"}
   Only act when the rep clearly said it. If unsure which lead, ask. Suggest stage changes in words; never apply them.
 
+CONVERSATION (when the rep replies)
+- This is a back-and-forth, not a report. React in one short sentence to what they said, then ask ONE question — never more than two.
+- Follow a natural arc across turns: what happened -> what is blocking them -> what they will do in the next 2 hours. Once they have named next steps, recap in one line and, if a lead and date are clear, set the follow-up.
+- Match their energy: if they sound tired or frustrated, empathise first and make the next step tiny. If they won something, celebrate it.
+- If they ask for help (a pitch, an objection, what to say to a customer, a comparison), give a crisp suggestion they can use right now, using only facts in the context.
+
 OUTPUT: respond with a single JSON object and nothing else:
-{"reply":"<message to the rep>","actions":[ ... ]}
-For check-ins "actions" must be [].
+{"reply":"<message to the rep>","quick_replies":["<short tap-reply>", ...],"actions":[ ... ]}
+"quick_replies": 2-3 very short (max 5 words) things the rep might want to say next, written in the rep's language. For check-ins "actions" and "quick_replies" must be [].
 
 CHECK-IN FORMAT: for a [SYSTEM CHECK-IN] message, ignore the JSON output rule and write the message to the rep as plain text only.`;
+
+// Appended when the rep is talking by voice: the reply is read aloud.
+const VOICE_PROMPT = `
+
+VOICE MODE — your reply will be spoken aloud by text-to-speech, so:
+- Plain spoken sentences only: no markdown, emoji, bullets, symbols or digits-with-symbols.
+- At most about 45 words (2-3 short sentences), ending with ONE short question.
+- Say rupee amounts in words ("four lakh rupees"), never "₹400000".
+- "quick_replies" must be [].`;
 
 async function callLLM(messages: { role: string; content: string }[]): Promise<string> {
   const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -202,7 +225,15 @@ async function callLLM(messages: { role: string; content: string }[]): Promise<s
   return j?.choices?.[0]?.message?.content ?? "";
 }
 
-function parseAgentJson(raw: string): { reply: string; actions: any[] } {
+type AgentReply = { reply: string; actions: any[]; quick_replies: string[] };
+
+const cleanReplies = (v: unknown): string[] =>
+  Array.isArray(v)
+    ? v.filter((x) => typeof x === "string" && x.trim()).map((x) => (x as string).trim().slice(0, 40)).slice(0, 3)
+    : [];
+
+function parseAgentJson(raw: string): AgentReply {
+  const fallback = "Sorry, I lost my train of thought — can you say that again?";
   const stripped = raw.replace(/^\s*```(?:json)?/i, "").replace(/```\s*$/, "").trim();
   // Models often emit JSON with raw newlines or unescaped quotes inside the
   // reply, which JSON.parse rejects — so fall back to pulling the fields out.
@@ -212,20 +243,27 @@ function parseAgentJson(raw: string): { reply: string; actions: any[] } {
     const candidate = stripped.slice(start, end + 1);
     try {
       const o = JSON.parse(candidate);
-      if (typeof o?.reply === "string") return { reply: o.reply, actions: Array.isArray(o.actions) ? o.actions : [] };
+      if (typeof o?.reply === "string") {
+        return { reply: o.reply, actions: Array.isArray(o.actions) ? o.actions : [], quick_replies: cleanReplies(o.quick_replies) };
+      }
     } catch { /* fall through */ }
-    const m = candidate.match(/"reply"\s*:\s*"([\s\S]*?)"\s*,\s*"actions"\s*:\s*(\[[\s\S]*\])\s*\}\s*$/);
+    const m = candidate.match(/"reply"\s*:\s*"([\s\S]*?)"\s*(?:,\s*"(?:quick_replies|actions)"|\})/);
     if (m) {
-      let actions: any[] = [];
-      try { actions = JSON.parse(m[2]); } catch { /* no actions */ }
-      return { reply: m[1].replace(/\\n/g, "\n").replace(/\\"/g, '"'), actions: Array.isArray(actions) ? actions : [] };
+      const parseArr = (key: string): any[] => {
+        const a = candidate.match(new RegExp('"' + key + '"\\s*:\\s*(\\[[^\\]]*\\])'));
+        if (!a) return [];
+        try { const v = JSON.parse(a[1]); return Array.isArray(v) ? v : []; } catch { return []; }
+      };
+      return {
+        reply: m[1].replace(/\\n/g, "\n").replace(/\\"/g, '"'),
+        actions: parseArr("actions"),
+        quick_replies: cleanReplies(parseArr("quick_replies")),
+      };
     }
   }
   // Never show raw JSON to staff.
-  if (stripped.startsWith("{")) {
-    return { reply: "Sorry, I lost my train of thought — can you say that again?", actions: [] };
-  }
-  return { reply: stripped || "Sorry, I lost my train of thought — can you say that again?", actions: [] };
+  if (stripped.startsWith("{")) return { reply: fallback, actions: [], quick_replies: [] };
+  return { reply: stripped || fallback, actions: [], quick_replies: [] };
 }
 
 // ── apply agent actions, limited to the rep's own leads ─────────────────────
@@ -347,7 +385,60 @@ async function handleTick() {
 }
 
 // ── chat ────────────────────────────────────────────────────────────────────
-async function handleChat(userId: string, message: string) {
+type VoiceOpts = { voice: boolean; language: string; ttsVoice: string };
+
+const READING_INSTRUCTION: Record<string, string> = {
+  en: "Speak this in a warm, upbeat, friendly coach voice:",
+  hi: "Speak this in a warm, upbeat, friendly coach voice, in Hindi (natural Hinglish is fine):",
+  pa: "Speak this in a warm, upbeat, friendly coach voice, in Punjabi:",
+};
+
+const plainForSpeech = (t: string) =>
+  t.replace(/[*_`#>]+/g, "").replace(/\s*\n+\s*/g, " ").trim();
+
+// Voice fallback chain: Gemini TTS -> ElevenLabs -> (client) browser voice.
+// Returns audio from the first provider that works; if none do, audio is null
+// and the client speaks with the browser's own voice.
+async function speak(text: string, o: VoiceOpts) {
+  const plain = plainForSpeech(text);
+  const gemini = await synthesizeSpeech(plain, o.ttsVoice, GEMINI_API_KEY, READING_INSTRUCTION[o.language] ?? READING_INSTRUCTION.en);
+  if (gemini.audio) return { audio: gemini.audio, mimeType: gemini.mimeType, provider: "gemini", ttsError: null };
+
+  const eleven = await synthesizeElevenLabs(plain);
+  if (eleven.audio) return { audio: eleven.audio, mimeType: eleven.mimeType, provider: "elevenlabs", ttsError: null };
+
+  console.error("staff-agent TTS: all server voices failed", { gemini: gemini.error, elevenlabs: eleven.error });
+  return { audio: null, mimeType: null, provider: null, ttsError: `gemini: ${gemini.error}; elevenlabs: ${eleven.error}` };
+}
+
+// Cron-secret diagnostic: which voice providers work right now (no audio returned).
+async function handleTtsHealth() {
+  const [gemini, eleven] = await Promise.all([
+    synthesizeSpeech("Test", DEFAULT_TTS_VOICE, GEMINI_API_KEY, "Say:"),
+    synthesizeElevenLabs("Test"),
+  ]);
+  return json({
+    gemini: gemini.audio ? { ok: true } : { ok: false, error: gemini.error },
+    elevenlabs: eleven.audio
+      ? { ok: true, key_present: true }
+      : { ok: false, key_present: elevenLabsConfigured(), error: eleven.error },
+  });
+}
+
+async function handleSpeak(userId: string, messageId: string, o: VoiceOpts) {
+  if (!inPilot(userId)) return json({ error: "not_in_pilot" }, 403);
+  const { data: msg } = await admin
+    .from("staff_agent_messages")
+    .select("content")
+    .eq("id", messageId)
+    .eq("user_id", userId)
+    .eq("sender", "agent")
+    .maybeSingle();
+  if (!msg) return json({ error: "message_not_found" }, 404);
+  return json(await speak(msg.content, o));
+}
+
+async function handleChat(userId: string, message: string, o: VoiceOpts) {
   if (!inPilot(userId)) {
     return json({ error: "not_in_pilot", message: "Your coach isn't switched on for you yet — coming soon!" }, 403);
   }
@@ -380,7 +471,7 @@ async function handleChat(userId: string, message: string) {
   let parsed;
   try {
     const raw = await callLLM([
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: SYSTEM_PROMPT + (o.voice ? VOICE_PROMPT : "") },
       ...past,
       {
         role: "user",
@@ -399,8 +490,22 @@ async function handleChat(userId: string, message: string) {
     content: parsed.reply, actions: applied,
   }).select("id").single();
 
-  return json({ reply: parsed.reply, applied, staff_message_id: staffRow.id, agent_message_id: agentRow?.id });
+  const audio = o.voice ? await speak(parsed.reply, o) : { audio: null, mimeType: null, provider: null, ttsError: null };
+  return json({
+    reply: parsed.reply,
+    quick_replies: o.voice ? [] : parsed.quick_replies,
+    applied,
+    staff_message_id: staffRow.id,
+    agent_message_id: agentRow?.id,
+    ...audio,
+  });
 }
+
+const voiceOpts = (body: any): VoiceOpts => ({
+  voice: body.voice === true,
+  language: ["en", "hi", "pa"].includes(body.language) ? body.language : "en",
+  ttsVoice: GEMINI_TTS_VOICES.includes(body.tts_voice) ? body.tts_voice : DEFAULT_TTS_VOICE,
+});
 
 // ── entry ───────────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
@@ -416,13 +521,25 @@ Deno.serve(async (req) => {
       return await handleTick();
     }
 
+    if (body.action === "tts_health") {
+      if (!INTERNAL_SECRET || secret !== INTERNAL_SECRET) return json({ error: "unauthorized" }, 401);
+      return await handleTtsHealth();
+    }
+
     if (body.action === "chat") {
       const token = (req.headers.get("Authorization") ?? "").replace("Bearer ", "");
       const { data: { user } } = await admin.auth.getUser(token);
       if (!user) return json({ error: "unauthorized" }, 401);
       const { data: roleRow } = await admin.from("user_roles").select("role").eq("user_id", user.id).maybeSingle();
       if (roleRow?.role !== "sales") return json({ error: "agent_not_available_for_role" }, 403);
-      return await handleChat(user.id, String(body.message ?? ""));
+      return await handleChat(user.id, String(body.message ?? ""), voiceOpts(body));
+    }
+
+    if (body.action === "speak") {
+      const token = (req.headers.get("Authorization") ?? "").replace("Bearer ", "");
+      const { data: { user } } = await admin.auth.getUser(token);
+      if (!user) return json({ error: "unauthorized" }, 401);
+      return await handleSpeak(user.id, String(body.message_id ?? ""), voiceOpts(body));
     }
 
     return json({ error: "unknown_action" }, 400);
