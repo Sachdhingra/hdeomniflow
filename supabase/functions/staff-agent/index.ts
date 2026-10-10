@@ -9,6 +9,7 @@
  *                                   own leads (note / follow-up date). With
  *                                   voice:true the reply is short, spoken-
  *                                   style, and returned with Gemini audio.
+ *   { action: "tts_health" }         pg_cron secret. Reports which voice providers work.
  *   { action: "speak", message_id } Staff JWT. Audio for one of the rep's own
  *                                   agent messages (reads a check-in aloud).
  *
@@ -26,6 +27,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { DEFAULT_TTS_VOICE, GEMINI_TTS_VOICES, synthesizeSpeech } from "../_shared/gemini-tts.ts";
+import { elevenLabsConfigured, synthesizeElevenLabs } from "../_shared/elevenlabs-tts.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -394,9 +396,33 @@ const READING_INSTRUCTION: Record<string, string> = {
 const plainForSpeech = (t: string) =>
   t.replace(/[*_`#>]+/g, "").replace(/\s*\n+\s*/g, " ").trim();
 
+// Voice fallback chain: Gemini TTS -> ElevenLabs -> (client) browser voice.
+// Returns audio from the first provider that works; if none do, audio is null
+// and the client speaks with the browser's own voice.
 async function speak(text: string, o: VoiceOpts) {
-  const r = await synthesizeSpeech(plainForSpeech(text), o.ttsVoice, GEMINI_API_KEY, READING_INSTRUCTION[o.language] ?? READING_INSTRUCTION.en);
-  return { audio: r.audio ?? null, mimeType: r.mimeType ?? null, ttsError: r.error ?? null };
+  const plain = plainForSpeech(text);
+  const gemini = await synthesizeSpeech(plain, o.ttsVoice, GEMINI_API_KEY, READING_INSTRUCTION[o.language] ?? READING_INSTRUCTION.en);
+  if (gemini.audio) return { audio: gemini.audio, mimeType: gemini.mimeType, provider: "gemini", ttsError: null };
+
+  const eleven = await synthesizeElevenLabs(plain);
+  if (eleven.audio) return { audio: eleven.audio, mimeType: eleven.mimeType, provider: "elevenlabs", ttsError: null };
+
+  console.error("staff-agent TTS: all server voices failed", { gemini: gemini.error, elevenlabs: eleven.error });
+  return { audio: null, mimeType: null, provider: null, ttsError: `gemini: ${gemini.error}; elevenlabs: ${eleven.error}` };
+}
+
+// Cron-secret diagnostic: which voice providers work right now (no audio returned).
+async function handleTtsHealth() {
+  const [gemini, eleven] = await Promise.all([
+    synthesizeSpeech("Test", DEFAULT_TTS_VOICE, GEMINI_API_KEY, "Say:"),
+    synthesizeElevenLabs("Test"),
+  ]);
+  return json({
+    gemini: gemini.audio ? { ok: true } : { ok: false, error: gemini.error },
+    elevenlabs: eleven.audio
+      ? { ok: true, key_present: true }
+      : { ok: false, key_present: elevenLabsConfigured(), error: eleven.error },
+  });
 }
 
 async function handleSpeak(userId: string, messageId: string, o: VoiceOpts) {
@@ -464,7 +490,7 @@ async function handleChat(userId: string, message: string, o: VoiceOpts) {
     content: parsed.reply, actions: applied,
   }).select("id").single();
 
-  const audio = o.voice ? await speak(parsed.reply, o) : { audio: null, mimeType: null, ttsError: null };
+  const audio = o.voice ? await speak(parsed.reply, o) : { audio: null, mimeType: null, provider: null, ttsError: null };
   return json({
     reply: parsed.reply,
     quick_replies: o.voice ? [] : parsed.quick_replies,
@@ -493,6 +519,11 @@ Deno.serve(async (req) => {
     if (body.action === "tick") {
       if (!INTERNAL_SECRET || secret !== INTERNAL_SECRET) return json({ error: "unauthorized" }, 401);
       return await handleTick();
+    }
+
+    if (body.action === "tts_health") {
+      if (!INTERNAL_SECRET || secret !== INTERNAL_SECRET) return json({ error: "unauthorized" }, 401);
+      return await handleTtsHealth();
     }
 
     if (body.action === "chat") {
