@@ -171,7 +171,7 @@ async function composeWelcome(row: QueueRow, settings: Settings): Promise<Compos
     throw new Error(`Approved kiosk template is not configured for rating ${fb.overall_rating}`);
   }
 
-  const contentVariables = fb.overall_rating <= 2
+  const contentVariables: Record<string, string> = fb.overall_rating <= 2
     ? { "1": firstName(fb.customer_name), "2": settings.businessPhone || "our showroom team" }
     : fb.overall_rating >= 4 && !alreadyReviewed
       ? { "1": firstName(fb.customer_name), "2": settings.reviewUrl }
