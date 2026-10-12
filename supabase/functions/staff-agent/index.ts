@@ -45,11 +45,14 @@ const MODEL = "google/gemini-2.5-flash";
 const TZ = "Asia/Kolkata";
 const WORK_START_HOUR = 11;
 const WORK_END_HOUR = 20;
-// Pilot allow-list: only these reps (saurabh, reena) get check-ins and chat.
+// Pilot allow-list: only these reps (saurabh, reena, shivam, nisha) get
+// check-ins and chat.
 // Empty the array to open the coach to every active sales rep.
 const PILOT_USER_IDS: string[] = [
   "55ace8a7-69c6-49aa-b801-81f6f39b292f", // saurabh
   "2fc7636b-968a-44a2-973c-bd202952752a", // reena
+  "4f0402c0-e9d7-4351-8d47-51aea66b1bda", // shivam
+  "841afcc4-27f4-4a03-8401-78a1eddb1385", // nisha
 ];
 const inPilot = (id: string) => PILOT_USER_IDS.length === 0 || PILOT_USER_IDS.includes(id);
 const CLOSED_STATUSES = ["won", "lost"];
