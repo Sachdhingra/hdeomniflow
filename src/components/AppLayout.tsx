@@ -98,6 +98,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/admin/automation", label: "Automation", icon: <Bot className="w-5 h-5" /> },
       { to: "/admin/push-notifications", label: "Push Notifications", icon: <BellRing className="w-5 h-5" /> },
       { to: "/admin/templates", label: "WhatsApp Templates", icon: <MessageSquare className="w-5 h-5" /> },
+      { to: "/admin/coach-efficiency", label: "Coach Efficiency", icon: <Sparkles className="w-5 h-5" /> },
       { to: "/admin/funnel-analytics", label: "Funnel Analytics", icon: <TrendingUp className="w-5 h-5" /> },
       { to: "/admin/orders", label: "Orders", icon: <ShoppingBag className="w-5 h-5" /> },
       { to: "/admin/feedback", label: "Customer Feedback", icon: <Star className="w-5 h-5" /> },
