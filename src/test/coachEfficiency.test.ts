@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   addDays,
+  type CoachAction,
   checkinStats,
+  followUpSyncState,
+  scheduledFollowUps,
   dailyResponse,
   formatDuration,
   istMidnightMs,
@@ -17,7 +20,7 @@ const msg = (
   sender: "agent" | "staff",
   kind: CoachMsgRow["kind"],
   time: string,
-  actions: unknown[] | null = null,
+  actions: CoachAction[] | null = null,
   user = "u1",
 ): CoachMsgRow => ({ user_id: user, sender, kind, created_at: at(time), actions });
 
@@ -181,5 +184,43 @@ describe("dailyResponse", () => {
     expect(d[0]).toMatchObject({ sent: 0, replied: 0, rate: null });
     expect(d[1]).toMatchObject({ sent: 2, replied: 1, rate: 50 });
     expect(d[2].rate).toBeNull();
+  });
+});
+
+describe("follow-up actions", () => {
+  const fu = (date: string, extra: Partial<CoachAction> = {}): CoachAction => ({ type: "set_follow_up", lead_id: "L1", date, ...extra });
+
+  it("counts follow-ups and notes separately, treats old rows (no ok flag) as saved, and counts refusals", () => {
+    const rows = [
+      msg("agent", "reply", "11:40:30", [fu("2026-10-14"), { type: "add_note", lead_id: "L1", text: "x" }]),
+      msg("agent", "reply", "12:00:00", [fu("2026-10-15", { ok: true, customer: "A" })]),
+      msg("agent", "reply", "12:30:00", [fu("2026-10-10", { ok: false, reason: "that date has already passed" })]),
+    ];
+    const s = checkinStats(rows, DAY_START, DAY_END);
+    expect(s.followUpsSet).toBe(2);
+    expect(s.notesSaved).toBe(1);
+    expect(s.actionsApplied).toBe(3);
+    expect(s.actionsRefused).toBe(1);
+  });
+
+  it("lists only saved follow-ups in range, newest first, with the date they replaced", () => {
+    const rows = [
+      msg("agent", "reply", "11:00:00", [fu("2026-10-14", { customer: "Jitender", from: "2026-10-17" })]),
+      msg("agent", "reply", "15:00:00", [fu("2026-10-16", { customer: "Gagan" }), fu("2026-10-11", { ok: false })]),
+      msg("staff", "reply", "15:01:00", [fu("2026-10-20")]), // not the coach's doing
+      { ...msg("agent", "reply", "10:00:00", [fu("2026-10-30")]), created_at: "2026-10-11T10:00:00+05:30" }, // out of range
+    ];
+    const out = scheduledFollowUps(rows, DAY_START, DAY_END);
+    expect(out.map(x => x.customer)).toEqual(["Gagan", "Jitender"]);
+    expect(out[1]).toMatchObject({ date: "2026-10-14", from: "2026-10-17", leadId: "L1" });
+  });
+
+  it("compares the coach's date with what is on the lead now", () => {
+    const lead = (d: string | null, status = "contacted") => ({ next_follow_up_date: d, status });
+    expect(followUpSyncState("2026-10-14", lead("2026-10-14"))).toBe("in_sync");
+    expect(followUpSyncState("2026-10-14", lead("2026-10-17"))).toBe("changed");
+    expect(followUpSyncState("2026-10-14", lead(null))).toBe("changed");
+    expect(followUpSyncState("2026-10-14", lead("2026-10-17", "won"))).toBe("closed");
+    expect(followUpSyncState("2026-10-14", undefined)).toBe("missing");
   });
 });

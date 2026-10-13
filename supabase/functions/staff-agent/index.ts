@@ -33,6 +33,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { DEFAULT_TTS_VOICE, GEMINI_TTS_VOICES, synthesizeSpeech } from "../_shared/gemini-tts.ts";
 import { elevenLabsConfigured, synthesizeElevenLabs } from "../_shared/elevenlabs-tts.ts";
 import { parseLookupRequest, runClientLookup } from "../_shared/client-lookup.ts";
+import { calendarContext, claimsFollowUpSaved, parseAgentOutput } from "../_shared/agent-text.ts";
+import { applyActions } from "../_shared/agent-actions.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -160,6 +162,7 @@ async function buildSalesContext(userId: string) {
   return {
     ist_date: today,
     ist_hour: ist.hour,
+    calendar: calendarContext(today),
     month_won_value: wonValue,
     month_target: targetValue,
     target_pct: targetValue ? Math.round((wonValue / targetValue) * 100) : null,
@@ -194,16 +197,14 @@ STYLE
 
 WHEN THE REP REPLIES
 - Understand what they did. If they mention a customer outcome that matches a lead in the context, you may record it.
-- You may take ONLY these actions, using lead ids from the context:
+- You may take ONLY these actions, using lead ids from the context (or from client_lookup):
   - add_note: {"type":"add_note","lead_id":"...","text":"short factual note"}
-  - set_follow_up: {"type":"set_follow_up","lead_id":"...","date":"YYYY-MM-DD"}
+  - set_follow_up: {"type":"set_follow_up","lead_id":"...","date":"YYYY-MM-DD","time":"HH:MM"}  ("time" is optional, 24-hour)
+  Use the "calendar" in the context to turn "kal", "tomorrow", "Monday", "next week" into a real date. A follow-up date must be today or later.
+  A follow-up is saved ONLY if you include the set_follow_up action. NEVER say a follow-up is set, scheduled, rescheduled or updated unless you included that action — the app confirms every saved change to the rep itself.
+  If you proposed a follow-up date and the rep agrees ("ok", "haan", "kar do", "theek hai"), include the action straight away for the lead and date you proposed.
   Only act when the rep clearly said it. If unsure which lead, ask. Suggest stage changes in words; never apply them.
-
-CONVERSATION (when the rep replies)
-- This is a back-and-forth, not a report. React in one short sentence to what they said, then ask ONE question — never more than two.
-- Follow a natural arc across turns: what happened -> what is blocking them -> what they will do in the next 2 hours. Once they have named next steps, recap in one line and, if a lead and date are clear, set the follow-up.
-- Match their energy: if they sound tired or frustrated, empathise first and make the next step tiny. If they won something, celebrate it.
-- If they ask for help (a pitch, an objection, what to say to a customer, a comparison), give a crisp suggestion they can use right now, using only facts in the context.
+- Actions go ONLY in the "actions" array of the JSON output. Never put JSON, lead ids or action objects in the reply text.
 
 CLIENT LOOKUP
 - When the context contains "client_lookup", the rep asked about a client (usually by phone number). Answer from it only.
@@ -240,77 +241,6 @@ async function callLLM(messages: { role: string; content: string }[]): Promise<s
   }
   const j = await resp.json();
   return j?.choices?.[0]?.message?.content ?? "";
-}
-
-type AgentReply = { reply: string; actions: any[]; quick_replies: string[] };
-
-const cleanReplies = (v: unknown): string[] =>
-  Array.isArray(v)
-    ? v.filter((x) => typeof x === "string" && x.trim()).map((x) => (x as string).trim().slice(0, 40)).slice(0, 3)
-    : [];
-
-function parseAgentJson(raw: string): AgentReply {
-  const fallback = "Sorry, I lost my train of thought — can you say that again?";
-  const stripped = raw.replace(/^\s*```(?:json)?/i, "").replace(/```\s*$/, "").trim();
-  // Models often emit JSON with raw newlines or unescaped quotes inside the
-  // reply, which JSON.parse rejects — so fall back to pulling the fields out.
-  const start = stripped.indexOf("{");
-  const end = stripped.lastIndexOf("}");
-  if (start !== -1 && end > start) {
-    const candidate = stripped.slice(start, end + 1);
-    try {
-      const o = JSON.parse(candidate);
-      if (typeof o?.reply === "string") {
-        return { reply: o.reply, actions: Array.isArray(o.actions) ? o.actions : [], quick_replies: cleanReplies(o.quick_replies) };
-      }
-    } catch { /* fall through */ }
-    const m = candidate.match(/"reply"\s*:\s*"([\s\S]*?)"\s*(?:,\s*"(?:quick_replies|actions)"|\})/);
-    if (m) {
-      const parseArr = (key: string): any[] => {
-        const a = candidate.match(new RegExp('"' + key + '"\\s*:\\s*(\\[[^\\]]*\\])'));
-        if (!a) return [];
-        try { const v = JSON.parse(a[1]); return Array.isArray(v) ? v : []; } catch { return []; }
-      };
-      return {
-        reply: m[1].replace(/\\n/g, "\n").replace(/\\"/g, '"'),
-        actions: parseArr("actions"),
-        quick_replies: cleanReplies(parseArr("quick_replies")),
-      };
-    }
-  }
-  // Never show raw JSON to staff.
-  if (stripped.startsWith("{")) return { reply: fallback, actions: [], quick_replies: [] };
-  return { reply: stripped || fallback, actions: [], quick_replies: [] };
-}
-
-// ── apply agent actions, limited to the rep's own leads ─────────────────────
-async function applyActions(userId: string, actions: any[]) {
-  const applied: any[] = [];
-  const today = istParts().date;
-  for (const a of actions.slice(0, 5)) {
-    if (!a || typeof a.lead_id !== "string") continue;
-    const { data: lead } = await admin
-      .from("leads")
-      .select("id,notes,assigned_to,created_by")
-      .eq("id", a.lead_id)
-      .is("deleted_at", null)
-      .maybeSingle();
-    if (!lead || (lead.assigned_to !== userId && lead.created_by !== userId)) continue;
-
-    if (a.type === "add_note" && typeof a.text === "string" && a.text.trim()) {
-      const stamp = `[${today} coach] ${a.text.trim().slice(0, 300)}`;
-      const notes = lead.notes ? `${lead.notes}\n${stamp}` : stamp;
-      const { error } = await admin.from("leads").update({ notes, updated_by: userId }).eq("id", lead.id);
-      if (!error) applied.push({ type: "add_note", lead_id: lead.id, text: a.text.trim().slice(0, 300) });
-    } else if (a.type === "set_follow_up" && /^\d{4}-\d{2}-\d{2}$/.test(a.date ?? "") && a.date >= today) {
-      const { error } = await admin
-        .from("leads")
-        .update({ next_follow_up_date: a.date, updated_by: userId })
-        .eq("id", lead.id);
-      if (!error) applied.push({ type: "set_follow_up", lead_id: lead.id, date: a.date });
-    }
-  }
-  return applied;
 }
 
 // ── tick ────────────────────────────────────────────────────────────────────
@@ -368,7 +298,7 @@ async function handleTick() {
             `CONTEXT:\n${JSON.stringify(ctx)}`,
         },
       ]);
-      const reply = parseAgentJson(raw).reply;
+      const reply = parseAgentOutput(raw).reply;
 
       const { error } = await admin.from("staff_agent_messages").insert({
         user_id: userId, agent_role: "sales", sender: "agent", kind: "checkin",
@@ -518,23 +448,33 @@ async function handleChat(userId: string, token: string, message: string, o: Voi
         content: `[${profile?.name ?? "Rep"} says] ${text}\n\nCONTEXT (fresh):\n${JSON.stringify(lookup ? { ...ctx, client_lookup: lookup } : ctx)}`,
       },
     ]);
-    parsed = parseAgentJson(raw);
+    parsed = parseAgentOutput(raw);
   } catch (e) {
     const code = e instanceof Error ? e.message : "llm_error";
     return json({ error: code, message: "Your coach is unavailable right now — try again in a moment." }, code === "rate_limited" ? 429 : 502);
   }
 
-  const applied = await applyActions(userId, parsed.actions);
+  const { applied, rejected } = await applyActions(admin, userId, parsed.actions, istParts().date);
+
+  // The model's words never get the last say on whether something was saved.
+  let replyText = parsed.reply;
+  if (rejected.length > 0) {
+    replyText += "\n\n⚠️ " + rejected.map((r) => `Couldn't save${r.type === "set_follow_up" ? " the follow-up" : " the note"}${r.customer ? ` for ${r.customer}` : ""}: ${r.reason}.`).join(" ");
+  } else if (applied.length === 0 && claimsFollowUpSaved(replyText)) {
+    replyText += "\n\n⚠️ Heads-up: I haven't saved a follow-up date on any lead yet. Tell me the customer and the date (for example “Jitender Kumar, 14 Oct”) and I'll set it.";
+  }
+
   const { data: agentRow } = await admin.from("staff_agent_messages").insert({
     user_id: userId, agent_role: "sales", sender: "agent", kind: "reply",
-    content: parsed.reply, actions: applied,
+    content: replyText, actions: [...applied, ...rejected],
   }).select("id").single();
 
-  const audio = o.voice ? await speak(parsed.reply, o) : { audio: null, mimeType: null, provider: null, ttsError: null };
+  const audio = o.voice ? await speak(replyText, o) : { audio: null, mimeType: null, provider: null, ttsError: null };
   return json({
-    reply: parsed.reply,
+    reply: replyText,
     quick_replies: o.voice ? [] : parsed.quick_replies,
     applied,
+    rejected,
     staff_message_id: staffRow.id,
     agent_message_id: agentRow?.id,
     ...audio,
