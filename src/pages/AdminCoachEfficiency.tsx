@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { AlertTriangle, CalendarClock, CheckCircle2, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
@@ -10,17 +10,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "@/lib/toast";
 import {
+  addDays,
   checkinStats,
   dailyResponse,
+  followUpSyncState,
   formatDuration,
   istMidnightMs,
   longestQuietStretch,
   median,
   rangeFor,
+  scheduledFollowUps,
   signalsFor,
   type CoachMsgRow,
   type RangeKey,
   type Signal,
+  type SyncState,
 } from "@/lib/coachEfficiency";
 
 // The coach tables are newer than the generated Supabase types.
@@ -56,6 +60,10 @@ interface RepRow {
   responseRate: number | null;
   medianReplyMinutes: number | null;
   actionsApplied: number;
+  followUpsSet: number;
+  notesSaved: number;
+  dueToday: number;
+  dueWeek: number;
   presentDays: number;
   lateDays: number;
   presentToday: boolean;
@@ -70,8 +78,25 @@ interface RepRow {
   signals: Signal[];
 }
 
+interface ScheduledRow {
+  key: string;
+  atMs: number;
+  repName: string;
+  customer: string;
+  from: string | null;
+  date: string;
+  time: string | null;
+  sync: SyncState;
+  currentDate: string | null;
+}
+
 interface Report {
   reps: RepRow[];
+  scheduled: ScheduledRow[];
+  scheduledTotal: number;
+  followUpsSet: number;
+  notesSaved: number;
+  actionsRefused: number;
   daily: { date: string; sent: number; replied: number; rate: number | null }[];
   teamResponseRate: number | null;
   teamMedianReply: number | null;
@@ -106,7 +131,7 @@ async function buildReport(reps: { id: string; name: string }[], rangeKey: Range
   const month = r.today.slice(0, 7);
   const monthStartMs = istMidnightMs(`${month}-01`);
 
-  const [msgs, attendance, stages, touched, created, overdueRows, wonRows, targets] = await Promise.all([
+  const [msgs, attendance, stages, touched, created, overdueRows, wonRows, targets, dueRows] = await Promise.all([
     fetchAll<CoachMsgRow>((a, b) =>
       db.from("staff_agent_messages").select("user_id,sender,kind,created_at,actions").in("user_id", ids)
         .gte("created_at", fromIso).order("created_at", { ascending: true }).range(a, b)),
@@ -130,10 +155,42 @@ async function buildReport(reps: { id: string; name: string }[], rangeKey: Range
         .eq("status", "won").gte("updated_at", new Date(monthStartMs).toISOString()).range(a, b)),
     fetchAll<{ user_id: string; target_value: number }>((a, b) =>
       db.from("sales_targets").select("user_id,target_value").eq("month", month).in("user_id", ids).range(a, b)),
+    // Open leads with a follow-up due from today through the next 7 days.
+    fetchAll<{ assigned_to: string; next_follow_up_date: string }>((a, b) =>
+      db.from("leads").select("assigned_to,next_follow_up_date").in("assigned_to", ids).is("deleted_at", null)
+        .not("status", "in", "(won,lost)").gte("next_follow_up_date", r.today).lte("next_follow_up_date", addDays(r.today, 7)).range(a, b)),
   ]);
 
   const msgsByUser = new Map<string, CoachMsgRow[]>();
   msgs.forEach(m => msgsByUser.set(m.user_id, [...(msgsByUser.get(m.user_id) ?? []), m]));
+
+  // Follow-ups the coach scheduled in this period, newest first, each checked
+  // against what's on the lead now so a mismatch is visible.
+  const nameOf = new Map(reps.map(x => [x.id, x.name]));
+  const allScheduled = reps
+    .flatMap(rep => scheduledFollowUps(msgsByUser.get(rep.id) ?? [], r.fromMs, r.toMs))
+    .sort((x, y) => y.atMs - x.atMs);
+  const shown = allScheduled.slice(0, 15);
+  const shownIds = [...new Set(shown.map(x => x.leadId))];
+  const snapshots = shownIds.length
+    ? await fetchAll<{ id: string; customer_name: string; next_follow_up_date: string | null; status: string }>((a, b) =>
+        db.from("leads").select("id,customer_name,next_follow_up_date,status").in("id", shownIds).range(a, b))
+    : [];
+  const snapById = new Map(snapshots.map(x => [x.id, x]));
+  const scheduled: ScheduledRow[] = shown.map(x => {
+    const lead = snapById.get(x.leadId);
+    return {
+      key: `${x.leadId}-${x.atMs}`,
+      atMs: x.atMs,
+      repName: nameOf.get(x.userId) ?? "—",
+      customer: x.customer ?? lead?.customer_name ?? "Unknown lead",
+      from: x.from,
+      date: x.date,
+      time: x.time,
+      sync: followUpSyncState(x.date, lead),
+      currentDate: lead?.next_follow_up_date ?? null,
+    };
+  });
 
   const todayStartMs = istMidnightMs(r.today);
   const workStartMs = todayStartMs + 11 * 3_600_000;
@@ -184,6 +241,10 @@ async function buildReport(reps: { id: string; name: string }[], rangeKey: Range
       responseRate: cs.responseRate,
       medianReplyMinutes: cs.medianReplyMinutes,
       actionsApplied: cs.actionsApplied,
+      followUpsSet: cs.followUpsSet,
+      notesSaved: cs.notesSaved,
+      dueToday: dueRows.filter(d => d.assigned_to === rep.id && d.next_follow_up_date === r.today).length,
+      dueWeek: dueRows.filter(d => d.assigned_to === rep.id).length,
       presentDays: att.length,
       lateDays: att.filter(a => a.status === "late").length,
       presentToday,
@@ -214,8 +275,14 @@ async function buildReport(reps: { id: string; name: string }[], rangeKey: Range
   const replied = rows.reduce((n, x) => n + x.replied, 0);
   const allReplyMinutes: number[] = [];
   rows.forEach(x => x.medianReplyMinutes !== null && allReplyMinutes.push(x.medianReplyMinutes));
+  const refused = reps.reduce((n, rep) => n + checkinStats(msgsByUser.get(rep.id) ?? [], r.fromMs, r.toMs).actionsRefused, 0);
   return {
     reps: rows,
+    scheduled,
+    scheduledTotal: allScheduled.length,
+    followUpsSet: rows.reduce((n, x) => n + x.followUpsSet, 0),
+    notesSaved: rows.reduce((n, x) => n + x.notesSaved, 0),
+    actionsRefused: refused,
     daily: dailyResponse(msgsByUser, r.fromDate, r.days),
     teamResponseRate: sent > 0 ? Math.round((replied / sent) * 100) : null,
     teamMedianReply: median(allReplyMinutes),
@@ -340,7 +407,11 @@ const AdminCoachEfficiency = () => {
               value={report.teamMedianReply === null ? "—" : formatDuration(report.teamMedianReply)}
               hint="median across reps"
             />
-            <Tile label="Saved by the coach" value={String(report.actionsApplied)} hint="notes & follow-ups from chat" />
+            <Tile
+              label="Follow-ups set by coach"
+              value={String(report.followUpsSet)}
+              hint={`+ ${report.notesSaved} notes${report.actionsRefused > 0 ? ` · ${report.actionsRefused} couldn't be saved` : ""}`}
+            />
             <Tile label="Overdue follow-ups" value={String(report.overdue)} hint="open leads, team total, now" />
             <Tile label="Present today" value={`${report.presentToday} / ${report.reps.length}`} hint="clocked in, not out" />
           </div>
@@ -420,7 +491,7 @@ const AdminCoachEfficiency = () => {
             </CardHeader>
             <CardContent className="px-0 sm:px-6">
               <div className="overflow-x-auto">
-                <Table>
+                <Table className="[&_th]:px-2 [&_td]:px-2">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Rep</TableHead>
@@ -430,8 +501,9 @@ const AdminCoachEfficiency = () => {
                       <TableHead className="text-right">Days present</TableHead>
                       <TableHead className="text-right">Leads touched</TableHead>
                       <TableHead className="text-right">Stage moves</TableHead>
-                      <TableHead className="text-right">New leads</TableHead>
                       <TableHead className="text-right">Overdue</TableHead>
+                      <TableHead className="text-right whitespace-nowrap">Due (today · 7d)</TableHead>
+                      <TableHead className="text-right whitespace-nowrap">Set by coach</TableHead>
                       <TableHead className="text-right">Today</TableHead>
                       <TableHead className="text-right">Month target</TableHead>
                     </TableRow>
@@ -441,7 +513,7 @@ const AdminCoachEfficiency = () => {
                       <TableRow key={x.id}>
                         <TableCell className="font-medium whitespace-nowrap">{x.name}</TableCell>
                         <TableCell>
-                          <div className="flex flex-wrap gap-1 min-w-[15rem]">
+                          <div className="flex flex-wrap gap-1 min-w-[13rem]">
                             {x.signals.length === 0 && <span className="text-muted-foreground">—</span>}
                             {x.signals.map(s => (
                               <Badge key={s.key} variant="outline" className={`font-normal gap-1 ${SIGNAL_STYLE[s.tone]}`}>
@@ -462,8 +534,9 @@ const AdminCoachEfficiency = () => {
                         </TableCell>
                         <TableCell className="text-right tabular-nums">{x.leadsTouched}</TableCell>
                         <TableCell className="text-right tabular-nums">{x.stageMoves}</TableCell>
-                        <TableCell className="text-right tabular-nums">{x.leadsCreated}</TableCell>
                         <TableCell className="text-right tabular-nums">{x.overdue}</TableCell>
+                        <TableCell className="text-right tabular-nums whitespace-nowrap">{x.dueToday} · {x.dueWeek}</TableCell>
+                        <TableCell className="text-right tabular-nums">{x.coachOn ? x.followUpsSet : <span className="text-muted-foreground">—</span>}</TableCell>
                         <TableCell className="text-right whitespace-nowrap text-xs">
                           {!x.presentToday ? (
                             <span className="text-muted-foreground">Not in</span>
@@ -480,7 +553,7 @@ const AdminCoachEfficiency = () => {
                       </TableRow>
                     ))}
                     {sorted.length === 0 && (
-                      <TableRow><TableCell colSpan={11} className="text-center text-muted-foreground">No sales reps found.</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={12} className="text-center text-muted-foreground">No sales reps found.</TableCell></TableRow>
                     )}
                   </TableBody>
                 </Table>
@@ -488,7 +561,72 @@ const AdminCoachEfficiency = () => {
               <p className="text-xs text-muted-foreground px-6 pt-3">
                 "Replied" = wrote back to a check-in before the next one (or within 3 hours). "Leads touched" counts leads whose latest update
                 was by that rep in the period. "Quiet" is the longest stretch today, from clock-in or 11 am, with no stage move, lead update or coach reply;
-                it can't see phone calls or showroom time. Updated {timeIST(report.generatedAt)}.
+                it can't see phone calls or showroom time. "Due (today · 7d)" counts open leads whose follow-up falls in that window; "Set by coach" is follow-up dates the coach saved from chat. Updated {timeIST(report.generatedAt)}.
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <CalendarClock className="w-4 h-4" /> Follow-ups the coach scheduled
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Dates the coach saved on leads from chat, checked against what is on the lead now.
+                {report.scheduledTotal > report.scheduled.length ? ` Showing the latest ${report.scheduled.length} of ${report.scheduledTotal}.` : ""}
+              </p>
+            </CardHeader>
+            <CardContent className="px-0 sm:px-6">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Saved</TableHead>
+                      <TableHead>Rep</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Follow-up</TableHead>
+                      <TableHead>On the lead now</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {report.scheduled.map(x => (
+                      <TableRow key={x.key}>
+                        <TableCell className="whitespace-nowrap text-xs">
+                          {dayLabel(new Date(x.atMs).toISOString().slice(0, 10))}, {timeIST(x.atMs)}
+                        </TableCell>
+                        <TableCell className="font-medium whitespace-nowrap">{x.repName}</TableCell>
+                        <TableCell>{x.customer}</TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          {x.from && x.from !== x.date && <span className="text-muted-foreground line-through mr-1">{dayLabel(x.from)}</span>}
+                          {dayLabel(x.date)}{x.time ? ` · ${x.time}` : ""}
+                        </TableCell>
+                        <TableCell>
+                          {x.sync === "in_sync" && (
+                            <Badge variant="outline" className={`font-normal gap-1 ${SIGNAL_STYLE.info}`}>
+                              <CheckCircle2 className="w-3 h-3" /> In sync
+                            </Badge>
+                          )}
+                          {x.sync === "changed" && (
+                            <Badge variant="outline" className={`font-normal gap-1 ${SIGNAL_STYLE.warn}`}>
+                              <AlertTriangle className="w-3 h-3" /> Now {x.currentDate ? dayLabel(x.currentDate) : "no date"}
+                            </Badge>
+                          )}
+                          {x.sync === "closed" && <span className="text-muted-foreground text-xs">Lead closed</span>}
+                          {x.sync === "missing" && <span className="text-muted-foreground text-xs">Lead removed</span>}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {report.scheduled.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center text-muted-foreground">
+                          The coach hasn't scheduled any follow-ups in this period.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+              <p className="text-xs text-muted-foreground px-6 pt-3">
+                "Now …" means the date on the lead was changed after the coach saved it — usually the rep adjusting their plan.
               </p>
             </CardContent>
           </Card>

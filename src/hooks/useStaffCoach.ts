@@ -12,13 +12,14 @@ import {
   type JarvisLanguage,
 } from "@/lib/jarvis";
 import { getRecognitionCtor, type SpeechRecognitionLike } from "@/lib/speech";
+import type { CoachAction } from "@/lib/coachEfficiency";
 
 export interface CoachMessage {
   id: string;
   sender: "agent" | "staff";
   kind: "checkin" | "reply" | "system";
   content: string;
-  actions: { type: string; text?: string; date?: string }[] | null;
+  actions: CoachAction[] | null;
   read_at: string | null;
   created_at: string;
 }

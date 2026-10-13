@@ -2,20 +2,40 @@
 // Supabase/React so they can be unit-tested — these numbers are about people,
 // so the definitions must be exact and boringly predictable.
 
+// What the coach did to a lead from a chat reply. `ok === false` means it was
+// refused (wrong owner, past date, save failed…) — older rows have no `ok` and
+// were always successes.
+export interface CoachAction {
+  type: "set_follow_up" | "add_note" | string;
+  ok?: boolean;
+  lead_id?: string;
+  customer?: string;
+  date?: string;
+  time?: string | null;
+  from?: string | null;
+  text?: string;
+  reason?: string;
+}
+
 export interface CoachMsgRow {
   user_id: string;
   sender: "agent" | "staff";
   kind: "checkin" | "reply" | "system";
   created_at: string;
-  actions: unknown[] | null;
+  actions: CoachAction[] | null;
 }
+
+const applied = (a: CoachAction) => a.ok !== false;
 
 export interface CheckinStats {
   sent: number;
   replied: number;
   responseRate: number | null; // 0-100, null when nothing was sent
   medianReplyMinutes: number | null;
-  actionsApplied: number; // notes / follow-ups the coach saved from chat
+  actionsApplied: number; // notes + follow-ups the coach saved from chat
+  followUpsSet: number; // follow-up dates the coach saved on leads
+  notesSaved: number;
+  actionsRefused: number; // things the coach tried to save but couldn't
   staffMessages: number;
 }
 
@@ -61,16 +81,59 @@ export function checkinStats(rows: CoachMsgRow[], fromMs: number, toMs: number):
     const t = Date.parse(m.created_at);
     return t >= fromMs && t < toMs;
   };
+  const coachActions = msgs
+    .filter(m => m.sender === "agent" && m.kind === "reply" && inRange(m))
+    .flatMap(m => (Array.isArray(m.actions) ? m.actions : []));
+  const done = coachActions.filter(applied);
   return {
     sent,
     replied,
     responseRate: sent > 0 ? Math.round((replied / sent) * 100) : null,
     medianReplyMinutes: median(replyMinutes),
-    actionsApplied: msgs
-      .filter(m => m.sender === "agent" && m.kind === "reply" && inRange(m))
-      .reduce((n, m) => n + (Array.isArray(m.actions) ? m.actions.length : 0), 0),
+    actionsApplied: done.length,
+    followUpsSet: done.filter(a => a.type === "set_follow_up").length,
+    notesSaved: done.filter(a => a.type === "add_note").length,
+    actionsRefused: coachActions.length - done.length,
     staffMessages: staff.filter(inRange).length,
   };
+}
+
+export interface ScheduledFollowUp {
+  userId: string;
+  atMs: number; // when the coach saved it
+  leadId: string;
+  customer: string | null;
+  date: string; // the follow-up date it set
+  time: string | null;
+  from: string | null; // the date it replaced
+}
+
+// Follow-up dates the coach saved on leads in [fromMs, toMs), newest first.
+export function scheduledFollowUps(rows: CoachMsgRow[], fromMs: number, toMs: number): ScheduledFollowUp[] {
+  const out: ScheduledFollowUp[] = [];
+  for (const m of rows) {
+    const t = Date.parse(m.created_at);
+    if (m.sender !== "agent" || t < fromMs || t >= toMs || !Array.isArray(m.actions)) continue;
+    for (const a of m.actions) {
+      if (a.type !== "set_follow_up" || !applied(a) || !a.lead_id || !a.date) continue;
+      out.push({ userId: m.user_id, atMs: t, leadId: a.lead_id, customer: a.customer ?? null, date: a.date, time: a.time ?? null, from: a.from ?? null });
+    }
+  }
+  return out.sort((x, y) => y.atMs - x.atMs);
+}
+
+export type SyncState = "in_sync" | "changed" | "closed" | "missing";
+
+// Is the follow-up the coach set still what's on the lead? "changed" usually means
+// the rep (or someone) moved it afterwards — worth seeing, not necessarily wrong.
+export function followUpSyncState(
+  setDate: string,
+  lead: { next_follow_up_date: string | null; status: string } | undefined,
+): SyncState {
+  if (!lead) return "missing";
+  if (lead.next_follow_up_date === setDate) return "in_sync";
+  if (lead.status === "won" || lead.status === "lost") return "closed";
+  return "changed";
 }
 
 export interface QuietStretch {

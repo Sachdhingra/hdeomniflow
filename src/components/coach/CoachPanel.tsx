@@ -6,11 +6,29 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { JARVIS_LANGUAGES, type JarvisLanguage } from "@/lib/jarvis";
 import type { CoachMessage, useStaffCoach } from "@/hooks/useStaffCoach";
+import type { CoachAction } from "@/lib/coachEfficiency";
 
 type Coach = ReturnType<typeof useStaffCoach>;
 
 // Shown under a fresh check-in before the coach has suggested its own.
 const DEFAULT_CHIPS = ["Calls done ✅", "Customer visit hua", "Kuch atak gaya", "Help chahiye"];
+
+const shortDate = (d?: string) =>
+  d ? new Date(`${d}T12:00:00+05:30`).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short" }) : "";
+
+// One line per thing the coach did (or couldn't do) to a lead.
+function describeAction(a: CoachAction): { ok: boolean; text: string } {
+  const who = a.customer ? ` for ${a.customer}` : "";
+  if (a.ok === false) {
+    return { ok: false, text: `Not saved${who}: ${a.reason ?? "something went wrong"}` };
+  }
+  if (a.type === "set_follow_up") {
+    const when = `${shortDate(a.date)}${a.time ? ` at ${a.time}` : ""}`;
+    const was = a.from && a.from !== a.date ? ` (was ${shortDate(a.from)})` : "";
+    return { ok: true, text: `Follow-up${who} set for ${when}${was}` };
+  }
+  return { ok: true, text: `Note saved${a.customer ? ` on ${a.customer}` : ""}${a.text ? `: ${a.text}` : ""}` };
+}
 
 const timeLabel = (iso: string) =>
   new Date(iso).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "numeric", minute: "2-digit" });
@@ -75,11 +93,14 @@ const CoachPanel = ({ coach, variant, limit }: Props) => {
               <ReactMarkdown>{m.content}</ReactMarkdown>
               {m.actions && m.actions.length > 0 && (
                 <div className="mt-2 pt-2 border-t border-border/50 text-xs text-muted-foreground space-y-0.5">
-                  {m.actions.map((a, i) => (
-                    <div key={i}>
-                      ✅ {a.type === "set_follow_up" ? `Follow-up set for ${a.date}` : `Note saved: ${a.text}`}
-                    </div>
-                  ))}
+                  {m.actions.map((a, i) => {
+                    const d = describeAction(a);
+                    return (
+                      <div key={i}>
+                        {d.ok ? "✅" : "⚠️"} {d.text}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               <div className="flex items-center gap-2 text-[10px] opacity-70 mt-1">
