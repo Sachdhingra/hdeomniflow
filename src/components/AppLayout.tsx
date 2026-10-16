@@ -185,7 +185,9 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
 
   return (
     <div className="min-h-screen flex bg-background">
-      {user.role === "admin" && <StaffPushRegistrar />}
+      {/* Admins and sales reps are asked to turn on notifications, so check-ins from the
+          sales coach, chat and lead alerts reach them when the app is closed. */}
+      {(user.role === "admin" || user.role === "sales") && <StaffPushRegistrar />}
       <ChatNotifier />
       <LeadNotifier />
       <OrderNotifier />
