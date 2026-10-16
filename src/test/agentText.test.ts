@@ -5,6 +5,7 @@ import {
   claimsFollowUpSaved,
   extractJsonObjects,
   parseAgentOutput,
+  savedClaims,
   validateFollowUp,
 } from "../../supabase/functions/_shared/agent-text";
 
@@ -117,5 +118,55 @@ describe("claimsFollowUpSaved", () => {
   it("does not fire on ordinary coaching or on a question about setting one", () => {
     expect(claimsFollowUpSaved("Great work today! Kal subah Gagan ko call karna.")).toBe(false);
     expect(claimsFollowUpSaved("Kya main Jitender ka follow-up kal ke liye lagaun?")).toBe(false);
+  });
+});
+
+describe("parseAgentOutput — double-wrapped replies (seen live)", () => {
+  const inner = { reply: "Awesome! Go get 'em, Nisha! 🚀 I'll put a follow-up for tomorrow.", quick_replies: ["JOYITA", "SEEMA"], actions: [ACTION] };
+
+  it("unwraps a reply that is itself a JSON envelope and keeps the actions once", () => {
+    const raw = JSON.stringify({ reply: JSON.stringify(inner), actions: [ACTION] });
+    const r = parseAgentOutput(raw);
+    expect(r.reply).toBe("Awesome! Go get 'em, Nisha! 🚀 I'll put a follow-up for tomorrow.");
+    expect(r.actions).toEqual([ACTION]);
+    expect(r.quick_replies).toEqual(["JOYITA", "SEEMA"]);
+  });
+
+  it("unwraps when the outer layer has no actions of its own", () => {
+    const r = parseAgentOutput(JSON.stringify({ reply: JSON.stringify(inner) }));
+    expect(r.reply).toMatch(/^Awesome!/);
+    expect(r.actions).toEqual([ACTION]);
+  });
+
+  it("unwraps a fenced inner envelope", () => {
+    const r = parseAgentOutput(JSON.stringify({ reply: "```json\n" + JSON.stringify(inner) + "\n```", actions: [] }));
+    expect(r.reply).toMatch(/^Awesome!/);
+  });
+
+  it("leaves an ordinary reply that merely contains a brace alone", () => {
+    const r = parseAgentOutput(JSON.stringify({ reply: "Use the {name} field", actions: [] }));
+    expect(r.reply).toBe("Use the {name} field");
+  });
+});
+
+describe("savedClaims — real coach messages from production", () => {
+  it("does not flag the false alarms", () => {
+    // 'Clear ho gaya' + 'make a note' + a question about a follow-up
+    expect(
+      savedClaims("Achha, Shivam! Theek hai. Clear ho gaya. 👍 Let's make a note of this. Ab, kya Ritu mam ko try karein? Unka follow-up 20 Oct ka hai, toh unko ek quick call karke dekho."),
+    ).toEqual({ followUp: false, note: false });
+    expect(savedClaims("Ek kaam karte hain, Ritu mam ke liye follow-up tomorrow, October 15th ko set kar dein? 🤔")).toEqual({ followUp: false, note: false });
+    expect(savedClaims("Ritu mam ko message kar diya, ekdum perfect!")).toEqual({ followUp: false, note: false });
+  });
+
+  it("catches a claimed follow-up and a claimed note", () => {
+    expect(savedClaims("Ritu mam ka follow-up 20 Oct ko set ho gaya hai.").followUp).toBe(true);
+    expect(savedClaims("Maine unki lead mein note add kar diya hai ki call nahi lagi.").note).toBe(true);
+    expect(savedClaims("Mai yahan note kar deta hu ki 'sanjay ji is not picking'.").note).toBe(true);
+    expect(savedClaims("I've noted that down and set a follow-up for Friday.")).toEqual({ followUp: true, note: true });
+  });
+
+  it("handles empty text", () => {
+    expect(savedClaims("")).toEqual({ followUp: false, note: false });
   });
 });

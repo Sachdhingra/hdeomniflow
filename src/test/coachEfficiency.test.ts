@@ -148,6 +148,12 @@ describe("signalsFor", () => {
     expect(signalsFor({ ...base, quietMinutesToday: 130 }).map(s => s.key)).toContain("quiet");
     expect(signalsFor({ ...base, quietMinutesToday: 130, presentToday: false }).map(s => s.key)).not.toContain("quiet");
   });
+  it("flags a coach rep with no phone registered for notifications, but not when unknown or the coach is off", () => {
+    expect(signalsFor({ ...base, pushRegistered: false }).map(s => s.key)).toContain("no_push");
+    expect(signalsFor({ ...base, pushRegistered: true }).map(s => s.key)).not.toContain("no_push");
+    expect(signalsFor({ ...base, pushRegistered: null }).map(s => s.key)).not.toContain("no_push");
+    expect(signalsFor({ ...base, coachOn: false, pushRegistered: false }).map(s => s.key)).not.toContain("no_push");
+  });
   it("flags many overdue follow-ups and praises high engagement", () => {
     const keys = signalsFor({ ...base, overdueFollowUps: 12, responseRate: 90 }).map(s => s.key);
     expect(keys).toEqual(expect.arrayContaining(["overdue", "engaged"]));

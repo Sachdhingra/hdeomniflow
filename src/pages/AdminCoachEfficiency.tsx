@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "@/lib/toast";
+import { autoFlipTimesByLead, isAutoStatusFlip, isAutoTouch } from "../../supabase/functions/_shared/activity";
 import {
   addDays,
   checkinStats,
@@ -131,18 +132,18 @@ async function buildReport(reps: { id: string; name: string }[], rangeKey: Range
   const month = r.today.slice(0, 7);
   const monthStartMs = istMidnightMs(`${month}-01`);
 
-  const [msgs, attendance, stages, touched, created, overdueRows, wonRows, targets, dueRows] = await Promise.all([
+  const [msgs, attendance, stagesAll, touchedAll, created, overdueRows, wonRows, targets, dueRows] = await Promise.all([
     fetchAll<CoachMsgRow>((a, b) =>
       db.from("staff_agent_messages").select("user_id,sender,kind,created_at,actions").in("user_id", ids)
         .gte("created_at", fromIso).order("created_at", { ascending: true }).range(a, b)),
     fetchAll<{ user_id: string; date: string; clock_in: string | null; clock_out: string | null; status: string }>((a, b) =>
       db.from("attendance").select("user_id,date,clock_in,clock_out,status").in("user_id", ids)
         .gte("date", r.fromDate).lte("date", r.toDate).range(a, b)),
-    fetchAll<{ changed_by_id: string; changed_at: string }>((a, b) =>
-      db.from("lead_stage_history").select("changed_by_id,changed_at").in("changed_by_id", ids)
+    fetchAll<{ lead_id: string; old_stage: string | null; new_stage: string | null; changed_by_id: string; changed_at: string }>((a, b) =>
+      db.from("lead_stage_history").select("lead_id,old_stage,new_stage,changed_by_id,changed_at").in("changed_by_id", ids)
         .gte("changed_at", fromIso).range(a, b)),
-    fetchAll<{ updated_by: string; updated_at: string }>((a, b) =>
-      db.from("leads").select("updated_by,updated_at").in("updated_by", ids).is("deleted_at", null)
+    fetchAll<{ id: string; updated_by: string; updated_at: string }>((a, b) =>
+      db.from("leads").select("id,updated_by,updated_at").in("updated_by", ids).is("deleted_at", null)
         .gte("updated_at", fromIso).range(a, b)),
     fetchAll<{ created_by: string; created_at: string }>((a, b) =>
       db.from("leads").select("created_by,created_at").in("created_by", ids).is("deleted_at", null)
@@ -160,6 +161,24 @@ async function buildReport(reps: { id: string; name: string }[], rangeKey: Range
       db.from("leads").select("assigned_to,next_follow_up_date").in("assigned_to", ids).is("deleted_at", null)
         .not("status", "in", "(won,lost)").gte("next_follow_up_date", r.today).lte("next_follow_up_date", addDays(r.today, 7)).range(a, b)),
   ]);
+
+  // The app flips a lead to/from "overdue" by itself when a rep opens it and credits
+  // that rep, so those are not counted as the rep's own activity.
+  const autoFlips = autoFlipTimesByLead(stagesAll);
+  const stages = stagesAll.filter(x => !isAutoStatusFlip(x.old_stage, x.new_stage));
+  const touched = touchedAll.filter(x => !isAutoTouch(x.id, Date.parse(x.updated_at), autoFlips));
+
+  // Which reps have a phone registered for notifications (best effort: skipped
+  // quietly if this account can't read the table).
+  let pushKnown = true;
+  let pushUsers = new Set<string>();
+  try {
+    const pushRows = await fetchAll<{ user_id: string; push_enabled: boolean | null }>((a, b) =>
+      db.from("staff_push_devices").select("user_id,push_enabled").in("user_id", ids).range(a, b));
+    pushUsers = new Set(pushRows.filter(x => x.push_enabled !== false).map(x => x.user_id));
+  } catch {
+    pushKnown = false;
+  }
 
   const msgsByUser = new Map<string, CoachMsgRow[]>();
   msgs.forEach(m => msgsByUser.set(m.user_id, [...(msgsByUser.get(m.user_id) ?? []), m]));
@@ -267,6 +286,7 @@ async function buildReport(reps: { id: string; name: string }[], rangeKey: Range
       overdueFollowUps: row.overdue,
       quietMinutesToday: row.quietMinutes,
       presentToday: row.presentToday,
+      pushRegistered: pushKnown ? pushUsers.has(rep.id) : null,
     });
     return row;
   });
@@ -560,7 +580,7 @@ const AdminCoachEfficiency = () => {
               </div>
               <p className="text-xs text-muted-foreground px-6 pt-3">
                 "Replied" = wrote back to a check-in before the next one (or within 3 hours). "Leads touched" counts leads whose latest update
-                was by that rep in the period. "Quiet" is the longest stretch today, from clock-in or 11 am, with no stage move, lead update or coach reply;
+                was by that rep in the period; the app's automatic overdue/follow-up status flips are not counted as activity. "Quiet" is the longest stretch today, from clock-in or 11 am, with no stage move, lead update or coach reply;
                 it can't see phone calls or showroom time. "Due (today · 7d)" counts open leads whose follow-up falls in that window; "Set by coach" is follow-up dates the coach saved from chat. Updated {timeIST(report.generatedAt)}.
               </p>
             </CardContent>
