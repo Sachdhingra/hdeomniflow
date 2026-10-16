@@ -27,6 +27,7 @@ export interface CoachMessage {
 export type CoachStatus = "idle" | "listening" | "thinking" | "speaking";
 
 const VOICE_ON_KEY = "omniflow-coach-voice";
+const PAGE_SIZE = 100;
 
 // The messages table is newer than the generated Supabase types.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -61,6 +62,9 @@ function readLanguage(): JarvisLanguage {
 export function useStaffCoach(userId: string | undefined) {
   const [messages, setMessages] = useState<CoachMessage[]>([]);
   const [loading, setLoading] = useState(true);
+  // How many of the NEWEST messages to show; "Load earlier" raises it.
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [hasMore, setHasMore] = useState(false);
   const [present, setPresent] = useState<boolean | null>(null);
   const [status, setStatus] = useState<CoachStatus>("idle");
   const [transcript, setTranscript] = useState("");
@@ -88,14 +92,21 @@ export function useStaffCoach(userId: string | undefined) {
 
   const load = useCallback(async () => {
     if (!userId) return;
+    // Newest first, then flipped for display. (Oldest-first with a limit hides the
+    // latest messages once a thread passes the limit — which is exactly what made
+    // a busy rep's new conversations look "not logged".)
     const { data } = await coachMessagesTable()
       .select("id,sender,kind,content,actions,read_at,created_at")
       .eq("user_id", userId)
-      .order("created_at", { ascending: true })
-      .limit(100);
-    setMessages((data ?? []) as CoachMessage[]);
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    const rows = ((data ?? []) as CoachMessage[]).slice().reverse();
+    setMessages(rows);
+    setHasMore((data ?? []).length >= limit);
     setLoading(false);
-  }, [userId]);
+  }, [userId, limit]);
+
+  const loadEarlier = useCallback(() => setLimit(l => l + PAGE_SIZE), []);
 
   const loadPresence = useCallback(async () => {
     if (!userId) return;
@@ -393,6 +404,8 @@ export function useStaffCoach(userId: string | undefined) {
     listenOnce,
     startTalk,
     stopVoice,
+    hasMore,
+    loadEarlier,
     reload: load,
   };
 }

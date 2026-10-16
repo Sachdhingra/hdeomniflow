@@ -172,6 +172,8 @@ export interface SignalInput {
   overdueFollowUps: number;
   quietMinutesToday: number | null;
   presentToday: boolean;
+  // Has a phone registered for notifications? null = unknown.
+  pushRegistered?: boolean | null;
 }
 
 // Plain-language flags an admin can act on. Deliberately few and conservative.
@@ -182,6 +184,9 @@ export function signalsFor(i: SignalInput): Signal[] {
   }
   if (i.presentToday && i.quietMinutesToday !== null && i.quietMinutesToday >= 120) {
     out.push({ key: "quiet", label: `No CRM activity for ${formatDuration(i.quietMinutesToday)}`, tone: "warn" });
+  }
+  if (i.coachOn && i.pushRegistered === false) {
+    out.push({ key: "no_push", label: "Notifications not set up", tone: "warn" });
   }
   if (i.overdueFollowUps >= 10) {
     out.push({ key: "overdue", label: `${i.overdueFollowUps} overdue follow-ups`, tone: "warn" });

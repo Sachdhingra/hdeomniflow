@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { JARVIS_LANGUAGES, type JarvisLanguage } from "@/lib/jarvis";
 import type { CoachMessage, useStaffCoach } from "@/hooks/useStaffCoach";
 import type { CoachAction } from "@/lib/coachEfficiency";
+import { displayCoachText } from "@/lib/coachText";
 
 type Coach = ReturnType<typeof useStaffCoach>;
 
@@ -50,6 +51,7 @@ const CoachPanel = ({ coach, variant, limit }: Props) => {
   const {
     messages, loading, present, status, transcript, quickReplies, talkMode, language, setLanguage,
     voiceOn, setVoiceOn, sttSupported, send, speakMessage, listenOnce, startTalk, stopVoice,
+    hasMore, loadEarlier,
   } = coach;
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -73,6 +75,13 @@ const CoachPanel = ({ coach, variant, limit }: Props) => {
     <div className="flex flex-col min-h-0 flex-1">
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
         {loading && <Loader2 className="w-5 h-5 animate-spin mx-auto text-muted-foreground" />}
+        {variant === "page" && hasMore && !loading && (
+          <div className="text-center">
+            <Button type="button" variant="ghost" size="sm" onClick={loadEarlier}>
+              Load earlier messages
+            </Button>
+          </div>
+        )}
         {!loading && messages.length === 0 && (
           <p className="text-sm text-muted-foreground text-center mt-6">
             No check-ins yet. Once you clock in, your coach will message you at 11:30, 1:30, 3:30, 5:30 and 7:30.
@@ -90,7 +99,7 @@ const CoachPanel = ({ coach, variant, limit }: Props) => {
                 m.sender === "staff" ? "bg-primary text-primary-foreground" : "bg-muted"
               }`}
             >
-              <ReactMarkdown>{m.content}</ReactMarkdown>
+              <ReactMarkdown>{m.sender === "agent" ? displayCoachText(m.content) : m.content}</ReactMarkdown>
               {m.actions && m.actions.length > 0 && (
                 <div className="mt-2 pt-2 border-t border-border/50 text-xs text-muted-foreground space-y-0.5">
                   {m.actions.map((a, i) => {

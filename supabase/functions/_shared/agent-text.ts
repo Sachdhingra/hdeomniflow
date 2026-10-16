@@ -82,7 +82,15 @@ export function extractJsonObjects(text: string): Found[] {
 const isActionObject = (o: Record<string, unknown>) =>
   typeof o.type === "string" && (KNOWN_ACTION_TYPES as readonly string[]).includes(o.type);
 
-export function parseAgentOutput(raw: string): AgentOutput {
+const dedupeActions = (list: AgentActionInput[]): AgentActionInput[] => {
+  const seen = new Set<string>();
+  return list.filter((a) => {
+    const k = JSON.stringify(a);
+    return seen.has(k) ? false : (seen.add(k), true);
+  });
+};
+
+export function parseAgentOutput(raw: string, depth = 0): AgentOutput {
   const text = raw.replace(/```(?:json)?/gi, "").trim();
   const found = extractJsonObjects(text);
 
@@ -90,11 +98,22 @@ export function parseAgentOutput(raw: string): AgentOutput {
   const envelope = found.find((f) => typeof f.obj.reply === "string");
   if (envelope) {
     const o = envelope.obj;
-    return {
-      reply: String(o.reply).trim() || FALLBACK_REPLY,
-      actions: Array.isArray(o.actions) ? (o.actions as AgentActionInput[]) : [],
-      quick_replies: cleanReplies(o.quick_replies),
-    };
+    const reply = String(o.reply).trim();
+    const actions = Array.isArray(o.actions) ? (o.actions as AgentActionInput[]) : [];
+    const quick = cleanReplies(o.quick_replies);
+    // The model sometimes double-wraps: the "reply" string is itself a JSON
+    // envelope. Unwrap it, keeping the actions from both layers.
+    if (depth < 2 && /^(```|\{)/.test(reply)) {
+      const inner = parseAgentOutput(reply, depth + 1);
+      if (inner.reply !== FALLBACK_REPLY) {
+        return {
+          reply: inner.reply,
+          actions: dedupeActions([...actions, ...inner.actions]),
+          quick_replies: inner.quick_replies.length ? inner.quick_replies : quick,
+        };
+      }
+    }
+    return { reply: reply || FALLBACK_REPLY, actions, quick_replies: quick };
   }
 
   // 2. Prose with JSON blobs mixed in: take the actions, drop the blobs.
@@ -200,11 +219,32 @@ export function validateFollowUp(date: unknown, time: unknown, todayISO: string)
   return { ok: true, date, time: t };
 }
 
-// A reply that says a follow-up was set/updated. Used as a safety net: if the
-// reply claims this but no action was actually applied, the rep is told so.
+// What a reply says it saved. Checked sentence by sentence so a question
+// ("kya main follow-up set karun?") or an unrelated "ho gaya" is not a claim.
+export interface SavedClaims {
+  followUp: boolean;
+  note: boolean;
+}
+
+const FOLLOW_UP_WORD = /follow[\s-]?up|reminder/i;
+const FOLLOW_UP_DONE =
+  /(set kar|set ho|set kiy|set done|\bis set\b|has been set|i['’]?ve set|i have set|have set|been scheduled|\bscheduled\b|rescheduled|reschedule kar|\bupdated\b|update kar|adjust(ed)?\b|adjust kar|\band set (a|the)\b|laga diya|lagaya|laga di\b|ho gaya|ho gayi|kar diya|kar di\b|kar liya|add kar|added)/i;
+const NOTE_WORD = /\bnot(e|es|ed)\b/i;
+const NOTE_DONE =
+  /(add kar|kar diya|kar di\b|kar liya|noted down|i['’]?ve (noted|added|saved)|i have (noted|added|saved)|made a note|added a note|note (saved|added)|\bmaine\b|note kar (deta|dunga|diya|liya|raha|rahi)|likh diya|likh liya|\bsaved\b)/i;
+
+export function savedClaims(reply: string): SavedClaims {
+  const out: SavedClaims = { followUp: false, note: false };
+  for (const raw of reply.split(/(?<=[.!?।\n])\s+/)) {
+    const sentence = raw.trim();
+    if (!sentence || /\?\s*(\W*)$/.test(sentence)) continue; // a question is not a claim
+    if (FOLLOW_UP_WORD.test(sentence) && FOLLOW_UP_DONE.test(sentence)) out.followUp = true;
+    if (NOTE_WORD.test(sentence) && NOTE_DONE.test(sentence)) out.note = true;
+  }
+  return out;
+}
+
+// Kept for callers that only care about follow-ups.
 export function claimsFollowUpSaved(reply: string): boolean {
-  const mentionsFollowUp = /follow[\s-]?up|reminder/i.test(reply);
-  const claimsDone =
-    /(set kar|set kiy|set ho|set kar diya|kar diya|kar di\b|ho gaya|is set|has been set|i['’]?ve set|i have set|have set|been scheduled|scheduled for|rescheduled|reschedule kar|updated|update kar|save kar|saved)/i.test(reply);
-  return mentionsFollowUp && claimsDone;
+  return savedClaims(reply).followUp;
 }
