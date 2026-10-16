@@ -1,9 +1,4 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import {
-  DEFAULT_TTS_VOICE,
-  GEMINI_TTS_VOICES,
-  synthesizeSpeech,
-} from "../_shared/gemini-tts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,17 +8,8 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
-const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
 
-// Roles allowed to use Jarvis voice mode. Each role only ever receives its
-// own scoped data context (see the per-role branches below) — admins see
-// everything, everyone else sees only their own domain.
-// Must stay in sync with JARVIS_ROLES in src/lib/jarvis.ts.
-const JARVIS_VOICE_ROLES = ["admin", "sales", "service_head", "accounts"];
-
-const TEXT_MODEL = "google/gemini-2.5-pro";
-// Voice answers favour latency over depth — flash keeps Jarvis snappy.
-const VOICE_MODEL = "google/gemini-2.5-flash";
+const MODEL = "google/gemini-2.5-pro";
 
 const SYSTEM_PROMPT = `You are an AI business intelligence assistant for a furniture CRM called FurnCRM.
 
@@ -61,18 +47,8 @@ RULES:
 - For at-risk leads: high value + overdue or stuck = highest priority.
 - Days left in month matters for pace calculation.`;
 
-// Appended to the system prompt when the request comes from Jarvis voice mode.
-const VOICE_SYSTEM_PROMPT = `
-
-VOICE MODE — you are "Jarvis", OmniFlow's spoken voice assistant. Your answer will be read aloud by text-to-speech, so:
-- Reply in plain conversational sentences. No markdown, no tables, no bullet symbols, no headings, no emoji.
-- Be brief: under 120 words unless the user explicitly asks for a full breakdown.
-- Say rupee amounts in words in the reply language ("4.5 lakh rupees" / "साढ़े चार लाख रुपये"), never "₹450000" or digit strings.
-- Lead with the direct answer, then at most two or three key facts or actions with specific names.
-- If the data would normally need a table, speak only the top few items instead.`;
-
-// Jarvis reply language. Customer and product names stay as-is; everything
-// else — including numbers spoken as words — follows the selected language.
+// Reply language. Customer and product names stay as-is; everything else
+// follows the selected language.
 // Human-readable description of what each role's context contains, given to
 // the model so it can explain scope limits instead of guessing at data it
 // doesn't have.
@@ -264,12 +240,7 @@ Deno.serve(async (req) => {
       return json({ error: "AI Assistant not available for your role" }, 403);
     }
 
-    const { messages, question, voice, tts_voice, language } = await req.json();
-    const voiceMode = voice === true;
-    if (voiceMode && !JARVIS_VOICE_ROLES.includes(role)) {
-      return json({ error: "Jarvis voice mode is not available for your role yet" }, 403);
-    }
-    const ttsVoice = GEMINI_TTS_VOICES.includes(tts_voice) ? tts_voice : DEFAULT_TTS_VOICE;
+    const { messages, question, language } = await req.json();
     const replyLanguage = SUPPORTED_LANGUAGES.includes(language) ? language : "en";
     const userQuestion: string = question ?? messages?.[messages.length - 1]?.content ?? "";
 
@@ -587,9 +558,7 @@ Deno.serve(async (req) => {
       `Question: ${userQuestion}\n\n` +
       `Answer with specific names, lead values, and action items from the data above.`;
 
-    const systemContent =
-      (voiceMode ? SYSTEM_PROMPT + VOICE_SYSTEM_PROMPT : SYSTEM_PROMPT) +
-      LANGUAGE_INSTRUCTIONS[replyLanguage];
+    const systemContent = SYSTEM_PROMPT + LANGUAGE_INSTRUCTIONS[replyLanguage];
     const aiMessages = [
       { role: "system", content: systemContent },
       ...((messages ?? []).slice(0, -1) as { role: string; content: string }[]),
@@ -603,7 +572,7 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: voiceMode ? VOICE_MODEL : TEXT_MODEL,
+        model: MODEL,
         messages: aiMessages,
       }),
     });
@@ -618,27 +587,6 @@ Deno.serve(async (req) => {
 
     const aiJson = await aiResp.json();
     const reply = aiJson?.choices?.[0]?.message?.content ?? "";
-
-    if (voiceMode && reply) {
-      const readingInstructions: Record<string, string> = {
-        en: "Speak this reply in a clear, confident assistant voice:",
-        hi: "Speak this reply in a clear, confident assistant voice, in Hindi:",
-        pa: "Speak this reply in a clear, confident assistant voice, in Punjabi:",
-      };
-      const speech = await synthesizeSpeech(
-        reply,
-        ttsVoice,
-        GEMINI_API_KEY,
-        readingInstructions[replyLanguage],
-      );
-      return json({
-        reply,
-        role,
-        audio: speech.audio ?? null,
-        mimeType: speech.mimeType ?? null,
-        ttsError: speech.error ?? null,
-      });
-    }
 
     return json({ reply, role });
   } catch (e) {

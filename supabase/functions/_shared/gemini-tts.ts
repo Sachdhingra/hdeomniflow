@@ -1,5 +1,5 @@
 // Shared Gemini TTS helpers used by the voice-reminder briefing and the
-// Jarvis voice assistant (ai-assistant voice mode) edge functions.
+// staff-agent coach edge functions.
 
 export const GEMINI_TTS_VOICES = ["Kore", "Puck", "Zephyr", "Charon", "Fenrir", "Aoede"];
 export const DEFAULT_TTS_VOICE = "Kore";

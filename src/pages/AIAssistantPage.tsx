@@ -46,7 +46,7 @@ const AIAssistantPage = () => {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  // Shares the Jarvis language preference so voice and text answer alike.
+  // Shared language preference (also used by the coach).
   const [language, setLanguage] = useState<JarvisLanguage>(() => {
     try {
       const saved = localStorage.getItem(JARVIS_LANGUAGE_STORAGE_KEY);

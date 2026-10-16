@@ -5,7 +5,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import {
   Building2, LayoutDashboard, Users, Wrench, Navigation, MapPin,
   LogOut, Menu, X, ChevronRight, CalendarDays, BarChart3,
-  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot, ShieldCheck, MessageSquare, TrendingUp, ShoppingBag, MessagesSquare, Sparkles, Clock, Star, Receipt, Trophy, UserCircle, BookUser, Boxes, Truck, Calculator, CreditCard, Coins, BarChart2, AudioLines, BellRing, LibraryBig, MonitorPlay, GalleryHorizontalEnd, Globe
+  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot, ShieldCheck, MessageSquare, TrendingUp, ShoppingBag, MessagesSquare, Sparkles, Clock, Star, Receipt, Trophy, UserCircle, BookUser, Boxes, Truck, Calculator, CreditCard, Coins, BarChart2, BellRing, LibraryBig, MonitorPlay, GalleryHorizontalEnd, Globe
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useStaffProfile } from "@/hooks/useStaffProfile";
@@ -23,7 +23,6 @@ import DiscountCalculator from "@/components/DiscountCalculator";
 import { useChatUnread } from "@/contexts/ChatUnreadContext";
 import { useFieldAgentDuty } from "@/hooks/useFieldAgentDuty";
 import FieldAgentGpsGuard from "@/components/FieldAgentGpsGuard";
-import JarvisFloatingButton from "@/components/JarvisFloatingButton";
 import CoachPopup from "@/components/coach/CoachPopup";
 import MorningBriefing from "@/components/MorningBriefing";
 import LoyaltyAlertNotifier from "@/components/LoyaltyAlertNotifier";
@@ -107,7 +106,6 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/admin/website-gallery", label: "Website Gallery", icon: <Globe className="w-5 h-5" /> },
       { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" />, badge: chatUnread || undefined },
       { to: "/ai-assistant", label: "AI Assistant", icon: <Sparkles className="w-5 h-5" /> },
-      { to: "/jarvis", label: "Jarvis Voice", icon: <AudioLines className="w-5 h-5" /> },
     ],
     sales: [
       { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" />, badge: overdueCount || undefined },
@@ -127,7 +125,6 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" />, badge: chatUnread || undefined },
       { to: "/my-day", label: "My Day Coach", icon: <Sparkles className="w-5 h-5" /> },
       { to: "/ai-assistant", label: "AI Assistant", icon: <Sparkles className="w-5 h-5" /> },
-      { to: "/jarvis", label: "Jarvis Voice", icon: <AudioLines className="w-5 h-5" /> },
     ],
     service_head: [
       { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" />, badge: pendingJobCount || undefined },
@@ -141,7 +138,6 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
       { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" />, badge: chatUnread || undefined },
       { to: "/ai-assistant", label: "AI Assistant", icon: <Sparkles className="w-5 h-5" /> },
-      { to: "/jarvis", label: "Jarvis Voice", icon: <AudioLines className="w-5 h-5" /> },
     ],
     field_agent: [
       { to: "/", label: "My Jobs", icon: <Wrench className="w-5 h-5" /> },
@@ -166,7 +162,6 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       LOGISTICS_NAV,
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
       { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" />, badge: chatUnread || undefined },
-      { to: "/jarvis", label: "Jarvis Voice", icon: <AudioLines className="w-5 h-5" /> },
     ],
   };
 
@@ -281,7 +276,6 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       </div>
       <DiscountCalculator />
       <FieldAgentGpsGuard />
-      <JarvisFloatingButton />
       <MorningBriefing />
       <CoachPopup />
     </div>

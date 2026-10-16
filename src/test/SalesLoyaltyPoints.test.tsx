@@ -23,7 +23,6 @@ vi.mock("@/components/OrderActionBanner", () => ({ default: () => null }));
 vi.mock("@/components/AttendanceClockButton", () => ({ default: () => null }));
 vi.mock("@/components/DiscountCalculator", () => ({ default: () => null }));
 vi.mock("@/components/FieldAgentGpsGuard", () => ({ default: () => null }));
-vi.mock("@/components/JarvisFloatingButton", () => ({ default: () => null }));
 vi.mock("@/components/MorningBriefing", () => ({ default: () => null }));
 vi.mock("@/components/LoyaltyAlertNotifier", () => ({ default: () => null }));
 vi.mock("@/components/StaffPushRegistrar", () => ({ default: () => null }));
