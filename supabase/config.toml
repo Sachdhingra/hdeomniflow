@@ -43,3 +43,7 @@ verify_jwt = false
 # JWT; the function authenticates both itself.
 [functions.staff-agent]
 verify_jwt = false
+
+# Public website chat agent (no user JWT)
+[functions.website-agent]
+verify_jwt = false
