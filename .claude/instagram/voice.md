@@ -9,7 +9,7 @@ only the owner knows. The skills never invent these, so fill them in.
 - **Handle:** @godrej_interio_ddn
 - **What I do, in one sentence:** Godrej Interio dealership in Dehradun: furniture, kitchens and wardrobes for homes, with delivery, installation and service after the sale.
 - **Who I am talking to:** Families in Dehradun and nearby (TODO: confirm areas) furnishing or renovating a home: new flat or house owners, people replacing a kitchen or wardrobe, and anyone planning a wedding-season home refresh.
-- **What I sell:** Godrej Interio furniture and modular kitchens/wardrobes (TODO: confirm categories), plus the Elite Card loyalty program: Elite Rs 1,200, Super Elite Rs 2,100, Prestige Elite Rs 4,100 (incl. GST, 3-year validity, extra 5-6% discount; Super and Prestige add warranty, service discounts and points).
+- **What I sell:** Godrej Interio home furniture, office furniture, kitchens, mattresses and safes, plus the Elite Card loyalty program: Elite Rs 1,200, Super Elite Rs 2,100, Prestige Elite Rs 4,100 (incl. GST, 3-year validity, extra 5-6% discount; Super and Prestige add warranty, service discounts and points).
 
 ## What I sound like
 
@@ -48,7 +48,7 @@ Only facts I can stand behind. TODO: add real numbers.
 - Hundreds of homes furnished.
 - Many Google reviews. Never invent or paraphrase a review; quote only text the owner pastes in, with the reviewer's first name and permission.
 - No customer story yet. Do not fabricate one; use the reviews and the 20-year history instead.
-- TODO: delivery/installation turnaround.
+- Delivery and installation included for everything we sell (turnaround time TODO: owner to confirm; never promise dates).
 
 ## The ask
 
