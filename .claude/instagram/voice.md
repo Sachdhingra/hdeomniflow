@@ -5,7 +5,7 @@ only the owner knows. The skills never invent these, so fill them in.
 
 ## Who I am
 
-- **Name:** Home Decor Enterprises (TODO: on-camera person's name)
+- **Name:** Home Decor Enterprises (no on-camera person; the brand speaks)
 - **Handle:** @godrej_interio_ddn
 - **What I do, in one sentence:** Godrej Interio dealership in Dehradun: furniture, kitchens and wardrobes for homes, with delivery, installation and service after the sale.
 - **Who I am talking to:** Families in Dehradun and nearby (TODO: confirm areas) furnishing or renovating a home: new flat or house owners, people replacing a kitchen or wardrobe, and anyone planning a wedding-season home refresh.
@@ -13,15 +13,15 @@ only the owner knows. The skills never invent these, so fill them in.
 
 ## What I sound like
 
-- **Three of my own reels or captions that sound most like me:** TODO. Paste three, or send them and say "rewrite my voice.md from these". This beats everything below.
-- **On camera I am:** Calm, practical, showroom-floor honest. Like a trusted dealer explaining what to check before you pay. (TODO: confirm)
+- **Three of my own reels or captions that sound most like me:** None exist yet. Write the voice from the business facts here; refine once real posts exist.
+- **On camera I am:** (faceless, so this is the voiceover tone) Calm, practical, showroom-floor honest. Like a trusted dealer explaining what to check before you pay.
 - **Words I actually use:** ghar, showroom, delivery, installation, warranty, service, EMI, budget, size, finish, Godrej Interio. Plain Hinglish is fine Language: a natural mix of Hindi and English (Hinglish) in both scripts and captions..
 - **Words I would never say out loud:** "game-changer", "elevate your space", "curated", "bespoke", "luxe", "unlock", "dive in", "in today's video".
 - **Do I swear:** No.
 - **Emoji in captions:** One, rarely.
-- **Face on camera:** Sometimes. Product, fabric and finish close-ups carry most reels (TODO: confirm).
-- **Voiceover or to-camera:** To-camera in the showroom, voiceover over product shots.
-- **Pace:** TODO (time yourself; default 165 wpm).
+- **Face on camera:** Never. Faceless reels: product, fabric, finish and showroom shots with on-screen text and voiceover.
+- **Voiceover or to-camera:** Voiceover only, over showroom and product footage.
+- **Pace:** 165 wpm default (Hindi-English voiceover may run slower; adjust after the first recording).
 
 ## My positions
 
@@ -45,10 +45,13 @@ Only facts I can stand behind. TODO: add real numbers.
 - Godrej Interio authorised dealer in Dehradun.
 - Elite Card: 3-year validity, extra 5% (Elite, Super Elite) or 6% (Prestige Elite, bills from Rs 2,00,000).
 - In business since 2006, 20 years serving Dehradun.
-- TODO: homes furnished, a named-with-permission customer story, delivery/installation turnaround.
+- Hundreds of homes furnished.
+- Many Google reviews. Never invent or paraphrase a review; quote only text the owner pastes in, with the reviewer's first name and permission.
+- No customer story yet. Do not fabricate one; use the reviews and the 20-year history instead.
+- TODO: delivery/installation turnaround.
 
 ## The ask
 
-- **My keyword CTA, if I use one:** KITCHEN (TODO: confirm; alternatives: SOFA, WARDROBE, ELITE)
+- **My keyword CTA, if I use one:** FURNITURE
 - **What the keyword sends them:** A DM reply with a showroom visit booking and a request for room size. Follow-ups follow the project rule: at most one automated WhatsApp follow-up per lead per 24 hours, and stop after a clear no.
-- **Where my link goes:** https://hdefurniture.netlify.app (TODO: WhatsApp number).
+- **Where my link goes:** https://hdefurniture.netlify.app and WhatsApp 9917233664.
