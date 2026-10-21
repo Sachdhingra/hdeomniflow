@@ -154,15 +154,16 @@ export default function LoyaltyPoints() {
   const [customerSearch, setCustomerSearch] = useState("");
   const [tab, setTab] = useState("queue");
 
-  // ── Load customers (points-earning tiers only for history tab) ────────────
+  // ── Load customers (active card holders with the app, all tiers, for the history tab) ──
+  // Elite cards carry no points, but they can still use app offers, so they stay listed.
 
   const loadCustomers = async () => {
     setLoadingCustomers(true);
     const { data, error } = await supabase
       .from("elite_customers")
       .select("id, customer_name, phone_1, card_tier, card_number, current_points, lifetime_points, app_activated")
-      .in("card_tier", ["super_elite", "prestige_elite"])
       .eq("status", "active")
+      .eq("app_activated", true)
       .order("current_points", { ascending: false });
     if (error) toast.error(error.message);
     else setCustomers((data as CustomerPoints[]) ?? []);
