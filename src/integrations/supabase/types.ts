@@ -55,6 +55,59 @@ export type Database = {
           },
         ]
       }
+      admin_daily_summaries: {
+        Row: {
+          generated_at: string
+          headline: string
+          id: string
+          report: Json
+          source: string
+          summary_date: string
+        }
+        Insert: {
+          generated_at?: string
+          headline: string
+          id?: string
+          report: Json
+          source?: string
+          summary_date: string
+        }
+        Update: {
+          generated_at?: string
+          headline?: string
+          id?: string
+          report?: Json
+          source?: string
+          summary_date?: string
+        }
+        Relationships: []
+      }
+      admin_summary_views: {
+        Row: {
+          seen_at: string
+          summary_id: string
+          user_id: string
+        }
+        Insert: {
+          seen_at?: string
+          summary_id: string
+          user_id: string
+        }
+        Update: {
+          seen_at?: string
+          summary_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_summary_views_summary_id_fkey"
+            columns: ["summary_id"]
+            isOneToOne: false
+            referencedRelation: "admin_daily_summaries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agent_live_locations: {
         Row: {
           agent_id: string
