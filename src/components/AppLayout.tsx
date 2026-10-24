@@ -25,6 +25,7 @@ import { useFieldAgentDuty } from "@/hooks/useFieldAgentDuty";
 import FieldAgentGpsGuard from "@/components/FieldAgentGpsGuard";
 import JarvisFloatingButton from "@/components/JarvisFloatingButton";
 import CoachPopup from "@/components/coach/CoachPopup";
+import AdminDaySummaryPopup from "@/components/admin/AdminDaySummaryPopup";
 import MorningBriefing from "@/components/MorningBriefing";
 import LoyaltyAlertNotifier from "@/components/LoyaltyAlertNotifier";
 import StaffPushRegistrar from "@/components/StaffPushRegistrar";
@@ -98,6 +99,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       { to: "/admin/automation", label: "Automation", icon: <Bot className="w-5 h-5" /> },
       { to: "/admin/push-notifications", label: "Push Notifications", icon: <BellRing className="w-5 h-5" /> },
       { to: "/admin/templates", label: "WhatsApp Templates", icon: <MessageSquare className="w-5 h-5" /> },
+      { to: "/admin/day-summary", label: "Day Summary", icon: <ClipboardList className="w-5 h-5" /> },
       { to: "/admin/coach-efficiency", label: "Coach Efficiency", icon: <Sparkles className="w-5 h-5" /> },
       { to: "/admin/funnel-analytics", label: "Funnel Analytics", icon: <TrendingUp className="w-5 h-5" /> },
       { to: "/admin/orders", label: "Orders", icon: <ShoppingBag className="w-5 h-5" /> },
@@ -284,6 +286,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       <JarvisFloatingButton />
       <MorningBriefing />
       <CoachPopup />
+      {user.role === "admin" && <AdminDaySummaryPopup />}
     </div>
   );
 };

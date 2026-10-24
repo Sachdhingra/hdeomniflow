@@ -45,6 +45,7 @@ const AIAssistantPage = lazy(() => import("@/pages/AIAssistantPage"));
 const JarvisPage = lazy(() => import("@/pages/JarvisPage"));
 const MyDayCoach = lazy(() => import("@/pages/MyDayCoach"));
 const AdminCoachEfficiency = lazy(() => import("@/pages/AdminCoachEfficiency"));
+const AdminDaySummary = lazy(() => import("@/pages/AdminDaySummary"));
 const AttendancePage = lazy(() => import("@/pages/AttendancePage"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 const FeedbackKiosk = lazy(() => import("@/pages/FeedbackKiosk"));
@@ -122,6 +123,7 @@ const AppRoutes = () => {
             <Route path="/outreach" element={<LeadOutreach />} />
             <Route path="/admin/templates" element={<AdminMessageTemplates />} />
             <Route path="/admin/coach-efficiency" element={<AdminCoachEfficiency />} />
+            <Route path="/admin/day-summary" element={<AdminDaySummary />} />
             <Route path="/admin/funnel-analytics" element={<AdminFunnelAnalytics />} />
             <Route path="/accounts/approvals" element={<AccountsApprovals />} />
             <Route path="/admin/orders" element={<AdminOrdersDashboard />} />

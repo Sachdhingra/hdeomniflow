@@ -47,3 +47,8 @@ verify_jwt = false
 # Public website chat agent (no user JWT)
 [functions.website-agent]
 verify_jwt = false
+
+# Called by pg_cron via pg_net (x-internal-secret) and by an admin from the
+# Day Summary page (user JWT); the function authenticates both itself.
+[functions.daily-admin-summary]
+verify_jwt = false
