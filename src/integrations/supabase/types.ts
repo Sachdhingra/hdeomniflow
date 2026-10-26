@@ -4961,6 +4961,7 @@ export type Database = {
       }
     }
     Functions: {
+      _invoke_daily_admin_summary: { Args: never; Returns: number }
       _invoke_daily_excel_report: { Args: never; Returns: number }
       _invoke_feedback_whatsapp: { Args: { _payload?: Json }; Returns: number }
       _invoke_staff_agent_tick: { Args: never; Returns: number }
