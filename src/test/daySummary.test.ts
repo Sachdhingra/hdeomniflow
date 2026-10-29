@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  accountsHeadAttention,
   attentionFor,
   buildReport,
   fallbackHeadline,
@@ -257,5 +258,40 @@ describe("service head in the summary", () => {
   it("puts the service head into the attention list alongside reps", () => {
     const r = buildReport(facts([rep({ monthWon: 1_500_000 })], { service: { ...desk, dueTodayOpen: 12, head: head() } }));
     expect(r.attention.map(a => a.name)).toEqual(["swati (service head)"]);
+  });
+});
+
+
+describe("accounts in the summary", () => {
+  const tarun = head({ id: "a1", name: "tarun" });
+  const queue = { servicePending: 52, billsPending: 76, approvedToday: 9, rejectedToday: 1, oldestServiceDays: 182, oldestBillDays: 92, head: tarun };
+
+  it("adds an accounts line and the oldest wait to the plan", () => {
+    const r = buildReport(facts([rep({ monthWon: 1_500_000 })], { accounts: queue }));
+    expect(r.done.at(-1)).toBe("Accounts tarun: in today; 4 of 5 coach check-ins answered; 10 approvals handled (9 approved, 1 rejected).");
+    expect(r.tomorrow.join(" ")).toMatch(/Accounts: 128 approvals waiting \(52 service\/delivery, 76 card bills\), oldest 182 days\./);
+  });
+
+  it("is unchanged for reports without accounts details", () => {
+    const r = buildReport(facts([rep({ monthWon: 1_500_000 })]));
+    expect(r.done.join(" ")).not.toMatch(/Accounts tarun|^Accounts /m);
+    expect(r.tomorrow.join(" ")).toMatch(/Accounts: 7 approvals waiting \(3 service\/delivery, 4 card bills\)\./);
+  });
+
+  it("flags an untouched queue, but not a worked one", () => {
+    expect(accountsHeadAttention(tarun, queue)).toBeNull();
+    const a = accountsHeadAttention(tarun, { ...queue, approvedToday: 0, rejectedToday: 0 })!;
+    expect(a.name).toBe("tarun (accounts)");
+    expect(a.reasons).toEqual(["Nothing approved or rejected today with 128 waiting", "Oldest approval has been waiting 182 days"]);
+  });
+
+  it("does not flag a small, empty-handed queue or a minor note", () => {
+    expect(accountsHeadAttention(tarun, { servicePending: 3, billsPending: 2, approvedToday: 0, rejectedToday: 0 })).toBeNull();
+    expect(accountsHeadAttention(head({ id: "a1", name: "tarun", pushRegistered: false }), { ...queue, oldestServiceDays: 5, oldestBillDays: 3 })).toBeNull();
+  });
+
+  it("flags absence and a silent coach", () => {
+    expect(accountsHeadAttention(head({ present: false }), queue)!.reasons[0]).toMatch(/Not in today/);
+    expect(accountsHeadAttention(head({ coachReplied: 0 }), queue)!.reasons).toEqual(["Didn't reply to any of 5 coach check-ins", "Oldest approval has been waiting 182 days"]);
   });
 });

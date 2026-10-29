@@ -169,6 +169,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       LOGISTICS_NAV,
       { to: "/products", label: "Products", icon: <Package className="w-5 h-5" /> },
       { to: "/chat", label: "Chat", icon: <MessagesSquare className="w-5 h-5" />, badge: chatUnread || undefined },
+      { to: "/my-day", label: "My Day Coach", icon: <Sparkles className="w-5 h-5" /> },
       { to: "/jarvis", label: "Jarvis Voice", icon: <AudioLines className="w-5 h-5" /> },
     ],
   };
@@ -190,7 +191,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
     <div className="min-h-screen flex bg-background">
       {/* Admins and sales reps are asked to turn on notifications, so check-ins from the
           sales coach, chat and lead alerts reach them when the app is closed. */}
-      {(user.role === "admin" || user.role === "sales" || user.role === "service_head") && <StaffPushRegistrar />}
+      {(user.role === "admin" || user.role === "sales" || user.role === "service_head" || user.role === "accounts") && <StaffPushRegistrar />}
       <ChatNotifier />
       <LeadNotifier />
       <OrderNotifier />

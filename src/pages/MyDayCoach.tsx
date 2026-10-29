@@ -20,11 +20,11 @@ const MyDayCoach = () => {
       .then(() => undefined);
   }, [user, messages]);
 
-  if (!user || (user.role !== "sales" && user.role !== "service_head")) {
+  if (!user || (user.role !== "sales" && user.role !== "service_head" && user.role !== "accounts")) {
     return (
       <div className="p-6">
         <h1 className="text-xl font-bold mb-2">My Day Coach unavailable</h1>
-        <p className="text-muted-foreground">The coach is currently available for sales staff and the service head only.</p>
+        <p className="text-muted-foreground">The coach is currently available for sales staff, the service head and accounts only.</p>
       </div>
     );
   }
