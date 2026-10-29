@@ -151,6 +151,7 @@ const AppRoutes = () => {
             <Route path="/accounts/suppliers" element={<AdminSuppliers />} />
             <Route path="/products" element={<ProductsView />} />
             <Route path="/chat" element={<ChatPage />} />
+            <Route path="/my-day" element={<MyDayCoach />} />
             <Route path="/jarvis" element={<JarvisPage />} />
           </>
         );

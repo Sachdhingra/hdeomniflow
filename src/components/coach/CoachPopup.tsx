@@ -84,7 +84,7 @@ const CoachPopupInner = ({ userId, userName, role }: { userId: string; userName:
         <div className="flex-1 min-w-0">
           <div className="font-semibold leading-tight">Hey {userName} 👋</div>
           <div className="text-xs text-muted-foreground">
-            Your {role === "service_head" ? "service " : ""}coach check-in{current ? ` · ${timeLabel(current.created_at)}` : ""}
+            Your {role === "service_head" ? "service " : role === "accounts" ? "accounts " : ""}coach check-in{current ? ` · ${timeLabel(current.created_at)}` : ""}
           </div>
         </div>
         <Button
@@ -110,11 +110,11 @@ const CoachPopupInner = ({ userId, userName, role }: { userId: string; userName:
   );
 };
 
-// Mounted once in the app layout. Sales reps and the service head get a popup whenever a coach
+// Mounted once in the app layout. Sales reps, the service head and accounts get a popup whenever a coach
 // check-in lands (realtime) or is waiting when they open the app.
 const CoachPopup = () => {
   const { user } = useAuth();
-  if (!user || (user.role !== "sales" && user.role !== "service_head")) return null;
+  if (!user || (user.role !== "sales" && user.role !== "service_head" && user.role !== "accounts")) return null;
   return <CoachPopupInner userId={user.id} userName={user.name.split(" ")[0]} role={user.role} />;
 };
 

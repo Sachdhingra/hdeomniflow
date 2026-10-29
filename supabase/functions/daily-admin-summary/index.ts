@@ -4,7 +4,7 @@
  *   POST { source?, notify?, date?, force?, dry_run? }
  *     x-internal-secret (pg_cron)   OR   an admin's user JWT (Day Summary page)
  *
- * Gathers the day's facts for the sales team and the service head (plus an accounts line),
+ * Gathers the day's facts for the sales team, the service head and accounts,
  * turns them into a short report — what was done, the plan for tomorrow, who needs
  * special attention — and stores it for the admin pop-up. All numbers come from
  * code (_shared/day-summary.ts); the AI only writes the headline and a few focus
@@ -19,7 +19,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { addDays, checkinStats, istDateString, istMidnightMs, type CoachMsgRow } from "../_shared/coach-metrics.ts";
 import { autoFlipTimesByLead, isAutoStatusFlip, isAutoTouch } from "../_shared/activity.ts";
-import { buildReport, headlinePrompt, parseHeadlineJson, type DayFacts, type RepDay, type ServiceHeadDay } from "../_shared/day-summary.ts";
+import { buildReport, headlinePrompt, parseHeadlineJson, type DayFacts, type RepDay, type StaffDay } from "../_shared/day-summary.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -161,39 +161,62 @@ async function collectFacts(date: string): Promise<DayFacts> {
     };
   });
 
-  // The service head: attendance, coach engagement and push, like a rep.
-  const { data: headRoleRows } = await admin.from("user_roles").select("user_id").eq("role", "service_head");
-  const headIds = (headRoleRows ?? []).map((r: { user_id: string }) => r.user_id);
-  const { data: headProfiles } = headIds.length
-    ? await admin.from("profiles").select("id,name").in("id", headIds).eq("active", true)
-    : { data: [] as { id: string; name: string }[] };
-  const headProfile = (headProfiles ?? [])[0] as { id: string; name: string } | undefined;
-  let head: ServiceHeadDay | null = null;
-  if (headProfile) {
-    const [headAtt, headMsgs, headPush] = await Promise.all([
+  // The service head and accounts: attendance, coach engagement and push, like a rep.
+  const staffDay = async (role: string): Promise<StaffDay | null> => {
+    const { data: roleRows2 } = await admin.from("user_roles").select("user_id").eq("role", role);
+    const roleIds = (roleRows2 ?? []).map((r: { user_id: string }) => r.user_id);
+    if (roleIds.length === 0) return null;
+    const { data: profs } = await admin.from("profiles").select("id,name").in("id", roleIds).eq("active", true);
+    const person = (profs ?? [])[0] as { id: string; name: string } | undefined;
+    if (!person) return null;
+    const [attRows, msgRows, pushDevices] = await Promise.all([
       fetchAll<{ date: string; clock_in: string | null; status: string }>((a, b) =>
-        admin.from("attendance").select("date,clock_in,status").eq("user_id", headProfile.id).gte("date", weekStart).lte("date", date).range(a, b)),
+        admin.from("attendance").select("date,clock_in,status").eq("user_id", person.id).gte("date", weekStart).lte("date", date).range(a, b)),
       fetchAll<CoachMsgRow>((a, b) =>
-        admin.from("staff_agent_messages").select("user_id,sender,kind,created_at,actions").eq("user_id", headProfile.id)
+        admin.from("staff_agent_messages").select("user_id,sender,kind,created_at,actions").eq("user_id", person.id)
           .gte("created_at", dayStartIso).order("created_at", { ascending: true }).range(a, b)),
       fetchAll<{ push_enabled: boolean | null }>((a, b) =>
-        admin.from("staff_push_devices").select("push_enabled").eq("user_id", headProfile.id).range(a, b)),
+        admin.from("staff_push_devices").select("push_enabled").eq("user_id", person.id).range(a, b)),
     ]);
-    const att = headAtt.filter((a) => a.clock_in);
+    const att = attRows.filter((a) => a.clock_in);
     const todayAtt = att.find((a) => a.date === date);
-    const coach = checkinStats(headMsgs, dayStart, dayEnd);
-    head = {
-      id: headProfile.id,
-      name: headProfile.name,
+    const coach = checkinStats(msgRows, dayStart, dayEnd);
+    return {
+      id: person.id,
+      name: person.name,
       present: !!todayAtt,
       late: todayAtt?.status === "late",
       presentLast7: att.length,
       coachOn: coach.sent > 0,
       coachSent: coach.sent,
       coachReplied: coach.replied,
-      pushRegistered: headPush.some((p) => p.push_enabled !== false),
+      pushRegistered: pushDevices.some((p) => p.push_enabled !== false),
     };
-  }
+  };
+  const [head, accountsHead] = await Promise.all([staffDay("service_head"), staffDay("accounts")]);
+
+  // What accounts handled today, and how long the oldest approvals have waited.
+  const handledBy = accountsHead?.id ?? null;
+  const daysSince = (iso: string | null | undefined) =>
+    iso ? Math.max(0, Math.floor((dayEnd - Date.parse(iso)) / 86400000)) : null;
+  const [logToday, billsHandled, oldestJob, oldestBill] = await Promise.all([
+    handledBy
+      ? fetchAll<{ action: string }>((a, b) =>
+          admin.from("accounts_approvals_log").select("action").eq("performed_by", handledBy)
+            .gte("performed_at", dayStartIso).lt("performed_at", dayEndIso).range(a, b))
+      : Promise.resolve([] as { action: string }[]),
+    handledBy
+      ? fetchAll<{ approval_status: string }>((a, b) =>
+          admin.from("card_bill_entries").select("approval_status").eq("approved_by", handledBy)
+            .gte("approved_at", dayStartIso).lt("approved_at", dayEndIso).range(a, b))
+      : Promise.resolve([] as { approval_status: string }[]),
+    admin.from("service_jobs").select("completed_at,updated_at").eq("accounts_approval_status", "pending").is("deleted_at", null)
+      .order("completed_at", { ascending: true, nullsFirst: false }).limit(1).maybeSingle(),
+    admin.from("card_bill_entries").select("created_at").eq("approval_status", "pending")
+      .order("created_at", { ascending: true }).limit(1).maybeSingle(),
+  ]);
+  const approvedToday = logToday.filter((x) => x.action === "approved").length + billsHandled.filter((x) => x.approval_status === "approved").length;
+  const rejectedToday = logToday.filter((x) => x.action === "rejected").length + billsHandled.filter((x) => x.approval_status === "rejected").length;
 
   const [completedToday, scheduledTomorrow, unassignedTomorrow, servicePending, billsPending, dueTodayOpen, overdueOpen, rejectedByAccounts] = await Promise.all([
     count(admin.from("service_jobs").select("id", { count: "exact", head: true }).eq("status", "completed").is("deleted_at", null)
@@ -215,7 +238,15 @@ async function collectFacts(date: string): Promise<DayFacts> {
     daysInMonth,
     reps: repDays,
     service: { completedToday, scheduledTomorrow, unassignedTomorrow, dueTodayOpen, overdueOpen, rejectedByAccounts, head },
-    accounts: { servicePending, billsPending },
+    accounts: {
+      servicePending,
+      billsPending,
+      approvedToday: accountsHead ? approvedToday : undefined,
+      rejectedToday: accountsHead ? rejectedToday : undefined,
+      oldestServiceDays: daysSince(oldestJob.data?.completed_at ?? oldestJob.data?.updated_at),
+      oldestBillDays: daysSince(oldestBill.data?.created_at),
+      head: accountsHead,
+    },
   };
 }
 

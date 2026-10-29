@@ -33,7 +33,7 @@ export interface RepDay {
 
 // The service head's day. Their work lives in service jobs, not leads, so they
 // get their own facts and rules rather than being squeezed into RepDay.
-export interface ServiceHeadDay {
+export interface StaffDay {
   id: string;
   name: string;
   present: boolean;
@@ -44,6 +44,9 @@ export interface ServiceHeadDay {
   coachReplied: number;
   pushRegistered: boolean | null;
 }
+
+export type ServiceHeadDay = StaffDay;
+export type AccountsHeadDay = StaffDay;
 
 // Desk numbers and the head are optional: reports stored before the service head
 // joined the summary don't carry them.
@@ -57,13 +60,25 @@ export interface ServiceFacts {
   head?: ServiceHeadDay | null;
 }
 
+// Accounts' approval queue. Handled/oldest numbers and the person are optional for
+// the same reason: older stored reports don't carry them.
+export interface AccountsFacts {
+  servicePending: number;
+  billsPending: number;
+  approvedToday?: number; // by the accounts person, jobs + card bills
+  rejectedToday?: number;
+  oldestServiceDays?: number | null;
+  oldestBillDays?: number | null;
+  head?: AccountsHeadDay | null;
+}
+
 export interface DayFacts {
   date: string; // YYYY-MM-DD (IST)
   dayOfMonth: number;
   daysInMonth: number;
   reps: RepDay[];
   service: ServiceFacts;
-  accounts: { servicePending: number; billsPending: number };
+  accounts: AccountsFacts;
 }
 
 export interface AttentionItem {
@@ -99,7 +114,7 @@ export interface DayReport {
   attention: AttentionItem[];
   reps: RepDay[];
   service: ServiceFacts;
-  accounts: DayFacts["accounts"];
+  accounts: AccountsFacts;
 }
 
 export function formatInr(n: number): string {
@@ -186,6 +201,34 @@ export function serviceHeadAttention(h: ServiceHeadDay, s: ServiceFacts): Attent
   return { repId: h.id, name: `${h.name} (service head)`, reasons: reasons.sort((a, b) => b.weight - a.weight).map(x => x.text), score };
 }
 
+export function accountsHeadAttention(h: AccountsHeadDay, a: AccountsFacts): AttentionItem | null {
+  const reasons: { text: string; weight: number }[] = [];
+  const waiting = a.servicePending + a.billsPending;
+  const handled = (a.approvedToday ?? 0) + (a.rejectedToday ?? 0);
+  const oldest = Math.max(a.oldestServiceDays ?? 0, a.oldestBillDays ?? 0);
+
+  if (!h.present && h.presentLast7 >= 3) {
+    reasons.push({ text: "Not in today (was in most of this week)", weight: 3 });
+  }
+  if (h.coachOn && h.coachSent >= 3 && h.coachReplied === 0) {
+    reasons.push({ text: `Didn't reply to any of ${h.coachSent} coach check-ins`, weight: 3 });
+  }
+  // Only when the queue is big and untouched all day — a quiet queue is fine.
+  if (h.present && waiting >= 20 && handled === 0) {
+    reasons.push({ text: `Nothing approved or rejected today with ${waiting} waiting`, weight: 3 });
+  }
+  if (oldest >= 30) {
+    reasons.push({ text: `Oldest approval has been waiting ${oldest} days`, weight: 1 });
+  }
+  if (h.coachOn && h.pushRegistered === false) {
+    reasons.push({ text: "Notifications not set up, so coach check-ins can't reach their phone", weight: 1 });
+  }
+
+  const score = sum(reasons.map(x => x.weight));
+  if (score < 2) return null;
+  return { repId: h.id, name: `${h.name} (accounts)`, reasons: reasons.sort((x, y) => y.weight - x.weight).map(x => x.text), score };
+}
+
 const activityScore = (r: RepDay) => r.stageMoves + r.newLeads * 2 + r.wonCount * 5 + r.leadsTouched * 0.5;
 
 export function buildReport(facts: DayFacts): DayReport {
@@ -212,7 +255,9 @@ export function buildReport(facts: DayFacts): DayReport {
 
   const head = facts.service.head ?? null;
   const headAttention = head ? serviceHeadAttention(head, facts.service) : null;
-  const attention = [...reps.map(r => attentionFor(r, facts)), headAttention]
+  const acct = facts.accounts.head ?? null;
+  const acctAttention = acct ? accountsHeadAttention(acct, facts.accounts) : null;
+  const attention = [...reps.map(r => attentionFor(r, facts)), headAttention, acctAttention]
     .filter((x): x is AttentionItem => x !== null)
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
     .slice(0, 5);
@@ -248,6 +293,16 @@ export function buildReport(facts: DayFacts): DayReport {
       dueOpen !== undefined ? `${dueOpen} ${dueOpen === 1 ? "job" : "jobs"} due today still open` : null,
     ].filter(Boolean);
     done.push(`Service head ${head.name}: ${deskBits.join("; ")}.`);
+  }
+  if (acct) {
+    const a = facts.accounts;
+    const handled = (a.approvedToday ?? 0) + (a.rejectedToday ?? 0);
+    const bits = [
+      acct.present ? (acct.late ? "in today (late)" : "in today") : "not in today",
+      acct.coachSent > 0 ? `${acct.coachReplied} of ${plural(acct.coachSent, "coach check-in")} answered` : null,
+      a.approvedToday !== undefined ? `${plural(handled, "approval")} handled (${a.approvedToday} approved, ${a.rejectedToday ?? 0} rejected)` : null,
+    ].filter(Boolean);
+    done.push(`Accounts ${acct.name}: ${bits.join("; ")}.`);
   }
 
   // ── plan for tomorrow ────────────────────────────────────────────────────
@@ -289,8 +344,9 @@ export function buildReport(facts: DayFacts): DayReport {
   }
   const approvals = facts.accounts.servicePending + facts.accounts.billsPending;
   if (approvals > 0) {
+    const oldest = Math.max(facts.accounts.oldestServiceDays ?? 0, facts.accounts.oldestBillDays ?? 0);
     tomorrow.push(
-      `Accounts: ${plural(approvals, "approval")} waiting (${facts.accounts.servicePending} service/delivery, ${facts.accounts.billsPending} card bills).`,
+      `Accounts: ${plural(approvals, "approval")} waiting (${facts.accounts.servicePending} service/delivery, ${facts.accounts.billsPending} card bills)${oldest > 0 ? `, oldest ${plural(oldest, "day")}` : ""}.`,
     );
   }
 
@@ -317,7 +373,7 @@ export function fallbackHeadline(t: DayReport["totals"], attention: AttentionIte
 // ── the AI's small part ──────────────────────────────────────────────────────
 export function headlinePrompt(report: DayReport): string {
   return (
-    `You write the headline for a business owner's end-of-day summary of a furniture showroom's sales team and service desk.\n` +
+    `You write the headline for a business owner's end-of-day summary of a furniture showroom's sales team, service desk and accounts.\n` +
     `Use ONLY the facts below. Never invent numbers or names. Plain, calm, specific; no hype, no emoji.\n\n` +
     `FACTS:\n${JSON.stringify({ headline: report.headline, done: report.done, tomorrow: report.tomorrow, attention: report.attention.map(a => ({ name: a.name, reasons: a.reasons })) })}\n\n` +
     `Reply with ONLY this JSON: {"headline":"<one sentence, max 30 words>","focus":["<up to 3 short lines for tomorrow, max 18 words each, each naming a person or a number from the facts>"]}`
