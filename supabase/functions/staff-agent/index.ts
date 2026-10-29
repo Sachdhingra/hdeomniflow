@@ -37,6 +37,7 @@ import { calendarContext, parseAgentOutput, savedClaims } from "../_shared/agent
 import { autoFlipTimesByLead, isAutoStatusFlip, isAutoTouch } from "../_shared/activity.ts";
 import { applyActions } from "../_shared/agent-actions.ts";
 import { runTurn } from "../_shared/agent-turn.ts";
+import type { AppliedAction } from "../_shared/agent-actions.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -569,8 +570,8 @@ async function handleChat(userId: string, role: CoachRole, token: string, messag
   ];
 
   let parsed;
-  let applied;
-  let rejected;
+  let applied: AppliedAction[];
+  let rejected: AppliedAction[];
   try {
     if (role === "service_head") {
       // The service coach is advice-only: nothing is ever written, so skip the
