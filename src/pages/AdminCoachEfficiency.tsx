@@ -14,6 +14,7 @@ import {
   addDays,
   checkinStats,
   dailyResponse,
+  deskSignalsFor,
   followUpSyncState,
   formatDuration,
   istMidnightMs,
@@ -79,6 +80,24 @@ interface RepRow {
   signals: Signal[];
 }
 
+// The service head and accounts: no leads, so their "desk" is described in words.
+interface DeskRow {
+  id: string;
+  name: string;
+  role: "service_head" | "accounts";
+  coachOn: boolean;
+  sent: number;
+  replied: number;
+  responseRate: number | null;
+  medianReplyMinutes: number | null;
+  presentDays: number;
+  lateDays: number;
+  presentToday: boolean;
+  lastReplyMs: number | null;
+  desk: string[]; // plain-language numbers for this person's desk
+  signals: Signal[];
+}
+
 interface ScheduledRow {
   key: string;
   atMs: number;
@@ -93,6 +112,7 @@ interface ScheduledRow {
 
 interface Report {
   reps: RepRow[];
+  desk: DeskRow[];
   scheduled: ScheduledRow[];
   scheduledTotal: number;
   followUpsSet: number;
@@ -124,13 +144,146 @@ const timeIST = (ms: number) =>
 const dayLabel = (date: string) =>
   new Date(`${date}T12:00:00+05:30`).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short" });
 
-async function buildReport(reps: { id: string; name: string }[], rangeKey: RangeKey): Promise<Report> {
+type DeskPerson = { id: string; name: string; role: "service_head" | "accounts" };
+const OPEN_JOB_STATUSES = ["pending", "assigned", "on_route", "on_site", "in_progress", "rescheduled"];
+
+async function countRows(q: PromiseLike<{ count: number | null; error: { message: string } | null }>): Promise<number | null> {
+  const { count, error } = await q;
+  return error ? null : count ?? 0;
+}
+
+// Desk numbers are best effort: one that can't be read shows as missing, never as zero.
+async function buildDesk(people: DeskPerson[], rangeKey: RangeKey, now: Date) {
+  const r = rangeFor(rangeKey, now);
+  const ids = people.map(x => x.id);
+  const msgsByUser = new Map<string, CoachMsgRow[]>();
+  if (ids.length === 0) return { rows: [] as DeskRow[], msgsByUser };
+
+  const fromIso = new Date(r.fromMs).toISOString();
+  const toIso = new Date(r.toMs).toISOString();
+  const dayStartIso = new Date(istMidnightMs(r.today)).toISOString();
+  const tomorrow = addDays(r.today, 1);
+  const hourIST = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", hour12: false }).format(now)) % 24;
+
+  const [msgs, attendance] = await Promise.all([
+    fetchAll<CoachMsgRow>((a, b) =>
+      db.from("staff_agent_messages").select("user_id,sender,kind,created_at,actions").in("user_id", ids)
+        .gte("created_at", fromIso).order("created_at", { ascending: true }).range(a, b)),
+    fetchAll<{ user_id: string; date: string; clock_in: string | null; clock_out: string | null; status: string }>((a, b) =>
+      db.from("attendance").select("user_id,date,clock_in,clock_out,status").in("user_id", ids)
+        .gte("date", r.fromDate).lte("date", r.toDate).range(a, b)),
+  ]);
+  msgs.forEach(m => msgsByUser.set(m.user_id, [...(msgsByUser.get(m.user_id) ?? []), m]));
+
+  let pushKnown = true;
+  let pushUsers = new Set<string>();
+  try {
+    const pushRows = await fetchAll<{ user_id: string; push_enabled: boolean | null }>((a, b) =>
+      db.from("staff_push_devices").select("user_id,push_enabled").in("user_id", ids).range(a, b));
+    pushUsers = new Set(pushRows.filter(x => x.push_enabled !== false).map(x => x.user_id));
+  } catch {
+    pushKnown = false;
+  }
+
+  const jobs = db.from("service_jobs");
+  const needsService = people.some(p => p.role === "service_head");
+  const needsAccounts = people.some(p => p.role === "accounts");
+  const [dueTodayOpen, overdueOpen, unassignedTomorrow, completedInRange, jobsWaiting, billsWaiting] = await Promise.all([
+    needsService ? countRows(jobs.select("id", { count: "exact", head: true }).eq("date_to_attend", r.today).in("status", OPEN_JOB_STATUSES).is("deleted_at", null)) : null,
+    needsService ? countRows(jobs.select("id", { count: "exact", head: true }).lt("date_to_attend", r.today).in("status", OPEN_JOB_STATUSES).is("deleted_at", null)) : null,
+    needsService ? countRows(jobs.select("id", { count: "exact", head: true }).eq("date_to_attend", tomorrow).neq("status", "completed").is("assigned_agent", null).is("deleted_at", null)) : null,
+    needsService ? countRows(jobs.select("id", { count: "exact", head: true }).eq("status", "completed").gte("completed_at", fromIso).lt("completed_at", toIso).is("deleted_at", null)) : null,
+    needsAccounts ? countRows(jobs.select("id", { count: "exact", head: true }).eq("accounts_approval_status", "pending").is("deleted_at", null)) : null,
+    needsAccounts ? countRows(db.from("card_bill_entries").select("id", { count: "exact", head: true }).eq("approval_status", "pending")) : null,
+  ]);
+
+  const todayStartMs = istMidnightMs(r.today);
+  const rows: DeskRow[] = [];
+  for (const p of people) {
+    const mine = msgsByUser.get(p.id) ?? [];
+    const cs = checkinStats(mine, r.fromMs, r.toMs);
+    const att = attendance.filter(a => a.user_id === p.id && a.clock_in);
+    const todayAtt = att.find(a => a.date === r.today);
+    const presentToday = !!todayAtt && !todayAtt.clock_out;
+    const checkins = mine.filter(m => m.kind === "checkin" && m.sender === "agent");
+    const last2 = checkins.slice(-2);
+    const recent = last2.length
+      ? checkinStats(mine, Date.parse(last2[0].created_at), Date.parse(last2[last2.length - 1].created_at) + 1)
+      : { sent: 0, replied: 0 };
+    const replies = mine.filter(m => m.sender === "staff" && Date.parse(m.created_at) >= todayStartMs).map(m => Date.parse(m.created_at));
+
+    const desk: string[] = [];
+    let handledToday: number | undefined;
+    let waiting: number | undefined;
+    if (p.role === "service_head") {
+      if (dueTodayOpen !== null) desk.push(`${dueTodayOpen} due today still open`);
+      if (overdueOpen !== null) desk.push(`${overdueOpen} overdue`);
+      if (unassignedTomorrow !== null) desk.push(`${unassignedTomorrow} of tomorrow's jobs unassigned`);
+      if (completedInRange !== null) desk.push(`${completedInRange} completed in period`);
+    } else {
+      const [logRows, billRows, logToday, billsToday] = await Promise.all([
+        fetchAll<{ action: string }>((a, b) =>
+          db.from("accounts_approvals_log").select("action").eq("performed_by", p.id).gte("performed_at", fromIso).lt("performed_at", toIso).range(a, b)).catch(() => null),
+        fetchAll<{ approval_status: string }>((a, b) =>
+          db.from("card_bill_entries").select("approval_status").eq("approved_by", p.id).gte("approved_at", fromIso).lt("approved_at", toIso).range(a, b)).catch(() => null),
+        countRows(db.from("accounts_approvals_log").select("id", { count: "exact", head: true }).eq("performed_by", p.id).gte("performed_at", dayStartIso)),
+        countRows(db.from("card_bill_entries").select("id", { count: "exact", head: true }).eq("approved_by", p.id).gte("approved_at", dayStartIso)),
+      ]);
+      if (jobsWaiting !== null && billsWaiting !== null) {
+        waiting = jobsWaiting + billsWaiting;
+        desk.push(`${waiting} waiting (${jobsWaiting} service, ${billsWaiting} card bills)`);
+      }
+      if (logRows && billRows) {
+        const approved = logRows.filter(x => x.action === "approved").length + billRows.filter(x => x.approval_status === "approved").length;
+        const rejected = logRows.filter(x => x.action === "rejected").length + billRows.filter(x => x.approval_status === "rejected").length;
+        desk.push(`${approved + rejected} handled in period (${approved} approved, ${rejected} rejected)`);
+      }
+      if (logToday !== null && billsToday !== null) handledToday = logToday + billsToday;
+    }
+
+    rows.push({
+      id: p.id,
+      name: p.name,
+      role: p.role,
+      coachOn: checkins.length > 0,
+      sent: cs.sent,
+      replied: cs.replied,
+      responseRate: cs.responseRate,
+      medianReplyMinutes: cs.medianReplyMinutes,
+      presentDays: att.length,
+      lateDays: att.filter(a => a.status === "late").length,
+      presentToday,
+      lastReplyMs: replies.length ? Math.max(...replies) : null,
+      desk,
+      signals: deskSignalsFor({
+        role: p.role,
+        coachOn: checkins.length > 0,
+        checkinsSent: cs.sent,
+        responseRate: cs.responseRate,
+        recentCheckinsSent: recent.sent,
+        recentCheckinsReplied: recent.replied,
+        presentToday,
+        pushRegistered: pushKnown ? pushUsers.has(p.id) : null,
+        hourIST,
+        dueTodayOpen: dueTodayOpen ?? undefined,
+        overdueOpen: overdueOpen ?? undefined,
+        unassignedTomorrow: unassignedTomorrow ?? undefined,
+        waiting,
+        handledToday,
+      }),
+    });
+  }
+  return { rows, msgsByUser };
+}
+
+async function buildReport(reps: { id: string; name: string }[], deskPeople: DeskPerson[], rangeKey: RangeKey): Promise<Report> {
   const now = new Date();
   const r = rangeFor(rangeKey, now);
   const ids = reps.map(x => x.id);
   const fromIso = new Date(r.fromMs).toISOString();
   const month = r.today.slice(0, 7);
   const monthStartMs = istMidnightMs(`${month}-01`);
+  const deskPromise = buildDesk(deskPeople, rangeKey, now);
 
   const [msgs, attendance, stagesAll, touchedAll, created, overdueRows, wonRows, targets, dueRows] = await Promise.all([
     fetchAll<CoachMsgRow>((a, b) =>
@@ -291,25 +444,31 @@ async function buildReport(reps: { id: string; name: string }[], rangeKey: Range
     return row;
   });
 
-  const sent = rows.reduce((n, x) => n + x.sent, 0);
-  const replied = rows.reduce((n, x) => n + x.replied, 0);
+  // Check-in engagement is team-wide: the service head and accounts count too.
+  const deskResult = await deskPromise;
+  const everyone = [...rows, ...deskResult.rows];
+  const sent = everyone.reduce((n, x) => n + x.sent, 0);
+  const replied = everyone.reduce((n, x) => n + x.replied, 0);
   const allReplyMinutes: number[] = [];
-  rows.forEach(x => x.medianReplyMinutes !== null && allReplyMinutes.push(x.medianReplyMinutes));
+  everyone.forEach(x => x.medianReplyMinutes !== null && allReplyMinutes.push(x.medianReplyMinutes));
+  const everyoneMsgs = new Map(msgsByUser);
+  deskResult.msgsByUser.forEach((v, k) => everyoneMsgs.set(k, v));
   const refused = reps.reduce((n, rep) => n + checkinStats(msgsByUser.get(rep.id) ?? [], r.fromMs, r.toMs).actionsRefused, 0);
   return {
     reps: rows,
+    desk: deskResult.rows,
     scheduled,
     scheduledTotal: allScheduled.length,
     followUpsSet: rows.reduce((n, x) => n + x.followUpsSet, 0),
     notesSaved: rows.reduce((n, x) => n + x.notesSaved, 0),
     actionsRefused: refused,
-    daily: dailyResponse(msgsByUser, r.fromDate, r.days),
+    daily: dailyResponse(everyoneMsgs, r.fromDate, r.days),
     teamResponseRate: sent > 0 ? Math.round((replied / sent) * 100) : null,
     teamMedianReply: median(allReplyMinutes),
     actionsApplied: rows.reduce((n, x) => n + x.actionsApplied, 0),
     overdue: rows.reduce((n, x) => n + x.overdue, 0),
-    presentToday: rows.filter(x => x.presentToday).length,
-    coachOn: rows.filter(x => x.coachOn).length,
+    presentToday: everyone.filter(x => x.presentToday).length,
+    coachOn: everyone.filter(x => x.coachOn).length,
     generatedAt: now.getTime(),
   };
 }
@@ -350,16 +509,22 @@ const AdminCoachEfficiency = () => {
     () => allProfiles.filter(p => p.role === "sales").map(p => ({ id: p.id, name: p.name })),
     [allProfiles],
   );
-  const repKey = reps.map(x => x.id).join(",");
+  const deskPeople = useMemo<DeskPerson[]>(
+    () => allProfiles
+      .filter(p => p.role === "service_head" || p.role === "accounts")
+      .map(p => ({ id: p.id, name: p.name, role: p.role as DeskPerson["role"] })),
+    [allProfiles],
+  );
+  const repKey = [...reps, ...deskPeople].map(x => x.id).join(",");
 
   const load = useCallback(async () => {
-    if (reps.length === 0) {
+    if (reps.length === 0 && deskPeople.length === 0) {
       setLoading(false);
       return;
     }
     setLoading(true);
     try {
-      setReport(await buildReport(reps, rangeKey));
+      setReport(await buildReport(reps, deskPeople, rangeKey));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not load the report");
     } finally {
@@ -396,7 +561,7 @@ const AdminCoachEfficiency = () => {
           <div>
             <h1 className="text-xl font-bold leading-tight">Coach Efficiency</h1>
             <p className="text-xs text-muted-foreground">
-              How the sales team is using OmniFlow and their coach. Signals come from CRM activity and are approximate —
+              How the sales team, service head and accounts are using OmniFlow and their coach. Signals are approximate —
               use them to help, not to judge.
             </p>
           </div>
@@ -420,12 +585,12 @@ const AdminCoachEfficiency = () => {
             <Tile
               label="Check-in response rate"
               value={report.teamResponseRate === null ? "—" : `${report.teamResponseRate}%`}
-              hint={`${report.coachOn} of ${report.reps.length} reps have the coach`}
+              hint={`${report.coachOn} of ${report.reps.length + report.desk.length} people have the coach`}
             />
             <Tile
               label="Typical reply time"
               value={report.teamMedianReply === null ? "—" : formatDuration(report.teamMedianReply)}
-              hint="median across reps"
+              hint="median across people"
             />
             <Tile
               label="Follow-ups set by coach"
@@ -433,7 +598,7 @@ const AdminCoachEfficiency = () => {
               hint={`+ ${report.notesSaved} notes${report.actionsRefused > 0 ? ` · ${report.actionsRefused} couldn't be saved` : ""}`}
             />
             <Tile label="Overdue follow-ups" value={String(report.overdue)} hint="open leads, team total, now" />
-            <Tile label="Present today" value={`${report.presentToday} / ${report.reps.length}`} hint="clocked in, not out" />
+            <Tile label="Present today" value={`${report.presentToday} / ${report.reps.length + report.desk.length}`} hint="clocked in, not out" />
           </div>
 
           {rangeKey !== "today" && (
@@ -585,6 +750,74 @@ const AdminCoachEfficiency = () => {
               </p>
             </CardContent>
           </Card>
+          {report.desk.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Service &amp; accounts</CardTitle>
+              </CardHeader>
+              <CardContent className="px-0 sm:px-6">
+                <div className="overflow-x-auto">
+                  <Table className="[&_th]:px-2 [&_td]:px-2">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Person</TableHead>
+                        <TableHead>Signals</TableHead>
+                        <TableHead className="text-right">Check-ins replied</TableHead>
+                        <TableHead className="text-right">Reply time</TableHead>
+                        <TableHead className="text-right">Days present</TableHead>
+                        <TableHead>Desk</TableHead>
+                        <TableHead className="text-right">Today</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {report.desk.map(x => (
+                        <TableRow key={x.id}>
+                          <TableCell className="whitespace-nowrap">
+                            <div className="font-medium">{x.name}</div>
+                            <div className="text-xs text-muted-foreground">{x.role === "service_head" ? "Service head" : "Accounts"}</div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1 min-w-[13rem]">
+                              {x.signals.length === 0 && <span className="text-muted-foreground">—</span>}
+                              {x.signals.map(s => (
+                                <Badge key={s.key} variant="outline" className={`font-normal gap-1 ${SIGNAL_STYLE[s.tone]}`}>
+                                  {s.tone === "warn" ? <AlertTriangle className="w-3 h-3 shrink-0" /> : <CheckCircle2 className="w-3 h-3 shrink-0" />}
+                                  {s.label}
+                                </Badge>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums whitespace-nowrap">
+                            {x.coachOn ? `${x.replied}/${x.sent}${x.responseRate !== null ? ` · ${x.responseRate}%` : ""}` : <span className="text-muted-foreground">Coach off</span>}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums whitespace-nowrap">
+                            {x.medianReplyMinutes === null ? "—" : formatDuration(x.medianReplyMinutes)}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums whitespace-nowrap">
+                            {x.presentDays}{x.lateDays > 0 && <span className="text-muted-foreground"> ({x.lateDays} late)</span>}
+                          </TableCell>
+                          <TableCell className="text-xs min-w-[14rem]">
+                            {x.desk.length === 0 ? <span className="text-muted-foreground">—</span> : x.desk.map((d, i) => <div key={i}>{d}</div>)}
+                          </TableCell>
+                          <TableCell className="text-right whitespace-nowrap text-xs">
+                            {!x.presentToday ? (
+                              <span className="text-muted-foreground">Not in</span>
+                            ) : (
+                              <div>{x.lastReplyMs ? `Last reply: ${timeIST(x.lastReplyMs)}` : "In · no coach reply yet"}</div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                <p className="text-xs text-muted-foreground px-6 pt-3">
+                  Their work lives in service jobs and the approval queue, not in leads, so the desk numbers describe that queue as it is now (completed and handled
+                  counts follow the period above). "Nothing approved yet today" and "still open" flags only appear from 3 pm. Updated {timeIST(report.generatedAt)}.
+                </p>
+              </CardContent>
+            </Card>
+          )}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
