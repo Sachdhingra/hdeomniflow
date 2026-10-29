@@ -24,7 +24,7 @@ function pendingCheckin(messages: CoachMessage[]): CoachMessage | null {
   return null;
 }
 
-const CoachPopupInner = ({ userId, userName }: { userId: string; userName: string }) => {
+const CoachPopupInner = ({ userId, userName, role }: { userId: string; userName: string; role: string }) => {
   const coach = useStaffCoach(userId);
   const { messages, voiceOn, speakMessage, stopVoice } = coach;
   const navigate = useNavigate();
@@ -84,7 +84,7 @@ const CoachPopupInner = ({ userId, userName }: { userId: string; userName: strin
         <div className="flex-1 min-w-0">
           <div className="font-semibold leading-tight">Hey {userName} 👋</div>
           <div className="text-xs text-muted-foreground">
-            Your coach check-in{current ? ` · ${timeLabel(current.created_at)}` : ""}
+            Your {role === "service_head" ? "service " : ""}coach check-in{current ? ` · ${timeLabel(current.created_at)}` : ""}
           </div>
         </div>
         <Button
@@ -110,12 +110,12 @@ const CoachPopupInner = ({ userId, userName }: { userId: string; userName: strin
   );
 };
 
-// Mounted once in the app layout. Sales reps get a popup whenever a coach
+// Mounted once in the app layout. Sales reps and the service head get a popup whenever a coach
 // check-in lands (realtime) or is waiting when they open the app.
 const CoachPopup = () => {
   const { user } = useAuth();
-  if (!user || user.role !== "sales") return null;
-  return <CoachPopupInner userId={user.id} userName={user.name.split(" ")[0]} />;
+  if (!user || (user.role !== "sales" && user.role !== "service_head")) return null;
+  return <CoachPopupInner userId={user.id} userName={user.name.split(" ")[0]} role={user.role} />;
 };
 
 export default CoachPopup;
