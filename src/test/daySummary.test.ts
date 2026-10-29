@@ -6,8 +6,10 @@ import {
   formatInr,
   headlinePrompt,
   parseHeadlineJson,
+  serviceHeadAttention,
   type DayFacts,
   type RepDay,
+  type ServiceHeadDay,
 } from "../../supabase/functions/_shared/day-summary";
 
 const rep = (over: Partial<RepDay> = {}): RepDay => ({
@@ -205,5 +207,55 @@ describe("the AI headline", () => {
 
   it("exposes the template headline for fallback use", () => {
     expect(fallbackHeadline(report.totals, [])).toMatch(/no one needs special attention/);
+  });
+});
+
+
+const head = (over: Partial<ServiceHeadDay> = {}): ServiceHeadDay => ({
+  id: "h1",
+  name: "swati",
+  present: true,
+  late: false,
+  presentLast7: 6,
+  coachOn: true,
+  coachSent: 5,
+  coachReplied: 4,
+  pushRegistered: true,
+  ...over,
+});
+const desk = { completedToday: 3, scheduledTomorrow: 6, unassignedTomorrow: 1, dueTodayOpen: 2, overdueOpen: 4, rejectedByAccounts: 1 };
+
+describe("service head in the summary", () => {
+  it("adds a service-head line and backlog to the plan", () => {
+    const r = buildReport(facts([rep({ monthWon: 1_500_000 })], { service: { ...desk, head: head() } }));
+    expect(r.done.at(-1)).toBe("Service head swati: in today; 4 of 5 coach check-ins answered; 2 jobs due today still open.");
+    expect(r.tomorrow.join(" ")).toMatch(/Service backlog: 4 overdue jobs, 1 job rejected by accounts to fix/);
+    expect(r.attention).toEqual([]);
+  });
+
+  it("is unchanged for reports without a service head", () => {
+    const r = buildReport(facts([rep({ monthWon: 1_500_000 })]));
+    expect(r.done.join(" ")).not.toMatch(/Service head/);
+    expect(r.tomorrow.join(" ")).not.toMatch(/Service backlog/);
+  });
+
+  it("flags the service head by desk problems, not CRM activity", () => {
+    const a = serviceHeadAttention(head(), { ...desk, dueTodayOpen: 6, unassignedTomorrow: 4 })!;
+    expect(a.name).toBe("swati (service head)");
+    expect(a.reasons).toEqual([
+      "6 service jobs due today are still open",
+      "4 of tomorrow's 6 jobs have no agent yet",
+    ]);
+  });
+
+  it("flags a silent coach or an absence, and stays quiet for a minor note", () => {
+    expect(serviceHeadAttention(head({ coachReplied: 0 }), desk)!.reasons).toEqual(["Didn't reply to any of 5 coach check-ins"]);
+    expect(serviceHeadAttention(head({ present: false }), desk)!.reasons[0]).toMatch(/Not in today/);
+    expect(serviceHeadAttention(head({ pushRegistered: false }), desk)).toBeNull();
+  });
+
+  it("puts the service head into the attention list alongside reps", () => {
+    const r = buildReport(facts([rep({ monthWon: 1_500_000 })], { service: { ...desk, dueTodayOpen: 12, head: head() } }));
+    expect(r.attention.map(a => a.name)).toEqual(["swati (service head)"]);
   });
 });
