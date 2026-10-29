@@ -12,6 +12,7 @@ import {
   median,
   rangeFor,
   signalsFor,
+  deskSignalsFor,
   type CoachMsgRow,
 } from "@/lib/coachEfficiency";
 
@@ -228,5 +229,37 @@ describe("follow-up actions", () => {
     expect(followUpSyncState("2026-10-14", lead(null))).toBe("changed");
     expect(followUpSyncState("2026-10-14", lead("2026-10-17", "won"))).toBe("closed");
     expect(followUpSyncState("2026-10-14", undefined)).toBe("missing");
+  });
+});
+
+
+describe("deskSignalsFor", () => {
+  const base = {
+    role: "service_head" as const, coachOn: true, checkinsSent: 4, responseRate: 50,
+    recentCheckinsSent: 2, recentCheckinsReplied: 1, presentToday: true, pushRegistered: true, hourIST: 16,
+  };
+  it("is quiet for a normal day", () => {
+    expect(deskSignalsFor({ ...base, dueTodayOpen: 2, overdueOpen: 4, unassignedTomorrow: 1 })).toEqual([]);
+  });
+  it("flags a silent coach and missing notifications for anyone", () => {
+    expect(deskSignalsFor({ ...base, recentCheckinsReplied: 0 }).map(s => s.key)).toContain("silent");
+    expect(deskSignalsFor({ ...base, role: "accounts", pushRegistered: false }).map(s => s.key)).toContain("no_push");
+  });
+  it("flags the service desk only when the numbers are bad, and open jobs only from 3 pm", () => {
+    const keys = (x: Partial<Parameters<typeof deskSignalsFor>[0]>) => deskSignalsFor({ ...base, ...x }).map(s => s.key);
+    expect(keys({ dueTodayOpen: 6 })).toContain("due_open");
+    expect(keys({ dueTodayOpen: 6, hourIST: 12 })).not.toContain("due_open");
+    expect(keys({ unassignedTomorrow: 3 })).toContain("unassigned");
+    expect(keys({ overdueOpen: 161 })).toContain("overdue_jobs");
+  });
+  it("flags an untouched approval queue only mid-afternoon on, and not a worked one", () => {
+    const acct = { ...base, role: "accounts" as const, waiting: 128 };
+    expect(deskSignalsFor({ ...acct, handledToday: 0 }).map(s => s.key)).toContain("untouched");
+    expect(deskSignalsFor({ ...acct, handledToday: 0, hourIST: 12 }).map(s => s.key)).not.toContain("untouched");
+    expect(deskSignalsFor({ ...acct, handledToday: 3 }).map(s => s.key)).not.toContain("untouched");
+    expect(deskSignalsFor({ ...acct, waiting: 5, handledToday: 0 }).map(s => s.key)).not.toContain("untouched");
+  });
+  it("praises a highly engaged person", () => {
+    expect(deskSignalsFor({ ...base, responseRate: 90 }).map(s => s.key)).toContain("engaged");
   });
 });

@@ -125,6 +125,54 @@ export function signalsFor(i: SignalInput): Signal[] {
   return out;
 }
 
+export interface DeskSignalInput {
+  role: "service_head" | "accounts";
+  coachOn: boolean;
+  checkinsSent: number;
+  responseRate: number | null;
+  recentCheckinsSent: number;
+  recentCheckinsReplied: number;
+  presentToday: boolean;
+  pushRegistered?: boolean | null;
+  hourIST: number; // "not done yet today" flags wait until mid-afternoon
+  // service head
+  dueTodayOpen?: number;
+  overdueOpen?: number;
+  unassignedTomorrow?: number;
+  // accounts
+  waiting?: number;
+  handledToday?: number;
+}
+
+// Flags for the service head and accounts. Their work is not in the CRM, so the
+// "quiet" and "overdue follow-up" signals don't apply; these read the desk instead.
+export function deskSignalsFor(i: DeskSignalInput): Signal[] {
+  const out: Signal[] = [];
+  if (i.coachOn && i.recentCheckinsSent >= 2 && i.recentCheckinsReplied === 0) {
+    out.push({ key: "silent", label: "Not replying to check-ins", tone: "warn" });
+  }
+  if (i.coachOn && i.pushRegistered === false) {
+    out.push({ key: "no_push", label: "Notifications not set up", tone: "warn" });
+  }
+  if (i.role === "service_head") {
+    if (i.presentToday && i.hourIST >= 15 && (i.dueTodayOpen ?? 0) >= 5) {
+      out.push({ key: "due_open", label: `${i.dueTodayOpen} jobs due today still open`, tone: "warn" });
+    }
+    if ((i.unassignedTomorrow ?? 0) >= 3) {
+      out.push({ key: "unassigned", label: `${i.unassignedTomorrow} of tomorrow's jobs have no agent`, tone: "warn" });
+    }
+    if ((i.overdueOpen ?? 0) >= 25) {
+      out.push({ key: "overdue_jobs", label: `${i.overdueOpen} overdue service jobs`, tone: "warn" });
+    }
+  } else if (i.presentToday && i.hourIST >= 15 && (i.waiting ?? 0) >= 20 && (i.handledToday ?? 0) === 0) {
+    out.push({ key: "untouched", label: `Nothing approved or rejected yet today (${i.waiting} waiting)`, tone: "warn" });
+  }
+  if (i.coachOn && i.checkinsSent >= 3 && i.responseRate !== null && i.responseRate >= 80) {
+    out.push({ key: "engaged", label: "Highly engaged", tone: "info" });
+  }
+  return out;
+}
+
 export function formatDuration(minutes: number): string {
   const m = Math.round(minutes);
   if (m < 60) return `${m} min`;
