@@ -4,7 +4,7 @@
  *   POST { source?, notify?, date?, force?, dry_run? }
  *     x-internal-secret (pg_cron)   OR   an admin's user JWT (Day Summary page)
  *
- * Gathers the day's facts for the sales team (plus a service and accounts line),
+ * Gathers the day's facts for the sales team and the service head (plus an accounts line),
  * turns them into a short report — what was done, the plan for tomorrow, who needs
  * special attention — and stores it for the admin pop-up. All numbers come from
  * code (_shared/day-summary.ts); the AI only writes the headline and a few focus
@@ -19,7 +19,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { addDays, checkinStats, istDateString, istMidnightMs, type CoachMsgRow } from "../_shared/coach-metrics.ts";
 import { autoFlipTimesByLead, isAutoStatusFlip, isAutoTouch } from "../_shared/activity.ts";
-import { buildReport, headlinePrompt, parseHeadlineJson, type DayFacts, type RepDay } from "../_shared/day-summary.ts";
+import { buildReport, headlinePrompt, parseHeadlineJson, type DayFacts, type RepDay, type ServiceHeadDay } from "../_shared/day-summary.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -27,6 +27,7 @@ const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY") ?? "";
 const INTERNAL_SECRET = Deno.env.get("LOYALTY_CRON_SECRET") ?? "";
 const MODEL = "google/gemini-2.5-flash";
 const CLOSED = ["won", "lost", "converted"];
+const OPEN_JOB_STATUSES = ["pending", "assigned", "on_route", "on_site", "in_progress", "rescheduled"];
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
 
@@ -160,13 +161,50 @@ async function collectFacts(date: string): Promise<DayFacts> {
     };
   });
 
-  const [completedToday, scheduledTomorrow, unassignedTomorrow, servicePending, billsPending] = await Promise.all([
+  // The service head: attendance, coach engagement and push, like a rep.
+  const { data: headRoleRows } = await admin.from("user_roles").select("user_id").eq("role", "service_head");
+  const headIds = (headRoleRows ?? []).map((r: { user_id: string }) => r.user_id);
+  const { data: headProfiles } = headIds.length
+    ? await admin.from("profiles").select("id,name").in("id", headIds).eq("active", true)
+    : { data: [] as { id: string; name: string }[] };
+  const headProfile = (headProfiles ?? [])[0] as { id: string; name: string } | undefined;
+  let head: ServiceHeadDay | null = null;
+  if (headProfile) {
+    const [headAtt, headMsgs, headPush] = await Promise.all([
+      fetchAll<{ date: string; clock_in: string | null; status: string }>((a, b) =>
+        admin.from("attendance").select("date,clock_in,status").eq("user_id", headProfile.id).gte("date", weekStart).lte("date", date).range(a, b)),
+      fetchAll<CoachMsgRow>((a, b) =>
+        admin.from("staff_agent_messages").select("user_id,sender,kind,created_at,actions").eq("user_id", headProfile.id)
+          .gte("created_at", dayStartIso).order("created_at", { ascending: true }).range(a, b)),
+      fetchAll<{ push_enabled: boolean | null }>((a, b) =>
+        admin.from("staff_push_devices").select("push_enabled").eq("user_id", headProfile.id).range(a, b)),
+    ]);
+    const att = headAtt.filter((a) => a.clock_in);
+    const todayAtt = att.find((a) => a.date === date);
+    const coach = checkinStats(headMsgs, dayStart, dayEnd);
+    head = {
+      id: headProfile.id,
+      name: headProfile.name,
+      present: !!todayAtt,
+      late: todayAtt?.status === "late",
+      presentLast7: att.length,
+      coachOn: coach.sent > 0,
+      coachSent: coach.sent,
+      coachReplied: coach.replied,
+      pushRegistered: headPush.some((p) => p.push_enabled !== false),
+    };
+  }
+
+  const [completedToday, scheduledTomorrow, unassignedTomorrow, servicePending, billsPending, dueTodayOpen, overdueOpen, rejectedByAccounts] = await Promise.all([
     count(admin.from("service_jobs").select("id", { count: "exact", head: true }).eq("status", "completed").is("deleted_at", null)
       .gte("completed_at", dayStartIso).lt("completed_at", dayEndIso)),
     count(admin.from("service_jobs").select("id", { count: "exact", head: true }).eq("date_to_attend", tomorrow).neq("status", "completed").is("deleted_at", null)),
     count(admin.from("service_jobs").select("id", { count: "exact", head: true }).eq("date_to_attend", tomorrow).neq("status", "completed").is("deleted_at", null).is("assigned_agent", null)),
     count(admin.from("service_jobs").select("id", { count: "exact", head: true }).eq("accounts_approval_status", "pending").is("deleted_at", null)),
     count(admin.from("card_bill_entries").select("id", { count: "exact", head: true }).eq("approval_status", "pending")),
+    count(admin.from("service_jobs").select("id", { count: "exact", head: true }).eq("date_to_attend", date).in("status", OPEN_JOB_STATUSES).is("deleted_at", null)),
+    count(admin.from("service_jobs").select("id", { count: "exact", head: true }).lt("date_to_attend", date).in("status", OPEN_JOB_STATUSES).is("deleted_at", null)),
+    count(admin.from("service_jobs").select("id", { count: "exact", head: true }).eq("status", "accounts_rejected").is("deleted_at", null)),
   ]);
 
   const dayOfMonth = Number(date.slice(8, 10));
@@ -176,7 +214,7 @@ async function collectFacts(date: string): Promise<DayFacts> {
     dayOfMonth,
     daysInMonth,
     reps: repDays,
-    service: { completedToday, scheduledTomorrow, unassignedTomorrow },
+    service: { completedToday, scheduledTomorrow, unassignedTomorrow, dueTodayOpen, overdueOpen, rejectedByAccounts, head },
     accounts: { servicePending, billsPending },
   };
 }
