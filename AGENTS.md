@@ -7,3 +7,4 @@
 - Signed-out kiosk review confirmations pass through a validating edge function; the elevated database action is service-role-only to protect customer records.
 - Kiosk WhatsApp messages use approved rating-specific templates with no business-initiated plain-text fallback, preserving review gating and delivery reliability.
 - Website gallery copies remain in private storage and are exposed publicly only through short-lived signed URLs, preventing permanent direct file access.
+- Product bulk upload merges on exact SKU (reviving soft-deleted rows) instead of creating suffixed copies, so photos, stock and orders stay linked to one product per code.
