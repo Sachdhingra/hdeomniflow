@@ -362,6 +362,8 @@ const AdminProducts = () => {
       let success = 0;
       let merged = 0;
       let created = 0;
+      const sameNameCatIds = new Map<string, string[]>();
+      const touched = new Set<string>();
 
       for (let i = 0; i < rows.length; i++) {
         const r = rows[i];
@@ -380,12 +382,25 @@ const AdminProducts = () => {
           const generated = generateSKU(r["brand_code"] || "", r["line_code"] || "");
           let sku = (generated || r["sku"] || "").trim();
           if (!sku) { errors.push(`Row ${rowNum}: missing brand_code+line_code (and no sku fallback)`); continue; }
-          // Merge: if this SKU already exists (even if previously deleted), update that
-          // same product so its photos, stock and order history stay linked.
-          // Never create a parallel "_1" copy for an existing code.
-          const { data: existing } = await (supabase as any)
-            .from("products").select("id, deleted_at").eq("sku", sku)
-            .order("deleted_at", { ascending: false, nullsFirst: true }).limit(1);
+          // Merge within the same category name: if this code already exists there
+          // (even in a deleted+recreated copy of the category, or as an old "_1" copy),
+          // update that product so its photos, stock and orders stay linked.
+          // The same code in a DIFFERENT category is a separate listing (own price).
+          const catKey = catName.toLowerCase();
+          if (!sameNameCatIds.has(catKey)) {
+            const { data: cs } = await (supabase as any)
+              .from("categories").select("id").ilike("name", catName);
+            sameNameCatIds.set(catKey, (cs ?? []).map((c: any) => c.id));
+          }
+          const { data: cands } = await (supabase as any)
+            .from("products").select("id, sku, deleted_at")
+            .like("sku", `${sku}%`).in("category_id", sameNameCatIds.get(catKey)!);
+          const re = new RegExp(`^${sku.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(_\\d+)?$`);
+          const existing = (cands ?? [])
+            .filter((p: any) => re.test(p.sku) && !touched.has(p.id))
+            .sort((a: any, b: any) => (a.deleted_at ? 1 : 0) - (b.deleted_at ? 1 : 0));
+          if (existing.length > 0) touched.add(existing[0].id);
+          else sku = await ensureUniqueSku(sku);
           const status = r["status"]?.toLowerCase() === "inactive" ? "inactive" : "active";
           const base: Record<string, any> = {
             product_name: name,
