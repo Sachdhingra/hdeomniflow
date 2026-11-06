@@ -375,6 +375,19 @@ const AdminProducts = () => {
         return;
       }
 
+      const requiredColumns = ["product_name", "category_name", "net_price"];
+      const missingColumns = requiredColumns.filter(c => !(c in rows[0]));
+      if (missingColumns.length > 0) {
+        toast({
+          title: "Upload stopped: missing columns",
+          description: `The file has no ${missingColumns.join(", ")} column. Nothing was changed.`,
+          variant: "destructive",
+        });
+        setBulkParsing(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
+
       const catByName = new Map<string, string>();
       categories.forEach(c => catByName.set(c.name.toLowerCase(), c.id));
 
@@ -394,26 +407,31 @@ const AdminProducts = () => {
         try {
           const name = r["product_name"];
           const catName = r["category_name"];
-          const price = parseFloat(r["net_price"] || "0");
+          const rawPrice = (r["net_price"] ?? "").replace(/[₹,\s]/g, "");
+          const price = Number(rawPrice);
           if (!name) { errors.push(`Row ${rowNum}: missing product_name`); continue; }
           if (!catName) { errors.push(`Row ${rowNum}: missing category_name`); continue; }
           const catId = catByName.get(catName.toLowerCase());
           if (!catId) { errors.push(`Row ${rowNum}: category "${catName}" not found`); continue; }
-          if (isNaN(price) || price < 0) { errors.push(`Row ${rowNum}: invalid net_price`); continue; }
+          // Never write a price we could not read. A blank or zero price would
+          // otherwise overwrite the existing price with 0.
+          if (!rawPrice) { errors.push(`Row ${rowNum}: net_price is blank, row skipped (existing price kept)`); continue; }
+          if (!Number.isFinite(price) || price <= 0) { errors.push(`Row ${rowNum}: invalid net_price "${r["net_price"]}", row skipped`); continue; }
 
           // SKU MUST be brand-line. Only fall back to CSV sku column if brand+line missing.
           const generated = generateSKU(r["brand_code"] || "", r["line_code"] || "");
           const sku = (generated || r["sku"] || "").trim();
           if (!sku) { errors.push(`Row ${rowNum}: missing brand_code+line_code (and no sku fallback)`); continue; }
-          const fields = {
+          const fields: Record<string, unknown> = {
             product_name: name,
             category_id: catId,
-            hsn_code: r["hsn_code"] || null,
-            line_code: r["line_code"] || null,
-            brand_code: r["brand_code"] || null,
             net_price: price,
-            status: r["status"]?.toLowerCase() === "inactive" ? "inactive" : "active",
           };
+          // Optional columns are only written when the file has a value for them.
+          if (r["hsn_code"]) fields.hsn_code = r["hsn_code"];
+          if (r["line_code"]) fields.line_code = r["line_code"];
+          if (r["brand_code"]) fields.brand_code = r["brand_code"];
+          if (r["status"]) fields.status = r["status"].toLowerCase() === "inactive" ? "inactive" : "active";
 
           const existing = skuIndex.get(sku);
           if (existing) {
