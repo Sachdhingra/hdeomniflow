@@ -360,6 +360,8 @@ const AdminProducts = () => {
 
       const errors: string[] = [];
       let success = 0;
+      let merged = 0;
+      let created = 0;
 
       for (let i = 0; i < rows.length; i++) {
         const r = rows[i];
@@ -378,19 +380,34 @@ const AdminProducts = () => {
           const generated = generateSKU(r["brand_code"] || "", r["line_code"] || "");
           let sku = (generated || r["sku"] || "").trim();
           if (!sku) { errors.push(`Row ${rowNum}: missing brand_code+line_code (and no sku fallback)`); continue; }
-          sku = await ensureUniqueSku(sku);
-
-          const { error } = await (supabase as any).from("products").insert({
-            sku,
+          // Merge: if this SKU already exists (even if previously deleted), update that
+          // same product so its photos, stock and order history stay linked.
+          // Never create a parallel "_1" copy for an existing code.
+          const { data: existing } = await (supabase as any)
+            .from("products").select("id, deleted_at").eq("sku", sku)
+            .order("deleted_at", { ascending: false, nullsFirst: true }).limit(1);
+          const status = r["status"]?.toLowerCase() === "inactive" ? "inactive" : "active";
+          const base: Record<string, any> = {
             product_name: name,
             category_id: catId,
             hsn_code: r["hsn_code"] || null,
             line_code: r["line_code"] || null,
             brand_code: r["brand_code"] || null,
-            net_price: price,
-            status: r["status"]?.toLowerCase() === "inactive" ? "inactive" : "active",
-            created_by: user!.id,
-          });
+            status,
+          };
+
+          let error: any = null;
+          if (existing && existing.length > 0) {
+            const upd: Record<string, any> = { ...base, deleted_at: null, updated_at: new Date().toISOString() };
+            if (price > 0) upd.net_price = price; // never overwrite a price with 0/blank
+            ({ error } = await (supabase as any).from("products").update(upd).eq("id", existing[0].id));
+            if (!error) merged++;
+          } else {
+            ({ error } = await (supabase as any).from("products").insert({
+              ...base, sku, net_price: price, created_by: user!.id,
+            }));
+            if (!error) created++;
+          }
           if (error) { errors.push(`Row ${rowNum}: ${error.message}`); continue; }
           success++;
         } catch (e: any) {
@@ -400,7 +417,10 @@ const AdminProducts = () => {
 
       setBulkResult({ success, failed: errors.length, errors: errors.slice(0, 20) });
       if (success > 0) {
-        toast({ title: `Imported ${success} product(s)`, description: errors.length ? `${errors.length} row(s) failed.` : undefined });
+        toast({
+          title: `Imported ${success} product(s)`,
+          description: `${merged} existing code(s) updated, ${created} new code(s) added.${errors.length ? ` ${errors.length} row(s) failed.` : ""}`,
+        });
         fetchAll();
       } else {
         toast({ title: "Import failed", description: "No rows imported.", variant: "destructive" });
