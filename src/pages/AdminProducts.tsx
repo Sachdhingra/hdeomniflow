@@ -343,6 +343,26 @@ const AdminProducts = () => {
     });
   };
 
+  // Every product row by SKU, including soft-deleted ones (sku is unique across all rows).
+  const fetchSkuIndex = async (): Promise<Map<string, { id: string; deleted_at: string | null }>> => {
+    const index = new Map<string, { id: string; deleted_at: string | null }>();
+    const batchSize = 1000;
+    let offset = 0;
+    while (true) {
+      const { data, error } = await (supabase as any)
+        .from("products")
+        .select("id,sku,deleted_at")
+        .order("id")
+        .range(offset, offset + batchSize - 1);
+      if (error) throw new Error(`Could not load existing products: ${error.message}`);
+      const batch = (data ?? []) as { id: string; sku: string; deleted_at: string | null }[];
+      batch.forEach(p => index.set(p.sku, { id: p.id, deleted_at: p.deleted_at }));
+      if (batch.length < batchSize) break;
+      offset += batchSize;
+    }
+    return index;
+  };
+
   const handleBulkUpload = async (file: File) => {
     setBulkParsing(true);
     setBulkResult(null);
@@ -358,8 +378,15 @@ const AdminProducts = () => {
       const catByName = new Map<string, string>();
       categories.forEach(c => catByName.set(c.name.toLowerCase(), c.id));
 
+      // Index EVERY product (including soft-deleted ones) by SKU. sku is unique in
+      // the database, so a re-upload must update the existing row, never insert a
+      // second one. Keeping the row keeps its id, which keeps its stock linked.
+      const skuIndex = await fetchSkuIndex();
+
       const errors: string[] = [];
-      let success = 0;
+      let created = 0;
+      let updated = 0;
+      let restored = 0;
 
       for (let i = 0; i < rows.length; i++) {
         const r = rows[i];
@@ -376,12 +403,9 @@ const AdminProducts = () => {
 
           // SKU MUST be brand-line. Only fall back to CSV sku column if brand+line missing.
           const generated = generateSKU(r["brand_code"] || "", r["line_code"] || "");
-          let sku = (generated || r["sku"] || "").trim();
+          const sku = (generated || r["sku"] || "").trim();
           if (!sku) { errors.push(`Row ${rowNum}: missing brand_code+line_code (and no sku fallback)`); continue; }
-          sku = await ensureUniqueSku(sku);
-
-          const { error } = await (supabase as any).from("products").insert({
-            sku,
+          const fields = {
             product_name: name,
             category_id: catId,
             hsn_code: r["hsn_code"] || null,
@@ -389,22 +413,48 @@ const AdminProducts = () => {
             brand_code: r["brand_code"] || null,
             net_price: price,
             status: r["status"]?.toLowerCase() === "inactive" ? "inactive" : "active",
-            created_by: user!.id,
-          });
-          if (error) { errors.push(`Row ${rowNum}: ${error.message}`); continue; }
-          success++;
+          };
+
+          const existing = skuIndex.get(sku);
+          if (existing) {
+            // Same SKU already exists: update prices/name/category in place and
+            // revive it if it was soft-deleted. Stock stays on this product id.
+            const { error } = await (supabase as any)
+              .from("products")
+              .update({ ...fields, deleted_at: null, updated_at: new Date().toISOString() })
+              .eq("id", existing.id);
+            if (error) { errors.push(`Row ${rowNum}: ${error.message}`); continue; }
+            if (existing.deleted_at) restored++;
+            updated++;
+            skuIndex.set(sku, { id: existing.id, deleted_at: null });
+          } else {
+            const { data, error } = await (supabase as any)
+              .from("products")
+              .insert({ sku, ...fields, created_by: user!.id })
+              .select("id")
+              .single();
+            if (error) { errors.push(`Row ${rowNum}: ${error.message}`); continue; }
+            created++;
+            skuIndex.set(sku, { id: data.id, deleted_at: null });
+          }
         } catch (e: any) {
           errors.push(`Row ${rowNum}: ${e.message}`);
         }
       }
 
+      const success = created + updated;
       setBulkResult({ success, failed: errors.length, errors: errors.slice(0, 20) });
       if (success > 0) {
-        toast({ title: `Imported ${success} product(s)`, description: errors.length ? `${errors.length} row(s) failed.` : undefined });
+        toast({
+          title: `${created} created, ${updated} updated${restored ? ` (${restored} restored)` : ""}`,
+          description: errors.length ? `${errors.length} row(s) failed.` : "Existing articles kept their stock.",
+        });
         fetchAll();
       } else {
         toast({ title: "Import failed", description: "No rows imported.", variant: "destructive" });
       }
+    } catch (e: any) {
+      toast({ title: "Import failed", description: e?.message ?? "Unknown error", variant: "destructive" });
     } finally {
       setBulkParsing(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -668,7 +718,8 @@ const AdminProducts = () => {
           <DialogHeader>
             <DialogTitle>Bulk Upload Products</DialogTitle>
             <DialogDescription>
-              Upload a CSV with columns: brand_code, line_code, sku, product_name, category_name, hsn_code, net_price, status
+              Upload a CSV with columns: brand_code, line_code, sku, product_name, category_name, hsn_code, net_price, status.
+              Articles whose SKU (brand_code-line_code) already exists are updated in place, so their stock is kept.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
