@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Calculator, ChevronRight, Minus, Plus, Search, ShoppingCart, Trash2, ListChecks, X } from "lucide-react";
+import { Calculator, ChevronRight, Copy, Minus, Plus, Search, ShoppingCart, Trash2, ListChecks, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -14,26 +14,35 @@ import {
   x3LineAmount,
   x3QuoteLines,
   x3SelectedLines,
-  x3Totals,
+  x3UnitsTotals,
   type X3Item,
   type X3Quantities,
 } from "@/lib/kreationX3";
 
 const STORAGE_KEY = "hde_kreation_x3_calc_v1";
 const MAX_QTY = 999;
+const MAX_UNITS = 6;
 
 const inr = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
 const inr2 = (n: number) =>
   `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-function loadSaved(): { qty: X3Quantities; discount: string } {
+function loadSaved(): { units: X3Quantities[]; discount: string } {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-    const qty: X3Quantities = {};
-    for (const [k, v] of Object.entries(raw.qty || {})) if (Number(v) > 0) qty[k] = Math.min(MAX_QTY, Math.floor(Number(v)));
-    return { qty, discount: typeof raw.discount === "string" ? raw.discount : "" };
+    const clean = (q: unknown): X3Quantities => {
+      const out: X3Quantities = {};
+      for (const [k, v] of Object.entries((q as Record<string, unknown>) || {})) {
+        if (Number(v) > 0) out[k] = Math.min(MAX_QTY, Math.floor(Number(v)));
+      }
+      return out;
+    };
+    // Earlier version kept a single selection in `qty`.
+    const list: unknown[] = Array.isArray(raw.units) ? raw.units : raw.qty ? [raw.qty] : [];
+    const units = list.slice(0, MAX_UNITS).map(clean);
+    return { units: units.length ? units : [{}], discount: typeof raw.discount === "string" ? raw.discount : "" };
   } catch {
-    return { qty: {}, discount: "" };
+    return { units: [{}], discount: "" };
   }
 }
 
@@ -150,21 +159,23 @@ function ItemRow({
 
 const KreationX3Calculator = () => {
   const { items: cart, addItem, removeItem, setOpen } = useQuote();
-  const [qty, setQty] = useState<X3Quantities>(() => loadSaved().qty);
+  const [units, setUnits] = useState<X3Quantities[]>(() => loadSaved().units);
   const [discount, setDiscount] = useState<string>(() => loadSaved().discount);
+  const [active, setActive] = useState(0);
   const [tabId, setTabId] = useState(X3_TABS[0].id);
   const [search, setSearch] = useState("");
   const [openMap, setOpenMap] = useState<Record<string, boolean>>({});
   const [review, setReview] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ qty, discount }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ units, discount }));
     } catch {
       /* storage unavailable: the calculator still works */
     }
-  }, [qty, discount]);
+  }, [units, discount]);
 
   useEffect(() => {
     if (!confirmClear) return;
@@ -172,27 +183,56 @@ const KreationX3Calculator = () => {
     return () => clearTimeout(t);
   }, [confirmClear]);
 
+  useEffect(() => {
+    if (!confirmRemove) return;
+    const t = setTimeout(() => setConfirmRemove(false), 4000);
+    return () => clearTimeout(t);
+  }, [confirmRemove]);
+
+  const unitIdx = Math.min(active, units.length - 1);
+  const qty = units[unitIdx] ?? {};
   const discountNum = Number(discount);
-  const totals = useMemo(() => x3Totals(qty, discountNum), [qty, discountNum]);
-  const selected = useMemo(() => x3SelectedLines(qty), [qty]);
+  const totals = useMemo(() => x3UnitsTotals(units, discountNum), [units, discountNum]);
+  const selectedByUnit = useMemo(() => units.map((q) => x3SelectedLines(q)), [units]);
+  const lineCount = selectedByUnit.reduce((n, s) => n + s.length, 0);
+  const usedUnits = selectedByUnit.filter((s) => s.length > 0).length;
   const tab = X3_TABS.find((t) => t.id === tabId) ?? X3_TABS[0];
   const words = useMemo(() => search.trim().toLowerCase().split(/\s+/).filter(Boolean), [search]);
   const searching = words.length > 0;
 
   const tabUnits = useMemo(() => {
     const out: Record<string, number> = {};
-    for (const l of selected) out[l.tab.id] = (out[l.tab.id] || 0) + l.qty;
+    for (const l of selectedByUnit[unitIdx] ?? []) out[l.tab.id] = (out[l.tab.id] || 0) + l.qty;
     return out;
-  }, [selected]);
+  }, [selectedByUnit, unitIdx]);
 
-  const setItemQty = (key: string, n: number) =>
-    setQty((prev) => {
-      const v = Math.max(0, Math.min(MAX_QTY, Math.floor(n) || 0));
-      const next = { ...prev };
-      if (v) next[key] = v;
-      else delete next[key];
-      return next;
-    });
+  const setItemQtyIn = (unit: number, key: string, n: number) =>
+    setUnits((prev) =>
+      prev.map((q, i) => {
+        if (i !== unit) return q;
+        const v = Math.max(0, Math.min(MAX_QTY, Math.floor(n) || 0));
+        const next = { ...q };
+        if (v) next[key] = v;
+        else delete next[key];
+        return next;
+      }),
+    );
+  const setItemQty = (key: string, n: number) => setItemQtyIn(unitIdx, key, n);
+
+  const addUnit = (copyCurrent: boolean) => {
+    if (units.length >= MAX_UNITS) return;
+    setUnits((prev) => [...prev, copyCurrent ? { ...prev[unitIdx] } : {}]);
+    setActive(units.length);
+    setConfirmRemove(false);
+  };
+
+  const removeUnit = () => {
+    if (units.length < 2) return;
+    if (!confirmRemove) return setConfirmRemove(true);
+    setUnits((prev) => prev.filter((_, i) => i !== unitIdx));
+    setActive(Math.max(0, unitIdx - 1));
+    setConfirmRemove(false);
+  };
 
   const matches = (i: X3Item) => {
     if (!searching) return true;
@@ -210,20 +250,24 @@ const KreationX3Calculator = () => {
 
   const clearAll = () => {
     if (!confirmClear) return setConfirmClear(true);
-    setQty({});
+    setUnits([{}]);
+    setActive(0);
     setDiscount("");
     setConfirmClear(false);
     toast.success("Calculator cleared");
   };
 
-  /** Puts the selected items on the quotation. Items sent earlier are replaced, not added twice. */
+  /** Puts every unit's items on the quotation. Items sent earlier are replaced, not added twice. */
   const sendToQuote = () => {
-    if (!selected.length) return;
+    const lines = x3QuoteLines(units, discountNum);
+    if (!lines.length) return;
     cart.filter(isX3QuoteLine).forEach((l) => removeItem(l.id));
-    x3QuoteLines(qty, discountNum).forEach((l) => addItem(l));
+    lines.forEach((l) => addItem(l));
     setReview(false);
     setOpen(true);
-    toast.success(`${selected.length} item${selected.length > 1 ? "s" : ""} added to the quotation`);
+    toast.success(
+      `${lines.length} item${lines.length > 1 ? "s" : ""}${usedUnits > 1 ? ` in ${usedUnits} units` : ""} added to the quotation`,
+    );
   };
 
   return (
@@ -241,18 +285,71 @@ const KreationX3Calculator = () => {
       </div>
 
       <div className="space-y-3 rounded-xl border bg-card p-3 shadow-sm">
+        {/* One chip per Kreation unit (a customer can buy more than one) */}
+        <div className="space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Kreation unit</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <div role="tablist" aria-label="Kreation units" className="flex max-w-full gap-1.5 overflow-x-auto">
+              {units.map((_, i) => {
+                const on = i === unitIdx;
+                const t = totals.units[i];
+                return (
+                  <button
+                    key={i}
+                    role="tab"
+                    type="button"
+                    aria-selected={on}
+                    onClick={() => {
+                      setActive(i);
+                      setConfirmRemove(false);
+                    }}
+                    className={`flex min-h-10 shrink-0 flex-col items-start justify-center rounded-lg border px-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                      on ? "border-primary bg-primary/10 text-primary" : "bg-background hover:border-primary/50"
+                    }`}
+                  >
+                    <span className="text-sm font-semibold leading-tight">Unit {i + 1}</span>
+                    <span className="font-mono text-[11px] leading-tight tabular-nums text-muted-foreground">
+                      {t.units ? `${t.units} pc · ${inr(t.amount)}` : "empty"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {units.length < MAX_UNITS && (
+              <Button type="button" variant="outline" className="h-10" onClick={() => addUnit(false)}>
+                <Plus className="mr-1 h-4 w-4" /> Add unit
+              </Button>
+            )}
+            {qty && Object.keys(qty).length > 0 && units.length < MAX_UNITS && (
+              <Button type="button" variant="ghost" className="h-10" onClick={() => addUnit(true)}>
+                <Copy className="mr-1 h-4 w-4" /> Copy unit {unitIdx + 1}
+              </Button>
+            )}
+            {units.length > 1 && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-10 text-destructive hover:text-destructive"
+                onClick={removeUnit}
+              >
+                <Trash2 className="mr-1 h-4 w-4" /> {confirmRemove ? "Tap again to remove" : `Remove unit ${unitIdx + 1}`}
+              </Button>
+            )}
+          </div>
+        </div>
+
         <div role="tablist" aria-label="Price list" className="flex gap-1 overflow-x-auto rounded-lg bg-muted p-1">
           {X3_TABS.map((t) => {
-            const active = t.id === tab.id;
+            const on = t.id === tab.id;
             return (
               <button
                 key={t.id}
                 role="tab"
                 type="button"
-                aria-selected={active}
+                aria-selected={on}
                 onClick={() => setTabId(t.id)}
                 className={`flex min-h-10 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                  active ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  on ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 {t.label}
@@ -313,7 +410,7 @@ const KreationX3Calculator = () => {
               {open && (
                 <div>
                   <div className="hidden grid-cols-[minmax(0,1fr)_112px_112px_100px] gap-x-4 border-t bg-muted/50 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground sm:grid">
-                    <span>Item</span>
+                    <span>Item · Unit {unitIdx + 1}</span>
                     <span className="text-right">Nett price</span>
                     <span className="text-center">Qty</span>
                     <span className="text-right">Amount</span>
@@ -328,12 +425,12 @@ const KreationX3Calculator = () => {
         })
       )}
 
-      {/* Quote bar: one total and one discount for every tab */}
+      {/* Quote bar: one total and one discount for every unit and tab */}
       <div className="sticky bottom-0 z-20 -mx-4 border-t-2 border-primary bg-card/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_24px_-12px_rgba(0,0,0,0.25)] backdrop-blur sm:mx-0 sm:rounded-xl sm:border-2">
         <div className="grid grid-cols-2 items-end gap-x-4 gap-y-2 sm:grid-cols-[minmax(0,0.7fr)_minmax(0,1.1fr)_minmax(0,1.7fr)_minmax(0,1.3fr)_auto]">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Units</p>
-            <p className="font-mono text-lg font-medium tabular-nums">{totals.units.toLocaleString("en-IN")}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Pieces</p>
+            <p className="font-mono text-lg font-medium tabular-nums">{totals.pieces.toLocaleString("en-IN")}</p>
           </div>
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Total</p>
@@ -366,46 +463,62 @@ const KreationX3Calculator = () => {
             <p className="font-mono text-2xl font-bold tabular-nums text-primary">{inr(totals.amount)}</p>
           </div>
           <div className="col-span-2 flex flex-wrap items-center justify-end gap-2 sm:col-span-1">
-            <Button variant="outline" className="h-11 min-w-11" onClick={() => setReview(true)} disabled={!selected.length}>
+            <Button variant="outline" className="h-11 min-w-11" onClick={() => setReview(true)} disabled={!lineCount}>
               <ListChecks className="mr-1.5 h-4 w-4" /> Review
             </Button>
-            <Button className="h-11 flex-1 sm:flex-none" onClick={sendToQuote} disabled={!selected.length}>
+            <Button className="h-11 flex-1 sm:flex-none" onClick={sendToQuote} disabled={!lineCount}>
               <ShoppingCart className="mr-1.5 h-4 w-4" /> Add to quotation
             </Button>
           </div>
         </div>
         <p className="mt-1.5 text-[11px] text-muted-foreground">
-          One discount applies to all tabs. Each line and every total is rounded to the rupee.
+          {usedUnits > 1 ? `${usedUnits} Kreation units, each priced separately on the customer copy. ` : ""}
+          One discount applies to all. Each line and every total is rounded to the rupee.
         </p>
       </div>
 
       <Sheet open={review} onOpenChange={setReview}>
         <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-lg">
           <SheetHeader className="border-b p-4">
-            <SheetTitle>Selected items ({selected.length})</SheetTitle>
+            <SheetTitle>Selected items ({lineCount})</SheetTitle>
           </SheetHeader>
           <div className="flex-1 overflow-y-auto">
-            {selected.length === 0 ? (
+            {lineCount === 0 ? (
               <p className="p-8 text-center text-sm text-muted-foreground">
                 Nothing selected yet. Add quantities in any tab.
               </p>
             ) : (
-              selected.map(({ tab: t, item, qty: q }) => (
-                <div key={item.key} className="flex items-start gap-3 border-b px-4 py-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium leading-snug [overflow-wrap:anywhere]">{item.longDescription}</p>
-                    <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
-                      {t.label} · {item.code || "No item code"}
-                    </p>
-                    <p className="mt-1 font-mono text-xs tabular-nums">
-                      {q} × {inr2(item.nett)} = <b>{inr(x3LineAmount(item.nett, q))}</b>
-                    </p>
+              selectedByUnit.map((sel, ui) =>
+                sel.length === 0 ? null : (
+                  <div key={ui}>
+                    <div className="flex items-center justify-between bg-muted px-4 py-2 text-sm font-semibold">
+                      <span>Unit {ui + 1}</span>
+                      <span className="font-mono tabular-nums text-primary">{inr(totals.units[ui].amount)}</span>
+                    </div>
+                    {sel.map(({ tab: t, item, qty: q }) => (
+                      <div key={item.key} className="flex items-start gap-3 border-b px-4 py-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium leading-snug [overflow-wrap:anywhere]">{item.longDescription}</p>
+                          <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+                            {t.label} · {item.code || "No item code"}
+                          </p>
+                          <p className="mt-1 font-mono text-xs tabular-nums">
+                            {q} × {inr2(item.nett)} = <b>{inr(x3LineAmount(item.nett, q))}</b>
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Remove ${item.description} from unit ${ui + 1}`}
+                          onClick={() => setItemQtyIn(ui, item.key, 0)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
                   </div>
-                  <Button variant="ghost" size="icon" aria-label={`Remove ${item.description}`} onClick={() => setItemQty(item.key, 0)}>
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))
+                ),
+              )
             )}
           </div>
           <div className="space-y-2 border-t p-4">
@@ -427,7 +540,7 @@ const KreationX3Calculator = () => {
               <Button variant="outline" className="h-11" onClick={clearAll}>
                 <Trash2 className="mr-1.5 h-4 w-4" /> {confirmClear ? "Tap again to clear" : "Clear all"}
               </Button>
-              <Button className="h-11 flex-1" onClick={sendToQuote} disabled={!selected.length}>
+              <Button className="h-11 flex-1" onClick={sendToQuote} disabled={!lineCount}>
                 <ShoppingCart className="mr-1.5 h-4 w-4" /> Add to quotation
               </Button>
             </div>

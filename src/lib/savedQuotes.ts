@@ -2,7 +2,7 @@ import { plDb, lineTotal, quoteTotals } from "@/lib/productLibrary";
 import { downloadQuoteExcel, type QuoteExcelLine, type QuoteExcelMeta } from "@/lib/quoteExcel";
 import { downloadQuotePdf } from "@/lib/quotePdf";
 import type { QuoteLine } from "@/contexts/QuoteContext";
-import { decodeX3Notes, encodeX3Notes, type X3LayoutId } from "@/lib/kreationX3Quote";
+import { decodeX3Notes, encodeX3Notes, type X3Units } from "@/lib/kreationX3Quote";
 
 export type QuoteStatus = "draft" | "sent" | "accepted" | "rejected";
 
@@ -27,9 +27,8 @@ export interface QuoteMeta {
   handlingCharges: number;
   leadId: string | null;
   leadLabel: string | null;
-  /** Kreation X3 customer copy: the layout name and the dimensions covered. */
-  x3Layout: X3LayoutId | null;
-  x3Dimensions: string;
+  /** Kreation X3 customer copy: layout name and dimensions covered, per unit number. */
+  x3Units: X3Units;
 }
 
 export const EMPTY_META: QuoteMeta = {
@@ -43,8 +42,7 @@ export const EMPTY_META: QuoteMeta = {
   handlingCharges: 0,
   leadId: null,
   leadLabel: null,
-  x3Layout: null,
-  x3Dimensions: "",
+  x3Units: {},
 };
 
 export interface SavedQuoteRow {
@@ -111,7 +109,7 @@ export async function saveQuote(
     grand_total: Math.round((totals.grandTotal + handling) * 100) / 100,
     lead_id: meta.leadId,
     // Only written when set, so notes saved by older versions are left alone.
-    ...(encodeX3Notes(meta.x3Layout, meta.x3Dimensions) ? { notes: encodeX3Notes(meta.x3Layout, meta.x3Dimensions) } : {}),
+    ...(encodeX3Notes(meta.x3Units) ? { notes: encodeX3Notes(meta.x3Units) } : {}),
   };
 
   let saved: { id: string; quote_number: string };
@@ -137,7 +135,11 @@ export async function saveQuote(
   }
 
   if (lines.length) {
+    // Kreation unit numbers need the quote_items.group_no column. Only quotes with more than one
+    // unit write it, so every other quote saves exactly as before.
+    const multiUnit = lines.some((i) => (i.group_no ?? 1) > 1);
     const rows = lines.map((i, idx) => ({
+      ...(multiUnit && i.group_no ? { group_no: i.group_no } : {}),
       quote_id: saved.id,
       product_id: i.product_id,
       variant_id: i.variant_id,
@@ -212,8 +214,7 @@ export async function loadQuote(id: string): Promise<{ meta: QuoteMeta; lines: Q
       handlingCharges: Number(q.handling_charges) || 0,
       leadId: q.lead_id,
       leadLabel: label,
-      x3Layout: decodeX3Notes(q.notes).layout,
-      x3Dimensions: decodeX3Notes(q.notes).dimensions,
+      x3Units: decodeX3Notes(q.notes),
     },
     lines: (items || []).map((i: Record<string, unknown>) => ({
       id: crypto.randomUUID(),
@@ -228,6 +229,7 @@ export async function loadQuote(id: string): Promise<{ meta: QuoteMeta; lines: Q
       unit_price: Number(i.unit_price) || 0,
       gst_percent: Number(i.gst_percent) || 0,
       discount_percent: Number(i.discount_percent) || 0,
+      group_no: i.group_no ? Number(i.group_no) : null,
     })),
   };
 }

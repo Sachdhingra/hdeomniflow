@@ -11,7 +11,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { useQuote } from "@/contexts/QuoteContext";
 import { loadWebsiteCatalog } from "@/lib/websiteCatalog";
 import { money, lineTotal, priceBreakdown, quoteTotals } from "@/lib/productLibrary";
-import { customerCopyLines, isX3QuoteLine, x3LayoutLabel } from "@/lib/kreationX3Quote";
+import {
+  customerCopyLines,
+  internalCopyLines,
+  isX3CustomerLine,
+  isX3QuoteLine,
+  x3UnitNo,
+  x3UnitNumbers,
+  x3UnitsMissingLayout,
+} from "@/lib/kreationX3Quote";
 import {
   QUOTE_STATUSES,
   downloadSavedQuoteExcel,
@@ -65,12 +73,16 @@ const QuoteDrawer = () => {
 
   /** What leaves the app: the lines as they are, or the Kreation customer copy. */
   const outputLines = (): typeof items | null => {
-    if (!customerCopy) return items;
-    if (!meta.x3Layout) {
-      toast.error("Choose the Kreation layout (Straight, L-Shape, U-Shape or Parallel) first");
+    if (!customerCopy) return internalCopyLines(items);
+    const missing = x3UnitsMissingLayout(items, meta.x3Units);
+    if (missing.length) {
+      const many = x3UnitNumbers(items).length > 1;
+      toast.error(
+        `Choose the Kreation layout${many ? ` for unit ${missing.join(", ")}` : ""} (Straight, L-Shape, U-Shape or Parallel) first`,
+      );
       return null;
     }
-    return customerCopyLines(items, meta.x3Layout, meta.x3Dimensions);
+    return customerCopyLines(items, meta.x3Units);
   };
   const statusLabel = QUOTE_STATUSES.find((s) => s.value === meta.status)?.label ?? meta.status;
 
@@ -136,9 +148,9 @@ const QuoteDrawer = () => {
     const text = [
       `Home Decor Enterprises — Quotation${meta.quoteNumber ? ` ${meta.quoteNumber}` : ""}`,
       ...lines.map((i) =>
-        i.details !== undefined
+        isX3CustomerLine(i)
           ? `• ${i.product_name}${i.details ? ` — ${i.details}` : ""} = ${money(lineTotal(i.quantity, i.unit_price, i.gst_percent, i.discount_percent || 0))}`
-          : `• ${i.product_name} (${i.sku || "-"}) x${i.quantity} @ ${money(priceBreakdown(i.unit_price, i.gst_percent, i.discount_percent || 0).unitInclusive)} incl. ${i.gst_percent}% GST = ${money(lineTotal(i.quantity, i.unit_price, i.gst_percent, i.discount_percent || 0))}`,
+          : `• ${i.product_name} (${i.details || i.sku || "-"}) x${i.quantity} @ ${money(priceBreakdown(i.unit_price, i.gst_percent, i.discount_percent || 0).unitInclusive)} incl. ${i.gst_percent}% GST = ${money(lineTotal(i.quantity, i.unit_price, i.gst_percent, i.discount_percent || 0))}`,
       ),
       `Taxable value: ${money(totals.subtotal)}`,
       `GST: ${money(totals.gstTotal)}`,
@@ -259,7 +271,10 @@ const QuoteDrawer = () => {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="text-sm font-medium truncate">{i.product_name}</p>
-                      <p className="text-xs text-muted-foreground">{i.sku}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {i.sku}
+                        {isX3QuoteLine(i) && x3UnitNumbers(items).length > 1 ? ` · Unit ${x3UnitNo(i)}` : ""}
+                      </p>
                     </div>
                     <Button variant="ghost" size="icon" onClick={() => removeItem(i.id)}>
                       <Trash2 className="w-4 h-4 text-destructive" />
