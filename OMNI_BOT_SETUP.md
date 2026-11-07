@@ -11,7 +11,7 @@ One answer engine for every customer inbox. The bot answers from the Godrej Inte
 | Engine | `supabase/functions/_shared/omni-bot/core.ts` | Claude tool loop: `search_products`, `get_product_details`, `send_enquiry` |
 | Bot API | `supabase/functions/omni-bot/index.ts` | Shared-secret endpoint. Keeps 24h memory, opt-out, rate limit, one enquiry per sender |
 | Instagram adapter | `supabase/functions/instagram-webhook/index.ts` | Meta webhook: verifies signature, asks the bot, sends the DM reply |
-| WhatsApp adapter | `supabase/functions/_shared/omni-bot/whatsapp.ts`, called from `twilio-webhook` | Replies to non-lead customers on the showroom number (+91 99172 33664) |
+| WhatsApp adapter | `supabase/functions/_shared/omni-bot/whatsapp.ts`, called from `interakt-webhook` | Replies to non-lead customers on the showroom number (+91 99172 33664) via Meta's WhatsApp Cloud API |
 | Tables | `supabase/migrations/20261107100000_omni_bot_tables.sql` | `omni_bot_senders`, `omni_bot_messages`; service role only |
 | Tests | `supabase/functions/_shared/omni-bot/omni-bot_test.ts` | 13 unit tests (catalogue, engine, enquiry rules, Meta signature) |
 
@@ -30,13 +30,15 @@ Adding another channel means writing a small adapter that POSTs `{channel, sende
 | `IG_VERIFY_TOKEN` | `instagram-webhook` | Any string; enter the same in Meta's webhook settings |
 | `IG_PAGE_ACCESS_TOKEN` | `instagram-webhook` | Page or Instagram-account token with messaging permission |
 | `SITE_URL` | `omni-bot` | Optional. Default `https://hdefurniture.netlify.app` |
-| `OMNI_BOT_SECRET` (also on `twilio-webhook`) | `twilio-webhook` | Same value as above. Twilio credentials are already set |
+| `OMNI_BOT_SECRET` (also on `interakt-webhook`) | `interakt-webhook` | Same value as above |
+| `WHATSAPP_PHONE_NUMBER_ID` | `interakt-webhook` | Meta phone number id of the showroom number. The bot stays silent until set |
+| `WHATSAPP_ACCESS_TOKEN` | `interakt-webhook` | Meta system-user token with `whatsapp_business_messaging`. Keep it in Supabase secrets only |
 
 ## Deploy (not yet done)
 
-1. `supabase db push` to apply the migration.
+1. `supabase db push` to apply both migrations (`20261107100000`, `20261107110000`).
 2. Set the secrets above.
-3. `supabase functions deploy omni-bot instagram-webhook`
+3. `supabase functions deploy omni-bot instagram-webhook interakt-webhook`
 4. Meta: add the Instagram product to the app, subscribe the page to `messages`, and set the callback URL to `https://<project>.supabase.co/functions/v1/instagram-webhook` with `IG_VERIFY_TOKEN`.
 5. Test: send a DM to the business account asking for a sofa. The reply should name a product with its MRP and link.
 
@@ -44,14 +46,15 @@ Adding another channel means writing a small adapter that POSTs `{channel, sende
 
 - `STOP` or `UNSUBSCRIBE` opts the sender out. They get no further replies.
 - At most 30 customer messages per sender per hour.
+- Meta redelivers webhooks. Each customer message is stored with its provider id, so a repeat is ignored and gets no second reply.
 - One enquiry per sender. Invalid mobile numbers are refused.
 - The bot never quotes discounts, final prices, stock or delivery dates. The consultant gives those.
 - Prices are Godrej Interio MRP from the catalogue.
 
 ## Not done yet (decisions for the owner)
 
-- **WhatsApp scope.** The bot answers customers who are not leads, through `twilio-webhook`, on the showroom sender. Lead conversations are not answered by the bot, so salespeople keep control of them. If you also want the bot to answer leads, say so; that needs a rule for handing back to the salesperson.
-- **Inbound via Meta.** `interakt-webhook` also receives WhatsApp messages (Meta Cloud API). If the showroom number's inbound arrives there rather than through Twilio, the same reply path needs adding there. It has not been added.
+- **WhatsApp scope.** The bot answers customers who are not leads, on the showroom number via Meta's Cloud API. Lead conversations are not answered by the bot, so salespeople keep control of them. If you also want the bot to answer leads, that needs a rule for handing back to the salesperson.
+- **Twilio is not used.** The Twilio WhatsApp path is down on the account, so it is not wired to the bot. The existing staff and lead messages that still go through `send-whatsapp` (Twilio) will also fail until that is moved to the Meta API. That is a separate piece of work.
 - **WeChat (`wechaty`) is not wired in.** Wechaty drives a logged-in personal WeChat account through an unofficial protocol. That risks account restriction, and it is not something to put customer service on. If WeChat matters, the official route is a WeChat Official Account with its API. That is a separate decision.
 - **"Omni" and other channels** are not defined yet. Each needs its own adapter and credentials.
 - **Catalogue scope.** The bot answers from the website catalogue only. Products not published on the website are not known to it. The `godrej_products` table in Omniflow is not used yet.

@@ -11,7 +11,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 import { analyzeInbound, detectBinaryReply } from "../_shared/conversation-analysis.ts";
 import { normalizeIndianPhone } from "../_shared/indian-phone.ts";
-import { botReplyForWhatsApp } from "../_shared/omni-bot/whatsapp.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -322,27 +321,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Not a lead: answer with the omni-channel sales bot. The reply is sent after this response
-    // returns, so Twilio is not kept waiting on the model. Leads are never answered by the bot.
-    if (!lead && text) {
-      const botWork = botReplyForWhatsApp({
-        fromRaw,
-        senderPhone: phone.replace(/\D/g, ""),
-        text,
-        botUrl: `${supabaseUrl}/functions/v1/omni-bot`,
-        botSecret: Deno.env.get("OMNI_BOT_SECRET") ?? "",
-        accountSid: Deno.env.get("TWILIO_ACCOUNT_SID") ?? "",
-        authToken: Deno.env.get("TWILIO_AUTH_TOKEN") ?? "",
-        showroomFrom: Deno.env.get("TWILIO_WHATSAPP_FROM") ?? "",
-      }).then((r) => {
-        if (!r.sent) console.log("[twilio-webhook] omni bot not sent", { reason: r.reason });
-      }).catch((e) => console.error("[twilio-webhook] omni bot failed", e));
-      const waitUntil = (globalThis as any).EdgeRuntime?.waitUntil;
-      if (typeof waitUntil === "function") waitUntil(botWork);
-      else await botWork;
-    }
-
-    // Twilio expects an empty TwiML 200 OK (the bot reply, if any, is a separate message)
+    // Twilio expects an empty TwiML 200 OK (no auto-reply)
     return new Response("<Response/>", {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "text/xml" },

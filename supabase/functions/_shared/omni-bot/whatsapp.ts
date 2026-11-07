@@ -1,32 +1,32 @@
-// WhatsApp reply path for the omni-channel sales bot (showroom number, via Twilio).
-// Used by twilio-webhook for inbound messages from numbers that are NOT leads. Lead conversations
-// stay with the sales team, so the bot never answers a lead.
+// WhatsApp reply path for the omni-channel sales bot, on Meta's official WhatsApp Cloud API.
+// Called from interakt-webhook (the Meta webhook that already receives the showroom number's
+// messages) for senders who are NOT leads. Lead conversations stay with the sales team.
 //
 // Safety rules:
-// - Replies only to a text message the customer just sent, inside WhatsApp's 24-hour session.
-//   The bot never starts a conversation or sends follow-ups.
+// - Replies only to a text message the customer just sent, inside WhatsApp's 24-hour customer-service
+//   window. The bot never starts a conversation or sends follow-ups.
 // - Media-only messages get no reply.
-// - Opt-out (STOP) and the per-sender hourly cap are enforced by omni-bot.
+// - STOP, the hourly cap and duplicate deliveries are enforced by omni-bot.
 
-export const WA_MAX_CHARS = 1500; // Twilio/WhatsApp message body comfortably under 1600
+export const WA_MAX_CHARS = 4000; // WhatsApp text body limit is 4096
+export const GRAPH_VERSION = "v21.0";
 
 export type FetchFn = typeof fetch;
 
 export type BotReplyOpts = {
-  fromRaw: string;            // Twilio "From", e.g. "whatsapp:+919876543210"
-  senderPhone: string;        // normalised digits, e.g. "919876543210" (used as the bot's sender_id)
-  text: string;              // the customer's message text ("[image]" style placeholders are skipped)
-  botUrl: string;            // .../functions/v1/omni-bot
+  senderDigits: string;     // customer number, digits with country code, e.g. "919876543210"
+  text: string;             // the customer's message text
+  externalId: string | null;// Meta message id (wamid) for de-duplication
+  botUrl: string;           // .../functions/v1/omni-bot
   botSecret: string;
-  accountSid: string;
-  authToken: string;
-  showroomFrom: string;      // our WhatsApp sender, e.g. "whatsapp:+919917233664" or the raw number
+  phoneNumberId: string;    // our WhatsApp Cloud API phone number id
+  accessToken: string;      // Meta system-user token with whatsapp_business_messaging
   fetchFn?: FetchFn;
 };
 
 export type BotReplyResult =
-  | { sent: true; messageSid: string | null }
-  | { sent: false; reason: "media" | "empty" | "bot_skipped" | "bot_failed" | "twilio_failed" | "not_configured" };
+  | { sent: true; messageId: string | null }
+  | { sent: false; reason: "media" | "empty" | "bot_skipped" | "bot_failed" | "send_failed" | "not_configured" };
 
 const MEDIA_PLACEHOLDER = /^\[(image|audio|video|document|sticker|location|non-text message|media|button|interactive)\]$/;
 
@@ -34,13 +34,9 @@ export function trimForWhatsApp(text: string): string {
   return text.length <= WA_MAX_CHARS ? text : text.slice(0, WA_MAX_CHARS - 1).trimEnd() + "…";
 }
 
-function asWhatsAppAddress(raw: string): string {
-  return raw.startsWith("whatsapp:") ? raw : `whatsapp:${raw.startsWith("+") ? raw : "+" + raw}`;
-}
-
 export async function botReplyForWhatsApp(opts: BotReplyOpts): Promise<BotReplyResult> {
   const fetchFn = opts.fetchFn ?? fetch;
-  if (!opts.botUrl || !opts.botSecret || !opts.accountSid || !opts.authToken || !opts.showroomFrom) {
+  if (!opts.botUrl || !opts.botSecret || !opts.phoneNumberId || !opts.accessToken || !/^\d{8,15}$/.test(opts.senderDigits)) {
     return { sent: false, reason: "not_configured" };
   }
   const text = opts.text.trim();
@@ -50,26 +46,28 @@ export async function botReplyForWhatsApp(opts: BotReplyOpts): Promise<BotReplyR
   const botRes = await fetchFn(opts.botUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-omni-secret": opts.botSecret },
-    body: JSON.stringify({ channel: "whatsapp", sender_id: opts.senderPhone, text }),
+    body: JSON.stringify({
+      channel: "whatsapp", sender_id: opts.senderDigits, text,
+      external_id: opts.externalId ?? undefined,
+    }),
   });
   if (!botRes.ok) return { sent: false, reason: "bot_failed" };
   const bot = await botRes.json().catch(() => null);
   const reply = typeof bot?.reply === "string" ? bot.reply.trim() : "";
   if (!reply) return { sent: false, reason: "bot_skipped" };
 
-  const body = new URLSearchParams();
-  body.set("To", asWhatsAppAddress(opts.fromRaw));
-  body.set("From", asWhatsAppAddress(opts.showroomFrom));
-  body.set("Body", trimForWhatsApp(reply));
-  const res = await fetchFn(`https://api.twilio.com/2010-04-01/Accounts/${opts.accountSid}/Messages.json`, {
+  const res = await fetchFn(`https://graph.facebook.com/${GRAPH_VERSION}/${opts.phoneNumberId}/messages`, {
     method: "POST",
-    headers: {
-      Authorization: `Basic ${btoa(`${opts.accountSid}:${opts.authToken}`)}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body,
+    headers: { Authorization: `Bearer ${opts.accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: opts.senderDigits,
+      type: "text",
+      text: { preview_url: false, body: trimForWhatsApp(reply) },
+    }),
   });
-  if (!res.ok) return { sent: false, reason: "twilio_failed" };
+  if (!res.ok) return { sent: false, reason: "send_failed" };
   const sent = await res.json().catch(() => ({}));
-  return { sent: true, messageSid: typeof sent?.sid === "string" ? sent.sid : null };
+  const id = sent?.messages?.[0]?.id;
+  return { sent: true, messageId: typeof id === "string" ? id : null };
 }

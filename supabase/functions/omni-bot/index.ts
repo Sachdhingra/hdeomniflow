@@ -92,6 +92,8 @@ Deno.serve(async (req) => {
   const senderId = String(body.sender_id ?? "").slice(0, 100);
   const senderName = typeof body.sender_name === "string" ? body.sender_name.slice(0, 80) : null;
   const text = String(body.text ?? "").trim().slice(0, 2000);
+  // Provider message id (WhatsApp wamid, Instagram mid). Providers retry deliveries, so a repeat is ignored.
+  const externalId = typeof body.external_id === "string" && body.external_id ? body.external_id.slice(0, 200) : null;
   if (!channel || !senderId) return json({ error: "channel and sender_id are required" }, 400);
   if (!text) return json({ reply: null, skipped: "empty", enquiry_sent: false });
 
@@ -129,7 +131,11 @@ Deno.serve(async (req) => {
   }
   if (clean[clean.length - 1].role !== "user") clean.push({ role: "user", content: text });
 
-  await db.from("omni_bot_messages").insert({ channel, sender_id: senderId, role: "user", content: text });
+  const { error: insertErr } = await db.from("omni_bot_messages").insert({
+    channel, sender_id: senderId, role: "user", content: text, external_id: externalId,
+  });
+  if (insertErr?.code === "23505") return json({ reply: null, skipped: "duplicate", enquiry_sent: !!sender?.enquiry_sent });
+  if (insertErr) throw insertErr;
 
   let reply = FALLBACK;
   let enquirySent = !!sender?.enquiry_sent;

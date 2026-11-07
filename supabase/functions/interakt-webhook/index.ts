@@ -4,6 +4,7 @@
 //   POST — inbound customer messages and delivery/read status updates
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 import { analyzeInbound, detectBinaryReply } from "../_shared/conversation-analysis.ts";
+import { botReplyForWhatsApp } from "../_shared/omni-bot/whatsapp.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,6 +17,27 @@ const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const META_WEBHOOK_VERIFY_TOKEN = Deno.env.get("META_WEBHOOK_VERIFY_TOKEN");
 // Set META_APP_SECRET to your Meta App secret for payload signature verification.
 const META_APP_SECRET = Deno.env.get("META_APP_SECRET");
+// Omni sales bot for customers who are not leads. Silent until these are set.
+const OMNI_BOT_SECRET = Deno.env.get("OMNI_BOT_SECRET") ?? "";
+const WHATSAPP_PHONE_NUMBER_ID = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") ?? "";
+const WHATSAPP_ACCESS_TOKEN = Deno.env.get("WHATSAPP_ACCESS_TOKEN") ?? "";
+
+/** Answers a non-lead customer's text message with the sales bot. Runs after the response is returned. */
+function answerNonLead(externalId: string | null, phone: string, text: string): void {
+  const work = botReplyForWhatsApp({
+    senderDigits: phone.replace(/\D/g, ""),
+    text,
+    externalId,
+    botUrl: `${supabaseUrl}/functions/v1/omni-bot`,
+    botSecret: OMNI_BOT_SECRET,
+    phoneNumberId: WHATSAPP_PHONE_NUMBER_ID,
+    accessToken: WHATSAPP_ACCESS_TOKEN,
+  }).then((r) => {
+    if (!r.sent) console.log("[interakt-webhook] omni bot not sent", { reason: r.reason });
+  }).catch((e) => console.error("[interakt-webhook] omni bot failed", e));
+  const waitUntil = (globalThis as any).EdgeRuntime?.waitUntil;
+  if (typeof waitUntil === "function") waitUntil(work);
+}
 
 function normalizePhone(raw: string | undefined | null): string {
   return (raw || "").replace(/\D/g, "");
@@ -238,6 +260,10 @@ Deno.serve(async (req) => {
                 success: true,
                 details: { phone, text: String(text).slice(0, 500) },
               });
+              // Not a lead: the sales bot answers text messages (media-only messages are skipped).
+              if (msg.type === "text" || msg.type === "interactive" || msg.type === "button") {
+                answerNonLead(msg.id ?? null, phone, String(text));
+              }
             }
           }
 

@@ -14,7 +14,7 @@ export async function verifySignature(rawBody: string, header: string | null, ap
   return diff === 0;
 }
 
-export type InboundDm = { senderId: string; text: string };
+export type InboundDm = { senderId: string; text: string; mid: string | null };
 
 /** Pulls text DMs out of a Meta "instagram" webhook payload. Echoes, attachments and our own messages are ignored. */
 export function extractDms(payload: any): InboundDm[] {
@@ -28,7 +28,7 @@ export function extractDms(payload: any): InboundDm[] {
       if (!senderId || !msg || msg.is_echo) continue;
       if (senderId === pageId) continue;
       const text = typeof msg.text === "string" ? msg.text.trim() : "";
-      if (text) out.push({ senderId, text });
+      if (text) out.push({ senderId, text, mid: typeof msg.mid === "string" ? msg.mid : null });
     }
   }
   return out;

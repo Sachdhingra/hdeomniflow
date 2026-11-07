@@ -145,7 +145,10 @@ Deno.test("extracts text DMs and skips echoes, attachments and the page's own me
       ],
     }],
   };
-  assertEquals(extractDms(payload), [{ senderId: "U1", text: "hello" }, { senderId: "U3", text: "price?" }]);
+  assertEquals(extractDms(payload), [
+    { senderId: "U1", text: "hello", mid: "m1" },
+    { senderId: "U3", text: "price?", mid: "m4" },
+  ]);
   assertEquals(extractDms({ object: "page", entry: [] }), []);
 });
 

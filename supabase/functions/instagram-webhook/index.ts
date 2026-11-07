@@ -19,11 +19,11 @@ const IG_MAX_CHARS = 1000; // Instagram DM text limit
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
-async function askBot(senderId: string, text: string): Promise<string | null> {
+async function askBot(senderId: string, text: string, mid: string | null): Promise<string | null> {
   const r = await fetch(OMNI_BOT_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-omni-secret": OMNI_BOT_SECRET },
-    body: JSON.stringify({ channel: "instagram", sender_id: senderId, text }),
+    body: JSON.stringify({ channel: "instagram", sender_id: senderId, text, external_id: mid ?? undefined }),
   });
   if (!r.ok) { console.error("omni-bot", r.status, await r.text()); return null; }
   const body = await r.json();
@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
 
   for (const dm of extractDms(payload)) {
     try {
-      const reply = await askBot(dm.senderId, dm.text);
+      const reply = await askBot(dm.senderId, dm.text, dm.mid);
       if (reply) await sendDm(dm.senderId, reply);
     } catch (e) {
       console.error("instagram-webhook", e);
