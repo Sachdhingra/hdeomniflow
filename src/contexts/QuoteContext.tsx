@@ -23,6 +23,8 @@ export interface QuoteLine {
   unit_price: number;
   gst_percent: number;
   discount_percent?: number;
+  /** Customer copy only: printed under the name instead of the item code. Never saved. */
+  details?: string | null;
 }
 
 interface QuoteCtx {

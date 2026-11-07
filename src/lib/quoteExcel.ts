@@ -10,6 +10,8 @@ export interface QuoteExcelLine {
   discount_percent: number; // special price discount
   gst_percent: number;
   quantity: number;
+  /** Printed under the name in place of the code (customer copy: dimensions covered). */
+  details?: string | null;
 }
 
 export interface QuoteExcelMeta {
@@ -207,10 +209,15 @@ export async function buildQuoteWorkbook(lines: QuoteExcelLine[], meta: QuoteExc
 
     ws.getCell(`B${top}`).value = idx + 1;
     ws.getCell(`D${top}`).value = l.product_name?.toUpperCase() || "";
-    ws.getCell(`D${top + 1}`).value = l.sku || "";
+    ws.getCell(`D${top + 1}`).value = l.details || l.sku || "";
     ws.mergeCells(`D${top}:E${top}`);
-    ws.mergeCells(`D${top + 1}:E${top + 1}`);
-    ws.mergeCells(`D${top + 2}:E${bottom}`);
+    if (l.details) {
+      // Dimensions can run to several lines: give them the rest of the block.
+      ws.mergeCells(`D${top + 1}:E${bottom}`);
+    } else {
+      ws.mergeCells(`D${top + 1}:E${top + 1}`);
+      ws.mergeCells(`D${top + 2}:E${bottom}`);
+    }
 
     // Omniflow prices include GST: F works back to the basic price, G applies the discount,
     // H adds GST again, so with no discount I lands exactly on the Omniflow price.
@@ -235,6 +242,7 @@ export async function buildQuoteWorkbook(lines: QuoteExcelLine[], meta: QuoteExc
       }
     }
     ws.getCell(`D${top}`).font = { ...base, bold: true };
+    if (l.details) ws.getCell(`D${top + 1}`).alignment = { vertical: "top", wrapText: true, horizontal: "left" };
 
     const img = await fetchImage(l.image_url);
     if (img) {

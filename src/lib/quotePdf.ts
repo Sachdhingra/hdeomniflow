@@ -121,7 +121,7 @@ export function buildQuotePdf(lines: QuoteExcelLine[], meta: QuoteExcelMeta, ass
     return [
       String(idx + 1),
       "",
-      `${(l.product_name || "").toUpperCase()}${l.sku ? `\n${l.sku}` : ""}${l.discount_percent ? `\nDiscount ${l.discount_percent}%` : ""}`,
+      `${(l.product_name || "").toUpperCase()}${l.details || l.sku ? `\n${l.details || l.sku}` : ""}${l.discount_percent ? `\nDiscount ${l.discount_percent}%` : ""}`,
       amount(b.unitBasic),
       amount(b.specialBasic),
       amount(b.unitGst),
