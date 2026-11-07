@@ -11,7 +11,7 @@ One answer engine for every customer inbox. The bot answers from the Godrej Inte
 | Engine | `supabase/functions/_shared/omni-bot/core.ts` | Claude tool loop: `search_products`, `get_product_details`, `send_enquiry` |
 | Bot API | `supabase/functions/omni-bot/index.ts` | Shared-secret endpoint. Keeps 24h memory, opt-out, rate limit, one enquiry per sender |
 | Instagram adapter | `supabase/functions/instagram-webhook/index.ts` | Meta webhook: verifies signature, asks the bot, sends the DM reply |
-| WhatsApp adapter | `supabase/functions/_shared/omni-bot/whatsapp.ts`, called from `interakt-webhook` | Replies to non-lead customers on the showroom number (+91 99172 33664) via Meta's WhatsApp Cloud API |
+| WhatsApp adapter | `supabase/functions/_shared/omni-bot/whatsapp.ts`, called from `interakt-webhook` | Replies to non-lead customers on the numbers listed in `OMNI_BOT_PHONE_NUMBER_IDS` (currently +91 98371 15799) via Meta's WhatsApp Cloud API |
 | Tables | `supabase/migrations/20261107100000_omni_bot_tables.sql` | `omni_bot_senders`, `omni_bot_messages`; service role only |
 | Tests | `supabase/functions/_shared/omni-bot/omni-bot_test.ts` | 13 unit tests (catalogue, engine, enquiry rules, Meta signature) |
 
@@ -31,7 +31,7 @@ Adding another channel means writing a small adapter that POSTs `{channel, sende
 | `IG_PAGE_ACCESS_TOKEN` | `instagram-webhook` | Page or Instagram-account token with messaging permission |
 | `SITE_URL` | `omni-bot` | Optional. Default `https://hdefurniture.netlify.app` |
 | `OMNI_BOT_SECRET` (also on `interakt-webhook`) | `interakt-webhook` | Same value as above |
-| `WHATSAPP_PHONE_NUMBER_ID` | `interakt-webhook` | Meta phone number id of the showroom number. The bot stays silent until set |
+| `OMNI_BOT_PHONE_NUMBER_IDS` | `interakt-webhook` | Meta Phone Number ID(s) the bot may answer on, comma-separated. For +91 98371 15799 use its ID from Meta Business Manager (WhatsApp > API Setup). Empty = bot off |
 | `WHATSAPP_ACCESS_TOKEN` | `interakt-webhook` | Meta system-user token with `whatsapp_business_messaging`. Keep it in Supabase secrets only |
 
 ## Deploy (not yet done)
@@ -54,6 +54,7 @@ Adding another channel means writing a small adapter that POSTs `{channel, sende
 ## Not done yet (decisions for the owner)
 
 - **WhatsApp scope.** The bot answers customers who are not leads, on the showroom number via Meta's Cloud API. Lead conversations are not answered by the bot, so salespeople keep control of them. If you also want the bot to answer leads, that needs a rule for handing back to the salesperson.
+- **Store facts still show 99172 33664.** The bot's prompt tells customers to call or WhatsApp +91 99172 33664. If 98371 15799 is now the WhatsApp contact, change it in `_shared/omni-bot/prompt.ts` and `omni-bot/index.ts`, and the same line in `website-agent`.
 - **Twilio is not used.** The Twilio WhatsApp path is down on the account, so it is not wired to the bot. The existing staff and lead messages that still go through `send-whatsapp` (Twilio) will also fail until that is moved to the Meta API. That is a separate piece of work.
 - **WeChat (`wechaty`) is not wired in.** Wechaty drives a logged-in personal WeChat account through an unofficial protocol. That risks account restriction, and it is not something to put customer service on. If WeChat matters, the official route is a WeChat Official Account with its API. That is a separate decision.
 - **"Omni" and other channels** are not defined yet. Each needs its own adapter and credentials.

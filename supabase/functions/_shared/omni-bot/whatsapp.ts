@@ -13,6 +13,15 @@ export const GRAPH_VERSION = "v21.0";
 
 export type FetchFn = typeof fetch;
 
+/**
+ * True when the bot may answer on the number that received the message. `allowlist` is a comma-separated
+ * list of Meta phone_number_id values (OMNI_BOT_PHONE_NUMBER_IDS). Empty means the bot is off.
+ */
+export function botEnabledFor(receivingPhoneNumberId: string, allowlist: string): boolean {
+  if (!receivingPhoneNumberId) return false;
+  return allowlist.split(",").map((s) => s.trim()).filter(Boolean).includes(receivingPhoneNumberId);
+}
+
 export type BotReplyOpts = {
   senderDigits: string;     // customer number, digits with country code, e.g. "919876543210"
   text: string;             // the customer's message text

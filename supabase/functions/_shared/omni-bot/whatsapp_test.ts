@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { botReplyForWhatsApp, trimForWhatsApp, WA_MAX_CHARS } from "./whatsapp.ts";
+import { botEnabledFor, botReplyForWhatsApp, trimForWhatsApp, WA_MAX_CHARS } from "./whatsapp.ts";
 import type { BotReplyOpts } from "./whatsapp.ts";
 
 type Call = { url: string; method: string; headers: Record<string, string>; body: string };
@@ -100,4 +100,12 @@ Deno.test("trims very long replies to the WhatsApp limit", () => {
   assert(t.length <= WA_MAX_CHARS);
   assert(t.endsWith("…"));
   assertEquals(trimForWhatsApp("short"), "short");
+});
+
+Deno.test("bot answers only on the numbers in the allowlist", () => {
+  assertEquals(botEnabledFor("111", "111"), true);
+  assertEquals(botEnabledFor("111", " 222 , 111 "), true);
+  assertEquals(botEnabledFor("333", "111,222"), false);
+  assertEquals(botEnabledFor("111", ""), false);
+  assertEquals(botEnabledFor("", "111"), false);
 });
