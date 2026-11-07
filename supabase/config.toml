@@ -52,3 +52,11 @@ verify_jwt = false
 # Day Summary page (user JWT); the function authenticates both itself.
 [functions.daily-admin-summary]
 verify_jwt = false
+
+# Omni-channel sales bot: called server-to-server by channel adapters with x-omni-secret (OMNI_BOT_SECRET).
+[functions.omni-bot]
+verify_jwt = false
+
+# Instagram DM webhook for the omni-channel sales bot; verifies Meta's X-Hub-Signature-256 itself.
+[functions.instagram-webhook]
+verify_jwt = false
