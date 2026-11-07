@@ -5,7 +5,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import {
   Building2, LayoutDashboard, Users, Wrench, Navigation, MapPin,
   LogOut, Menu, X, ChevronRight, CalendarDays, BarChart3,
-  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot, ShieldCheck, MessageSquare, TrendingUp, ShoppingBag, MessagesSquare, Sparkles, Clock, Star, Receipt, Trophy, UserCircle, BookUser, Boxes, Truck, Calculator, CreditCard, Coins, BarChart2, AudioLines, BellRing, LibraryBig, MonitorPlay, GalleryHorizontalEnd, Globe
+  ClipboardList, FileText, MapPinned, FolderTree, Package, KanbanSquare, Bot, ShieldCheck, MessageSquare, TrendingUp, ShoppingBag, MessagesSquare, Sparkles, Clock, Star, Receipt, Trophy, UserCircle, BookUser, Boxes, Truck, Calculator, DoorOpen, CreditCard, Coins, BarChart2, AudioLines, BellRing, LibraryBig, MonitorPlay, GalleryHorizontalEnd, Globe
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useStaffProfile } from "@/hooks/useStaffProfile";
@@ -69,12 +69,14 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
   const LOYALTY_DASHBOARD_NAV: NavItem = { to: "/loyalty-dashboard", label: "Loyalty Overview", icon: <BarChart2 className="w-5 h-5" /> };
   const INVENTORY_NAV: NavItem = { to: "/inventory", label: "Inventory", icon: <Boxes className="w-5 h-5" /> };
   const LOGISTICS_NAV: NavItem = { to: "/logistics-calculator", label: "Logistics Calculator", icon: <Calculator className="w-5 h-5" /> };
+  const KREATION_X3_NAV: NavItem = { to: "/kreation-x3", label: "Kreation X3 Calculator", icon: <DoorOpen className="w-5 h-5" /> };
   const PRODUCT_LIBRARY_NAV: NavItem = { to: "/product-library", label: "Product Library", icon: <LibraryBig className="w-5 h-5" /> };
 
   const NAV_ITEMS: Record<UserRole, NavItem[]> = {
     admin: [
       { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" /> },
       PRODUCT_LIBRARY_NAV,
+      KREATION_X3_NAV,
       { to: "/sales", label: "Sales", icon: <Users className="w-5 h-5" />, badge: overdueCount || undefined },
       { to: "/leads/board", label: "Leads Board", icon: <KanbanSquare className="w-5 h-5" /> },
       { to: "/leads/deals", label: "Lead-to-Deal", icon: <TrendingUp className="w-5 h-5" /> },
@@ -114,6 +116,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
     sales: [
       { to: "/", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" />, badge: overdueCount || undefined },
       PRODUCT_LIBRARY_NAV,
+      KREATION_X3_NAV,
       { to: "/leads", label: "My Leads", icon: <ClipboardList className="w-5 h-5" /> },
       { to: "/leads/board", label: "Leads Board", icon: <KanbanSquare className="w-5 h-5" /> },
       { to: "/leads/deals", label: "Lead-to-Deal", icon: <TrendingUp className="w-5 h-5" /> },

@@ -65,6 +65,7 @@ const CardBillEntries = lazy(() => import("@/pages/CardBillEntries"));
 const LoyaltyPoints = lazy(() => import("@/pages/LoyaltyPoints"));
 const LoyaltyDashboard = lazy(() => import("@/pages/LoyaltyDashboard"));
 const InventoryManager = lazy(() => import("@/pages/InventoryManager"));
+const KreationX3Calculator = lazy(() => import("@/pages/KreationX3Calculator"));
 const LogisticsCalculator = lazy(() => import("@/pages/LogisticsCalculator"));
 const LogisticsCalculatorSettings = lazy(() => import("@/pages/LogisticsCalculatorSettings"));
 const LogisticsHistory = lazy(() => import("@/pages/LogisticsHistory"));
@@ -140,6 +141,7 @@ const AppRoutes = () => {
             <Route path="/accounts/suppliers" element={<AdminSuppliers />} />
             <Route path="/calendar" element={<ServiceCalendar />} />
             <Route path="/admin/live-tracking" element={<LiveTracking />} />
+            <Route path="/kreation-x3" element={<KreationX3Calculator />} />
           </>
         );
       case "accounts":
@@ -170,6 +172,7 @@ const AppRoutes = () => {
             <Route path="/my-day" element={<MyDayCoach />} />
             <Route path="/jarvis" element={<JarvisPage />} />
             <Route path="/calendar" element={<ServiceCalendar />} />
+            <Route path="/kreation-x3" element={<KreationX3Calculator />} />
           </>
         );
       case "service_head":
