@@ -10,7 +10,8 @@ import { Trash2, Save, Share2, FileText, FileSpreadsheet, FilePlus2, History, Se
 import { Textarea } from "@/components/ui/textarea";
 import { useQuote } from "@/contexts/QuoteContext";
 import { loadWebsiteCatalog } from "@/lib/websiteCatalog";
-import { money, lineTotal, priceBreakdown } from "@/lib/productLibrary";
+import { money, lineTotal, priceBreakdown, quoteTotals } from "@/lib/productLibrary";
+import { customerCopyLines, isX3QuoteLine, x3LayoutLabel } from "@/lib/kreationX3Quote";
 import {
   QUOTE_STATUSES,
   downloadSavedQuoteExcel,
@@ -22,6 +23,7 @@ import {
 import QuoteLineImage from "./QuoteLineImage";
 import AddFromInventory from "./AddFromInventory";
 import LeadPicker from "./LeadPicker";
+import KreationLayoutCard, { type CopyType } from "./KreationLayoutCard";
 import { toast } from "@/lib/toast";
 
 const errorText = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
@@ -43,6 +45,7 @@ const QuoteDrawer = () => {
   } = useQuote();
   const [saving, setSaving] = useState(false);
   const [websiteDown, setWebsiteDown] = useState(false);
+  const [copyType, setCopyType] = useState<CopyType>("internal");
 
   // Each time the drawer opens: make sure the website catalogue is reachable and give
   // lines without a website photo another try.
@@ -57,6 +60,18 @@ const QuoteDrawer = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   const [exporting, setExporting] = useState(false);
+  const hasX3 = items.some(isX3QuoteLine);
+  const customerCopy = hasX3 && copyType === "customer";
+
+  /** What leaves the app: the lines as they are, or the Kreation customer copy. */
+  const outputLines = (): typeof items | null => {
+    if (!customerCopy) return items;
+    if (!meta.x3Layout) {
+      toast.error("Choose the Kreation layout (Straight, L-Shape, U-Shape or Parallel) first");
+      return null;
+    }
+    return customerCopyLines(items, meta.x3Layout, meta.x3Dimensions);
+  };
   const statusLabel = QUOTE_STATUSES.find((s) => s.value === meta.status)?.label ?? meta.status;
 
   /** Create or update the saved quote; returns its number. */
@@ -83,12 +98,14 @@ const QuoteDrawer = () => {
   // Saves first, so every downloaded quotation has a real number and is on record.
   const exportQuote = async (format: "pdf" | "excel") => {
     if (!items.length) return;
+    const lines = outputLines();
+    if (!lines) return;
     setExporting(true);
     try {
       const saved = await save();
-      if (format === "pdf") await downloadSavedQuotePdf(items, saved);
-      else await downloadSavedQuoteExcel(items, saved);
-      toast.success(`Quotation ${saved.quoteNumber} downloaded`);
+      if (format === "pdf") await downloadSavedQuotePdf(lines, saved);
+      else await downloadSavedQuoteExcel(lines, saved);
+      toast.success(`${customerCopy ? "Customer copy of quotation" : "Quotation"} ${saved.quoteNumber} downloaded`);
     } catch (e) {
       toast.error(errorText(e, format === "pdf" ? "Could not generate PDF" : "Could not generate Excel"));
     } finally {
@@ -113,16 +130,20 @@ const QuoteDrawer = () => {
   };
 
   const shareQuote = async () => {
+    const lines = outputLines();
+    if (!lines) return;
+    const totals = quoteTotals(lines);
     const text = [
       `Home Decor Enterprises — Quotation${meta.quoteNumber ? ` ${meta.quoteNumber}` : ""}`,
-      ...items.map(
-        (i) =>
-          `• ${i.product_name} (${i.sku || "-"}) x${i.quantity} @ ${money(priceBreakdown(i.unit_price, i.gst_percent, i.discount_percent || 0).unitInclusive)} incl. ${i.gst_percent}% GST = ${money(lineTotal(i.quantity, i.unit_price, i.gst_percent, i.discount_percent || 0))}`,
+      ...lines.map((i) =>
+        i.details !== undefined
+          ? `• ${i.product_name}${i.details ? ` — ${i.details}` : ""} = ${money(lineTotal(i.quantity, i.unit_price, i.gst_percent, i.discount_percent || 0))}`
+          : `• ${i.product_name} (${i.sku || "-"}) x${i.quantity} @ ${money(priceBreakdown(i.unit_price, i.gst_percent, i.discount_percent || 0).unitInclusive)} incl. ${i.gst_percent}% GST = ${money(lineTotal(i.quantity, i.unit_price, i.gst_percent, i.discount_percent || 0))}`,
       ),
-      `Taxable value: ${money(subtotal)}`,
-      `GST: ${money(gstTotal)}`,
+      `Taxable value: ${money(totals.subtotal)}`,
+      `GST: ${money(totals.gstTotal)}`,
       ...(meta.handlingCharges > 0 ? [`Handling / packaging: ${money(meta.handlingCharges)}`] : []),
-      `Total: ${money(grandTotal + (Number(meta.handlingCharges) || 0))}`,
+      `Total: ${money(totals.grandTotal + (Number(meta.handlingCharges) || 0))}`,
     ].join("\n");
     if (navigator.share) {
       try {
@@ -222,7 +243,7 @@ const QuoteDrawer = () => {
           )}
         </div>
 
-        <ScrollArea className="flex-1 -mx-2 px-2">
+        <ScrollArea className="flex-1 -mx-2 px-2 [&_[data-radix-scroll-area-viewport]>div]:!block">
           {items.length === 0 && (
             <p className="text-sm text-muted-foreground py-10 text-center">
               No products added yet. Search Inventory above, or use “Add to Quote” from the
@@ -230,6 +251,7 @@ const QuoteDrawer = () => {
             </p>
           )}
           <div className="space-y-3">
+            <KreationLayoutCard copyType={copyType} onCopyType={setCopyType} />
             {items.map((i) => (
               <div key={i.id} className="flex gap-3 rounded-lg border p-2">
                 <QuoteLineImage line={i} />

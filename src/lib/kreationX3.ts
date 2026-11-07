@@ -103,9 +103,7 @@ export function x3SelectedLines(quantities: X3Quantities) {
   );
 }
 
-/** True for a quotation line that came from this calculator (no library product, code in the price list). */
-export const isX3QuoteLine = (l: Pick<QuoteLine, "product_id" | "sku">) =>
-  l.product_id === null && !!l.sku && X3_ITEMS.some((i) => (i.code || i.description) === l.sku);
+export { isX3QuoteLine } from "@/lib/kreationX3Quote";
 
 /** Selected items as quotation lines; the single discount is carried on every line. */
 export function x3QuoteLines(quantities: X3Quantities, discountPercent: number): Omit<QuoteLine, "id">[] {
