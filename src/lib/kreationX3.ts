@@ -92,6 +92,33 @@ export function x3Totals(quantities: X3Quantities, discountPercent: number): X3T
   return { units, total, discountPercent: pct, discount, amount: total - discount };
 }
 
+export interface X3UnitsTotals {
+  /** Totals of each unit, discount taken off each unit's own total. */
+  units: X3Totals[];
+  pieces: number;
+  total: number;
+  discountPercent: number;
+  discount: number;
+  amount: number;
+}
+
+/**
+ * Totals for several Kreation units. One discount % applies to every unit. It is taken off each
+ * unit's own total, because each unit appears on the customer copy with its own price, so the
+ * grand amount is exactly the sum of those prices.
+ */
+export function x3UnitsTotals(units: X3Quantities[], discountPercent: number): X3UnitsTotals {
+  const per = units.map((q) => x3Totals(q, discountPercent));
+  return {
+    units: per,
+    pieces: per.reduce((s, u) => s + u.units, 0),
+    total: per.reduce((s, u) => s + u.total, 0),
+    discountPercent: x3Totals({}, discountPercent).discountPercent,
+    discount: per.reduce((s, u) => s + u.discount, 0),
+    amount: per.reduce((s, u) => s + u.amount, 0),
+  };
+}
+
 /** Selected items in price-list order, for review and for the quotation. */
 export function x3SelectedLines(quantities: X3Quantities) {
   return X3_TABS.flatMap((tab) =>
@@ -105,21 +132,29 @@ export function x3SelectedLines(quantities: X3Quantities) {
 
 export { isX3QuoteLine } from "@/lib/kreationX3Quote";
 
-/** Selected items as quotation lines; the single discount is carried on every line. */
-export function x3QuoteLines(quantities: X3Quantities, discountPercent: number): Omit<QuoteLine, "id">[] {
-  const pct = x3Totals(quantities, discountPercent).discountPercent;
-  return x3SelectedLines(quantities).map(({ item, qty }) => ({
-    product_id: null,
-    variant_id: null,
-    image_url: null,
-    product_name: item.longDescription,
-    sku: item.code || item.description,
-    description: item.description,
-    quantity: qty,
-    unit_price: item.nett,
-    gst_percent: X3_GST_PERCENT,
-    discount_percent: pct,
-  }));
+/**
+ * Selected items of every unit as quotation lines; the single discount is carried on every
+ * line. Empty units are skipped and the rest are numbered 1, 2, … in order.
+ */
+export function x3QuoteLines(units: X3Quantities[], discountPercent: number): Omit<QuoteLine, "id">[] {
+  const pct = x3Totals({}, discountPercent).discountPercent;
+  return units
+    .map((q) => x3SelectedLines(q))
+    .filter((sel) => sel.length > 0)
+    .flatMap((sel, n) => sel.map(({ item, qty }) => ({ item, qty, unit: n + 1 })))
+    .map(({ item, qty, unit }) => ({
+      group_no: unit,
+      product_id: null,
+      variant_id: null,
+      image_url: null,
+      product_name: item.longDescription,
+      sku: item.code || item.description,
+      description: item.description,
+      quantity: qty,
+      unit_price: item.nett,
+      gst_percent: X3_GST_PERCENT,
+      discount_percent: pct,
+    }));
 }
 
 /** Finish colours for the swatch next to an item, matched on its long description. */

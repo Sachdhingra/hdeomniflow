@@ -25,6 +25,8 @@ export interface QuoteLine {
   discount_percent?: number;
   /** Customer copy only: printed under the name instead of the item code. Never saved. */
   details?: string | null;
+  /** Kreation X3 unit this part belongs to (1, 2, …). Empty for other products and for unit 1 of older quotes. */
+  group_no?: number | null;
 }
 
 interface QuoteCtx {
@@ -132,7 +134,11 @@ export const QuoteProvider = ({ children }: { children: ReactNode }) => {
     const id = crypto.randomUUID();
     setItems((prev) => {
       const match = prev.find(
-        (p) => p.product_id === item.product_id && p.variant_id === item.variant_id && p.sku === item.sku,
+        (p) =>
+          p.product_id === item.product_id &&
+          p.variant_id === item.variant_id &&
+          p.sku === item.sku &&
+          (p.group_no ?? null) === (item.group_no ?? null),
       );
       if (match) {
         return prev.map((p) =>
