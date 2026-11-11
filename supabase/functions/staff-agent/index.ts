@@ -565,7 +565,9 @@ const READING_INSTRUCTION: Record<string, string> = {
 const plainForSpeech = (t: string) =>
   t.replace(/[*_`#>]+/g, "").replace(/\s*\n+\s*/g, " ").trim();
 
-// Voice fallback chain: ElevenLabs -> Gemini TTS -> (client) browser voice.
+// Voice fallback chain: ElevenLabs (Vidya, then the previous voice if she is
+// unavailable) -> Gemini TTS -> (client) browser voice. When ElevenLabs credits
+// run out it is skipped for a few minutes, so replies aren't delayed by it.
 // ElevenLabs goes first because the Gemini key is currently rejected (402), and
 // trying it first would add a failed round-trip to every spoken reply. Returns
 // audio from the first provider that works; if none do, audio is null and the
@@ -591,7 +593,7 @@ async function handleTtsHealth() {
   return json({
     gemini: gemini.audio ? { ok: true } : { ok: false, error: gemini.error },
     elevenlabs: eleven.audio
-      ? { ok: true, key_present: true }
+      ? { ok: true, key_present: true, voice_id: eleven.voiceId }
       : { ok: false, key_present: elevenLabsConfigured(), error: eleven.error },
   });
 }
