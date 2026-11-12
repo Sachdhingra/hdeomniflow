@@ -323,20 +323,33 @@ const AdminProducts = () => {
     URL.revokeObjectURL(url);
   };
 
+  // Column layout for headerless price lists (no first-row header):
+  // brand, line code, product name, product name (repeated), net price, category, HSN
+  const HEADERLESS_LAYOUT = ["brand_code", "line_code", "product_name", "product_name_copy", "net_price", "category_name", "hsn_code"];
+
+  const splitCsvLine = (line: string): string[] => {
+    const cols: string[] = [];
+    let cur = "";
+    let inQ = false;
+    for (const ch of line) {
+      if (ch === '"') inQ = !inQ;
+      else if (ch === "," && !inQ) { cols.push(cur); cur = ""; }
+      else cur += ch;
+    }
+    cols.push(cur);
+    return cols;
+  };
+
   const parseCsv = (text: string): Record<string, string>[] => {
     const lines = text.replace(/\r/g, "").split("\n").filter(l => l.trim());
-    if (lines.length < 2) return [];
-    const headers = lines[0].split(",").map(h => h.trim().toLowerCase());
-    return lines.slice(1).map(line => {
-      const cols: string[] = [];
-      let cur = "";
-      let inQ = false;
-      for (const ch of line) {
-        if (ch === '"') inQ = !inQ;
-        else if (ch === "," && !inQ) { cols.push(cur); cur = ""; }
-        else cur += ch;
-      }
-      cols.push(cur);
+    if (lines.length === 0) return [];
+    const firstCols = splitCsvLine(lines[0]).map(h => h.trim().toLowerCase());
+    // Treat the first row as a header only if it names the required columns.
+    const hasHeader = firstCols.includes("product_name") || firstCols.includes("category_name");
+    const headers = hasHeader ? firstCols : HEADERLESS_LAYOUT;
+    const dataLines = hasHeader ? lines.slice(1) : lines;
+    return dataLines.map(line => {
+      const cols = splitCsvLine(line);
       const row: Record<string, string> = {};
       headers.forEach((h, i) => { row[h] = (cols[i] ?? "").trim(); });
       return row;
