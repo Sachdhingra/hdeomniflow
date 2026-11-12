@@ -13,6 +13,7 @@ import {
 } from "@/lib/jarvis";
 import { getRecognitionCtor, type SpeechRecognitionLike } from "@/lib/speech";
 import type { CoachAction } from "@/lib/coachEfficiency";
+import type { CheckinItem } from "../../supabase/functions/_shared/checkin";
 
 export interface CoachMessage {
   id: string;
@@ -20,6 +21,7 @@ export interface CoachMessage {
   kind: "checkin" | "reply" | "system";
   content: string;
   actions: CoachAction[] | null;
+  items?: CheckinItem[] | null;
   read_at: string | null;
   created_at: string;
 }
@@ -96,7 +98,7 @@ export function useStaffCoach(userId: string | undefined) {
     // latest messages once a thread passes the limit — which is exactly what made
     // a busy rep's new conversations look "not logged".)
     const { data } = await coachMessagesTable()
-      .select("id,sender,kind,content,actions,read_at,created_at")
+      .select("id,sender,kind,content,actions,items,read_at,created_at")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(limit);
@@ -270,6 +272,20 @@ export function useStaffCoach(userId: string | undefined) {
     [callCoach, playReply, speakWithBrowser],
   );
 
+  // One tap on a check-in card: "tomorrow" / "in3" set a lead's follow-up, "skip"
+  // dismisses the card. Throws with a plain-language message if it didn't work.
+  const quickAction = useCallback(
+    async (messageId: string, itemId: string, op: "tomorrow" | "in3" | "skip") => {
+      try {
+        await callCoach({ action: "quick_action", message_id: messageId, item_id: itemId, op });
+        await load();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "That didn't work — try again");
+      }
+    },
+    [callCoach, load],
+  );
+
   // ── sending ───────────────────────────────────────────────────────────────
   const send = useCallback(
     async (text: string, viaVoice = false) => {
@@ -400,6 +416,7 @@ export function useStaffCoach(userId: string | undefined) {
     setVoiceOn,
     sttSupported,
     send,
+    quickAction,
     speakMessage,
     listenOnce,
     startTalk,

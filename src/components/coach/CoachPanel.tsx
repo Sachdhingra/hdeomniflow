@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { AudioLines, Bot, Clock, Loader2, Mic, Send, Square, User as UserIcon, Volume2, VolumeX } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { AudioLines, Bot, CheckCircle2, Clock, ExternalLink, Loader2, MessageCircle, Mic, Phone, Send, Square, User as UserIcon, Volume2, VolumeX, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -8,11 +9,12 @@ import { JARVIS_LANGUAGES, type JarvisLanguage } from "@/lib/jarvis";
 import type { CoachMessage, useStaffCoach } from "@/hooks/useStaffCoach";
 import type { CoachAction } from "@/lib/coachEfficiency";
 import { displayCoachText } from "@/lib/coachText";
+import { CHECKIN_QUICK_REPLIES, type CheckinItem } from "../../../supabase/functions/_shared/checkin";
 
 type Coach = ReturnType<typeof useStaffCoach>;
 
 // Shown under a fresh check-in before the coach has suggested its own.
-const DEFAULT_CHIPS = ["Calls done ✅", "Customer visit hua", "Kuch atak gaya", "Help chahiye"];
+const DEFAULT_CHIPS = CHECKIN_QUICK_REPLIES;
 
 const shortDate = (d?: string) =>
   d ? new Date(`${d}T12:00:00+05:30`).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short" }) : "";
@@ -40,6 +42,84 @@ const STATUS_TEXT = {
   speaking: "Coach is speaking…",
 } as const;
 
+// The 1-3 things a check-in points at. Lead cards can call, WhatsApp (the person
+// sends it themselves) or set the follow-up in one tap; job and approval cards open
+// the right screen. Nothing here contacts a customer or edits a job on its own.
+const ItemCards = ({
+  messageId, items, busy, onAction,
+}: {
+  messageId: string;
+  items: CheckinItem[];
+  busy: boolean;
+  onAction: Coach["quickAction"];
+}) => {
+  const navigate = useNavigate();
+  const [working, setWorking] = useState<string | null>(null);
+  const run = async (itemId: string, op: "tomorrow" | "in3" | "skip") => {
+    setWorking(`${itemId}:${op}`);
+    await onAction(messageId, itemId, op);
+    setWorking(null);
+  };
+  return (
+    <div className="mt-2 space-y-1.5">
+      {items.map(it => {
+        const pending = it.state === "pending";
+        const isWorking = working?.startsWith(`${it.id}:`) ?? false;
+        return (
+          <div key={it.id} className={`rounded-md border border-border/60 bg-background/70 px-2.5 py-2 ${pending ? "" : "opacity-70"}`}>
+            <div className="flex items-start gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="text-[13px] font-medium leading-tight truncate">{it.title}</div>
+                <div className="text-xs text-muted-foreground">{it.reason}</div>
+              </div>
+              {it.state === "done" && (
+                <span className="inline-flex items-center gap-1 text-xs text-emerald-700 shrink-0">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Done
+                </span>
+              )}
+              {it.state === "skipped" && <span className="text-xs text-muted-foreground shrink-0">Skipped</span>}
+            </div>
+            {pending && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                {it.kind === "lead" && it.phone && (
+                  <>
+                    <Button asChild type="button" size="sm" variant="outline" className="h-7 px-2 text-xs">
+                      <a href={`tel:+${it.phone}`}><Phone className="w-3 h-3 mr-1" /> Call</a>
+                    </Button>
+                    <Button asChild type="button" size="sm" variant="outline" className="h-7 px-2 text-xs">
+                      <a href={`https://wa.me/${it.phone}`} target="_blank" rel="noopener noreferrer">
+                        <MessageCircle className="w-3 h-3 mr-1" /> WhatsApp
+                      </a>
+                    </Button>
+                  </>
+                )}
+                {it.kind === "lead" && (
+                  <>
+                    <Button type="button" size="sm" variant="secondary" className="h-7 px-2 text-xs" disabled={busy || isWorking} onClick={() => run(it.id, "tomorrow")}>
+                      {isWorking && working?.endsWith(":tomorrow") ? <Loader2 className="w-3 h-3 animate-spin" /> : "Tomorrow"}
+                    </Button>
+                    <Button type="button" size="sm" variant="secondary" className="h-7 px-2 text-xs" disabled={busy || isWorking} onClick={() => run(it.id, "in3")}>
+                      {isWorking && working?.endsWith(":in3") ? <Loader2 className="w-3 h-3 animate-spin" /> : "+3 days"}
+                    </Button>
+                  </>
+                )}
+                {it.route && (
+                  <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => navigate(it.route!)}>
+                    <ExternalLink className="w-3 h-3 mr-1" /> Open
+                  </Button>
+                )}
+                <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs ml-auto" disabled={busy || isWorking} onClick={() => run(it.id, "skip")} aria-label={`Skip ${it.title}`}>
+                  <X className="w-3 h-3 mr-1" /> Skip
+                </Button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 interface Props {
   coach: Coach;
   variant: "page" | "popup";
@@ -51,7 +131,7 @@ const CoachPanel = ({ coach, variant, limit }: Props) => {
   const {
     messages, loading, present, status, transcript, quickReplies, talkMode, language, setLanguage,
     voiceOn, setVoiceOn, sttSupported, send, speakMessage, listenOnce, startTalk, stopVoice,
-    hasMore, loadEarlier,
+    hasMore, loadEarlier, quickAction,
   } = coach;
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -100,6 +180,9 @@ const CoachPanel = ({ coach, variant, limit }: Props) => {
               }`}
             >
               <ReactMarkdown>{m.sender === "agent" ? displayCoachText(m.content) : m.content}</ReactMarkdown>
+              {m.kind === "checkin" && m.items && m.items.length > 0 && (
+                <ItemCards messageId={m.id} items={m.items} busy={busy} onAction={quickAction} />
+              )}
               {m.actions && m.actions.length > 0 && (
                 <div className="mt-2 pt-2 border-t border-border/50 text-xs text-muted-foreground space-y-0.5">
                   {m.actions.map((a, i) => {
