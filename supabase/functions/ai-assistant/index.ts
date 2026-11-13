@@ -2,8 +2,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
   DEFAULT_TTS_VOICE,
   GEMINI_TTS_VOICES,
-  synthesizeSpeech,
 } from "../_shared/gemini-tts.ts";
+import { speakWithFallbacks } from "../_shared/speak.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -625,18 +625,19 @@ Deno.serve(async (req) => {
         hi: "Speak this reply in a clear, confident assistant voice, in Hindi:",
         pa: "Speak this reply in a clear, confident assistant voice, in Punjabi:",
       };
-      const speech = await synthesizeSpeech(
-        reply,
-        ttsVoice,
-        GEMINI_API_KEY,
-        readingInstructions[replyLanguage],
-      );
+      // Same voice as the coach: ElevenLabs (Vidya) -> Gemini -> browser voice.
+      const speech = await speakWithFallbacks(reply, {
+        geminiVoice: ttsVoice,
+        geminiKey: GEMINI_API_KEY,
+        geminiInstruction: readingInstructions[replyLanguage],
+        preferGemini: replyLanguage === "pa",
+      });
       return json({
         reply,
         role,
-        audio: speech.audio ?? null,
-        mimeType: speech.mimeType ?? null,
-        ttsError: speech.error ?? null,
+        audio: speech.audio,
+        mimeType: speech.mimeType,
+        ttsError: speech.ttsError,
       });
     }
 

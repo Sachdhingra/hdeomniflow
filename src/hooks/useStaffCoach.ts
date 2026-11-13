@@ -29,6 +29,7 @@ export interface CoachMessage {
 export type CoachStatus = "idle" | "listening" | "thinking" | "speaking";
 
 const VOICE_ON_KEY = "omniflow-coach-voice";
+const VIDYA_VOICE_ID = "Cb9z94TwCr5GzieU2cs2";
 const PAGE_SIZE = 100;
 
 // The messages table is newer than the generated Supabase types.
@@ -39,6 +40,9 @@ export const todayIST = () =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
 
 interface CoachResponse {
+  provider?: "elevenlabs" | "gemini" | null;
+  voiceId?: string;
+  ttsError?: string | null;
   reply?: string;
   quick_replies?: string[];
   audio?: string | null;
@@ -71,6 +75,8 @@ export function useStaffCoach(userId: string | undefined) {
   const [status, setStatus] = useState<CoachStatus>("idle");
   const [transcript, setTranscript] = useState("");
   const [quickReplies, setQuickReplies] = useState<string[]>([]);
+  // Which voice actually spoke last — so "is it Vidya?" can be answered on screen.
+  const [voiceUsed, setVoiceUsed] = useState<string | null>(null);
   const [talkMode, setTalkMode] = useState(false);
   const [language, setLanguageState] = useState<JarvisLanguage>(readLanguage);
   const [voiceOn, setVoiceOnState] = useState<boolean>(() => {
@@ -238,6 +244,13 @@ export function useStaffCoach(userId: string | undefined) {
     [stopAudio, speakWithBrowser, onSpeechDone],
   );
 
+  const noteVoice = useCallback((r: CoachResponse) => {
+    if (r.audio && r.provider === "elevenlabs") {
+      setVoiceUsed(r.voiceId === VIDYA_VOICE_ID ? "Vidya" : "Backup voice (George)");
+    } else if (r.audio && r.provider === "gemini") setVoiceUsed("Backup voice (Gemini)");
+    else setVoiceUsed("Phone voice — the server voices didn't answer");
+  }, []);
+
   const callCoach = useCallback(async (body: Record<string, unknown>): Promise<CoachResponse> => {
     const { data, error } = await supabase.functions.invoke<CoachResponse>("staff-agent", {
       body: { ...body, language: languageRef.current, tts_voice: DEFAULT_VOICE },
@@ -263,13 +276,15 @@ export function useStaffCoach(userId: string | undefined) {
       setStatus("thinking");
       try {
         const r = await callCoach({ action: "speak", message_id: m.id });
+        noteVoice(r);
         if (!(await playReply(m.content, r.audio, r.mimeType))) setStatus("idle");
       } catch {
         // Server TTS unavailable — browser voice still works.
+        setVoiceUsed("Phone voice — couldn't reach the coach for audio");
         if (!speakWithBrowser(m.content)) setStatus("idle");
       }
     },
-    [callCoach, playReply, speakWithBrowser],
+    [callCoach, playReply, speakWithBrowser, noteVoice],
   );
 
   // One tap on a check-in card: "tomorrow" / "in3" set a lead's follow-up, "skip"
@@ -301,6 +316,7 @@ export function useStaffCoach(userId: string | undefined) {
         await load();
         setQuickReplies(r.quick_replies ?? []);
         if (wantVoice && r.reply) {
+          noteVoice(r);
           if (!(await playReply(r.reply, r.audio, r.mimeType))) setStatus("idle");
         } else {
           setStatus("idle");
@@ -312,7 +328,7 @@ export function useStaffCoach(userId: string | undefined) {
         toast.error(e instanceof Error ? e.message : "Could not reach your coach");
       }
     },
-    [stopListening, stopAudio, callCoach, load, playReply],
+    [stopListening, stopAudio, callCoach, load, playReply, noteVoice],
   );
   sendRef.current = send;
 
@@ -409,6 +425,7 @@ export function useStaffCoach(userId: string | undefined) {
     status,
     transcript,
     quickReplies,
+    voiceUsed,
     talkMode,
     language,
     setLanguage,

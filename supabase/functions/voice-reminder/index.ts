@@ -1,14 +1,14 @@
 // Gemini TTS voice reminder briefing.
 // Gathers the caller's pending work (overdue leads, follow-ups, today's jobs,
 // pending accounts approvals), writes a short spoken script with Gemini, and
-// synthesizes it to audio with the Gemini TTS API. Returns base64 WAV; when
-// GEMINI_API_KEY is not configured the client falls back to browser speech.
+// speaks it with the shared voice chain (ElevenLabs Vidya, then Gemini TTS) and
+// returns base64 audio; when neither works the client falls back to browser speech.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
   DEFAULT_TTS_VOICE as DEFAULT_VOICE,
   GEMINI_TTS_VOICES as GEMINI_VOICES,
-  synthesizeSpeech,
 } from "../_shared/gemini-tts.ts";
+import { speakWithFallbacks } from "../_shared/speak.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -308,14 +308,15 @@ Deno.serve(async (req) => {
     else ctx = await gatherAdminReminders(admin);
 
     const script = await generateScript(name, role, ctx);
-    const speech = await synthesizeSpeech(script, voice, GEMINI_API_KEY);
+    // Same voice as the coach: ElevenLabs (Vidya) -> Gemini -> browser voice.
+    const speech = await speakWithFallbacks(script, { geminiVoice: voice, geminiKey: GEMINI_API_KEY });
 
     return json({
       script,
       voice,
-      audio: speech.audio ?? null,
-      mimeType: speech.mimeType ?? null,
-      ttsError: speech.error ?? null,
+      audio: speech.audio,
+      mimeType: speech.mimeType,
+      ttsError: speech.ttsError,
       role,
     });
   } catch (e) {
