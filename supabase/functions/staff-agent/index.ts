@@ -33,10 +33,14 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { DEFAULT_TTS_VOICE, GEMINI_TTS_VOICES, synthesizeSpeech } from "../_shared/gemini-tts.ts";
 import { elevenLabsConfigured, synthesizeElevenLabs } from "../_shared/elevenlabs-tts.ts";
 import { parseLookupRequest, runClientLookup } from "../_shared/client-lookup.ts";
-import { calendarContext, parseAgentOutput, savedClaims } from "../_shared/agent-text.ts";
+import { addDaysISO, calendarContext, parseAgentOutput, savedClaims } from "../_shared/agent-text.ts";
 import { autoFlipTimesByLead, isAutoStatusFlip, isAutoTouch } from "../_shared/activity.ts";
 import { applyActions } from "../_shared/agent-actions.ts";
 import { runTurn } from "../_shared/agent-turn.ts";
+import {
+  HIGH_VALUE_LEAD, pickAccountsItems, pickSalesItems, pickServiceItems, shouldNudge, slotFor, trimCheckin,
+  type CheckinItem,
+} from "../_shared/checkin.ts";
 import type { AppliedAction } from "../_shared/agent-actions.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -101,16 +105,20 @@ function istParts(d = new Date()) {
 
 // ── attendance gate ─────────────────────────────────────────────────────────
 // Present = clocked in today and not yet clocked out.
-async function presentUserIds(userIds: string[]): Promise<Set<string>> {
-  if (!userIds.length) return new Set();
+async function presentClockIns(userIds: string[]): Promise<Map<string, string>> {
+  if (!userIds.length) return new Map();
   const { data } = await admin
     .from("attendance")
-    .select("user_id")
+    .select("user_id,clock_in")
     .eq("date", istParts().date)
     .not("clock_in", "is", null)
     .is("clock_out", null)
     .in("user_id", userIds);
-  return new Set((data ?? []).map((r: any) => r.user_id));
+  return new Map((data ?? []).map((r: any) => [r.user_id as string, r.clock_in as string]));
+}
+
+async function presentUserIds(userIds: string[]): Promise<Set<string>> {
+  return new Set((await presentClockIns(userIds)).keys());
 }
 
 // ── sales context (own data only) ───────────────────────────────────────────
@@ -121,9 +129,9 @@ async function buildSalesContext(userId: string) {
   const dayStart = new Date(`${ist.date}T00:00:00+05:30`).toISOString();
   const monthStart = new Date(`${ist.month}-01T00:00:00+05:30`).toISOString();
 
-  const [{ data: openLeads }, { data: wonMonth }, { data: target }, { data: stageToday }] = await Promise.all([
+  const [{ data: openLeads }, { data: wonMonth }, { data: target }, { data: stageToday }, { data: touchedToday }] = await Promise.all([
     admin.from("leads")
-      .select("id,customer_name,value_in_rupees,status,category,next_follow_up_date,next_follow_up_time,last_follow_up,updated_at,created_at,notes")
+      .select("id,customer_name,customer_phone,value_in_rupees,status,category,next_follow_up_date,next_follow_up_time,last_follow_up,updated_at,created_at,notes")
       .or(`assigned_to.eq.${userId},created_by.eq.${userId}`)
       .not("status", "in", `(${CLOSED_STATUSES.join(",")})`)
       .is("deleted_at", null)
@@ -142,6 +150,8 @@ async function buildSalesContext(userId: string) {
       .gte("changed_at", dayStart)
       .order("changed_at", { ascending: false })
       .limit(150),
+    admin.from("leads").select("id,updated_at").eq("updated_by", userId).is("deleted_at", null)
+      .gte("updated_at", dayStart).order("updated_at", { ascending: false }).limit(60),
   ]);
 
   const leads = openLeads ?? [];
@@ -172,6 +182,17 @@ async function buildSalesContext(userId: string) {
   const touchedLast2h = leads.filter((l: any) => l.updated_at >= twoHoursAgo && !isAutoTouch(l.id, Date.parse(l.updated_at), autoFlips));
   const newToday = leads.filter((l: any) => l.created_at >= dayStart);
 
+  // Last thing the rep really did today (automatic overdue flips don't count) and the
+  // tap-cards for the check-in. __-prefixed fields are for the server, not the model.
+  const activityMs = [
+    ...realStages.map((x: any) => Date.parse(x.changed_at)),
+    ...(touchedToday ?? []).filter((t: any) => !isAutoTouch(t.id, Date.parse(t.updated_at), autoFlips)).map((t: any) => Date.parse(t.updated_at)),
+  ];
+  const items = pickSalesItems(leads as any, today, now.getTime());
+  const dayStartMs = Date.parse(dayStart);
+  const priorityHit = leads.some((l: any) =>
+    Number(l.value_in_rupees || 0) >= HIGH_VALUE_LEAD && l.next_follow_up_date && l.next_follow_up_date <= today && Date.parse(l.updated_at) < dayStartMs);
+
   const wonValue = (wonMonth ?? []).reduce((s: number, r: any) => s + Number(r.value_in_rupees || 0), 0);
   const targetValue = target ? Number(target.target_value) : null;
   const dim = new Date(Number(ist.month.slice(0, 4)), Number(ist.month.slice(5, 7)), 0).getDate();
@@ -198,6 +219,10 @@ async function buildSalesContext(userId: string) {
     overdue: overdue.slice(0, 15).map(slim),
     no_followup_set_and_stale: stale.slice(0, 10).map(slim),
     top_open_leads: leads.slice(0, 10).map(slim),
+    top_items: items.map((i) => ({ customer: i.title, why: i.reason })),
+    __items: items,
+    __priority: priorityHit,
+    __lastActivityMs: activityMs.length ? Math.max(...activityMs) : null,
   };
 }
 
@@ -246,6 +271,10 @@ async function buildServiceContext() {
   const rejected = (acct ?? []).filter((j: any) => j.status === "accounts_rejected");
   const waitingAccounts = (acct ?? []).filter((j: any) => j.status === "pending_accounts_approval");
 
+  const items = pickServiceItems(jobs as any, today, tomorrowStr);
+  const priorityHit = jobs.some((j: any) => !j.assigned_agent && j.date_to_attend && j.date_to_attend <= today) ||
+    dueTomorrow.filter((j: any) => !j.assigned_agent).length >= 3;
+
   const load: Record<string, number> = {};
   dueToday.forEach((j: any) => { const n = j.assigned_agent ? agentName.get(j.assigned_agent) ?? "assigned" : "unassigned"; load[n] = (load[n] ?? 0) + 1; });
 
@@ -268,6 +297,10 @@ async function buildServiceContext() {
     unassigned: unassigned.slice(0, 10).map(slim),
     claims_due: claimsDue.slice(0, 10).map((j: any) => ({ ...slim(j), part_no: j.claim_part_no, claim_due: j.claim_due_date })),
     accounts_rejected: rejected.slice(0, 10).map((j: any) => ({ ...slim(j), reason: j.accounts_rejection_reason })),
+    top_items: items.map((i) => ({ job: i.title, why: i.reason })),
+    __items: items,
+    __priority: priorityHit,
+    __lastActivityMs: null as number | null, // service work isn't traceable to one person
   };
 }
 
@@ -317,6 +350,11 @@ async function buildAccountsContext(userId: string) {
   const rejectedToday = actedLog.filter((x: any) => x.action === "rejected").length + actedBills.filter((x: any) => x.approval_status === "rejected").length;
   const actedLast2h = actedLog.filter((x: any) => x.performed_at >= twoHoursAgo).length +
     actedBills.filter((x: any) => x.approved_at >= twoHoursAgo).length;
+  const actedMs = [
+    ...actedLog.map((x: any) => Date.parse(x.performed_at)),
+    ...actedBills.map((x: any) => Date.parse(x.approved_at)),
+  ].filter((n) => !Number.isNaN(n));
+  const items = pickAccountsItems(pendingJobs as any, pendingBills as any, now.getTime());
 
   return {
     ist_date: today,
@@ -339,6 +377,10 @@ async function buildAccountsContext(userId: string) {
     oldest_customer_dues: openDues.slice(0, 5).map((d: any) => ({
       customer: d.customer_name, amount: Number(d.amount || 0), type: d.due_type, days_open: ageDays(d.created_at),
     })),
+    top_items: items.map((i) => ({ item: i.title, why: i.reason })),
+    __items: items,
+    __priority: false,
+    __lastActivityMs: actedMs.length ? Math.max(...actedMs) : null,
   };
 }
 
@@ -352,10 +394,10 @@ const SYSTEM_PROMPT = `You are the personal sales coach inside OmniFlow for a fu
 
 STYLE
 - Reply in the language the rep writes in (English, Hindi, Hinglish, Punjabi...). If they haven't written yet, use friendly Hinglish. Keep customer and product names as they appear.
-- Short: a check-in is at most ~90 words. Use at most 1-2 emoji. No tables, no long lists.
+- Short: a check-in is at most 35 words (a chat reply a little more). Use at most 1-2 emoji. No tables, no long lists.
 - Celebrate real wins first (name them), then give 2-3 concrete next actions, each naming a customer and why now.
 - Use ONLY numbers and names in the context. Never invent figures or leads.
-- End a check-in with one easy question that invites a reply, e.g. what happened with a specific lead, or what blocked them.
+- A check-in is NOT a conversation starter: no long questions. The app shows tap-buttons (Done / Later / Stuck) under it.
 - Never promise to contact customers. You only coach and update the rep's own notes/follow-ups.
 
 WHEN THE REP REPLIES
@@ -387,17 +429,17 @@ Rep: "Mr Meena ko kal 11 baje call karna hai" -> {"actions":[{"type":"set_follow
 Rep: "Gagan ne kaha budget 2 lakh hai" -> {"actions":[{"type":"add_note","lead_id":"<id>","text":"Budget about 2 lakh"}],"reply":"Note kar liya — budget 2 lakh. Kaunsa model dikhaya tha unko?","quick_replies":[]}
 Rep: "kya karna chahiye ab?" -> {"actions":[],"reply":"Pehle Bipendra ko call karo — 4 lakh ki deal hai aur follow-up due hai.","quick_replies":["Call kar raha hoon"]}
 
-CHECK-IN FORMAT: for a [SYSTEM CHECK-IN] message, ignore the JSON output rule and write the message to the rep as plain text only.`;
+CHECK-IN FORMAT: for a [SYSTEM CHECK-IN] message, ignore the JSON output rule and write plain text only, 35 words or fewer: at most one short line of praise for a REAL win in the context, then the single most important next step — the FIRST entry of "top_items" — and why it matters now. The app shows tap-cards for the top items under your message, so never list more than one. Do not ask a long question.`;
 
 const SERVICE_SYSTEM_PROMPT = `You are the personal service-desk coach inside OmniFlow for a furniture retail business in India. You talk to the Service Head, who runs installations, repairs and claims through field agents. Be warm, upbeat and brief — like a sharp friend who wants the service desk to run smoothly, never a boss policing them.
 
 STYLE
 - Reply in the language the Service Head writes in (English, Hindi, Hinglish...). If they haven't written yet, use friendly Hinglish. Keep customer, agent and product names as they appear.
-- Short: a check-in is at most ~90 words. Use at most 1-2 emoji. No tables, no long lists.
+- Short: a check-in is at most 35 words (a chat reply a little more). Use at most 1-2 emoji. No tables, no long lists.
 - Celebrate real wins first (jobs completed today, a cleared backlog), then give 2-3 concrete next actions, each naming a job/customer or agent and why now.
 - Priorities, in this order: jobs overdue or due today with no agent, unassigned jobs for tomorrow, claims due soon, jobs rejected by accounts that need fixing, jobs waiting on accounts approval, balancing agent load.
 - Use ONLY numbers and names in the context. Never invent figures, jobs or agents.
-- End a check-in with one easy question that invites a reply (what is blocking a specific job, who can take it).
+- A check-in is NOT a conversation starter: no long questions. The app shows tap-buttons (Done / Later / Stuck) under it.
 - You only coach. You cannot assign agents, change dates or edit jobs, and you never contact customers — say what to do in the app, don't claim you did it.
 
 WHEN THE SERVICE HEAD REPLIES
@@ -409,17 +451,17 @@ OUTPUT: respond with a single JSON object and nothing else:
 "actions" must ALWAYS be []. "quick_replies": 2-3 very short (max 5 words) things they might say next, in their language. For check-ins "quick_replies" must be [].
 Do not put JSON inside the "reply" text, and do not wrap the object in another object or string.
 
-CHECK-IN FORMAT: for a [SYSTEM CHECK-IN] message, ignore the JSON output rule and write the message as plain text only.`;
+CHECK-IN FORMAT: for a [SYSTEM CHECK-IN] message, ignore the JSON output rule and write plain text only, 35 words or fewer: at most one short line of praise for a REAL win in the context, then the single most important next step — the FIRST entry of "top_items" — and why it matters now. The app shows tap-cards for the top items under your message, so never list more than one. Do not ask a long question.`;
 
 const ACCOUNTS_SYSTEM_PROMPT = `You are the personal accounts coach inside OmniFlow for a furniture retail business in India. You talk to the accounts executive, whose day is the approval queue: completed service/delivery jobs waiting for accounts approval and card-bill entries waiting for approval, plus customer dues. Be warm, upbeat and brief — like a sharp friend who wants the queue to stay clear, never a boss policing them.
 
 STYLE
 - Reply in the language the accounts executive writes in (English, Hindi, Hinglish...). If they haven't written yet, use friendly Hinglish. Keep customer and bill names as they appear.
-- Short: a check-in is at most ~90 words. Use at most 1-2 emoji. No tables, no long lists.
+- Short: a check-in is at most 35 words (a chat reply a little more). Use at most 1-2 emoji. No tables, no long lists.
 - Celebrate real progress first (approvals handled today), then give 2-3 concrete next actions, each naming a job/bill or a count and why now.
 - Priorities: the oldest items in each queue (days waiting), then the biggest values, then returns and bills that used points, then uncleared customer dues. A pile that is months old is a backlog to chip at, not a reason to scold.
 - Use ONLY numbers and names in the context. Never invent figures, bills or customers.
-- End a check-in with one easy question that invites a reply (what is blocking an item, what they need from the service team).
+- A check-in is NOT a conversation starter: no long questions. The app shows tap-buttons (Done / Later / Stuck) under it.
 - You only coach. You cannot approve, reject or edit anything and you never contact customers — say what to do in the app, don't claim you did it. Never tell them to approve something without checking the amounts and dues themselves.
 
 WHEN THE ACCOUNTS EXECUTIVE REPLIES
@@ -431,7 +473,7 @@ OUTPUT: respond with a single JSON object and nothing else:
 "actions" must ALWAYS be []. "quick_replies": 2-3 very short (max 5 words) things they might say next, in their language. For check-ins "quick_replies" must be [].
 Do not put JSON inside the "reply" text, and do not wrap the object in another object or string.
 
-CHECK-IN FORMAT: for a [SYSTEM CHECK-IN] message, ignore the JSON output rule and write the message as plain text only.`;
+CHECK-IN FORMAT: for a [SYSTEM CHECK-IN] message, ignore the JSON output rule and write plain text only, 35 words or fewer: at most one short line of praise for a REAL win in the context, then the single most important next step — the FIRST entry of "top_items" — and why it matters now. The app shows tap-cards for the top items under your message, so never list more than one. Do not ask a long question.`;
 
 const systemPromptFor = (role: CoachRole) =>
   role === "service_head" ? SERVICE_SYSTEM_PROMPT : role === "accounts" ? ACCOUNTS_SYSTEM_PROMPT : SYSTEM_PROMPT;
@@ -461,7 +503,9 @@ async function callLLM(messages: { role: string; content: string }[]): Promise<s
 }
 
 // ── tick ────────────────────────────────────────────────────────────────────
-async function handleTick() {
+// dryRun: report who would get a check-in and which cards, without calling the model or
+// writing anything — for checking the rules against live data.
+async function handleTick(dryRun = false) {
   const ist = istParts();
   if (ist.hour < WORK_START_HOUR || ist.hour >= WORK_END_HOUR) {
     return json({ skipped: "outside_working_hours", ist_hour: ist.hour });
@@ -473,37 +517,75 @@ async function handleTick() {
     .from("profiles").select("id,name").in("id", [...roleOf.keys()]).eq("active", true);
   const activeIds = (profiles ?? []).map((p: any) => p.id).filter(inPilot);
   const nameOf = new Map((profiles ?? []).map((p: any) => [p.id, p.name as string]));
-  const present = await presentUserIds(activeIds);
+  const clockIns = await presentClockIns(activeIds);
+  const present = [...clockIns.keys()];
 
   // Slot = the current hour boundary; cron fires on the hour in UTC.
   const slot = new Date();
   slot.setUTCMinutes(0, 0, 0);
-  const isFirstSlot = ist.hour < WORK_START_HOUR + 2;
-  const isLastSlot = ist.hour >= WORK_END_HOUR - 1;
+  const slotKind = slotFor(ist.hour);
+  const nowMs = Date.now();
+  const workStartMs = Date.parse(`${ist.date}T${String(WORK_START_HOUR).padStart(2, "0")}:00:00+05:30`);
 
   let sent = 0;
-  const skippedNotPresent = activeIds.length - present.size;
+  const skippedNotPresent = activeIds.length - present.length;
+  const skippedQuiet: string[] = [];
+  const plan: unknown[] = [];
   const failures: string[] = [];
 
   for (const userId of present) {
     try {
       const role = roleOf.get(userId) ?? "sales";
-      const ctx = await buildContext(role, userId);
+
+      // Already sent for this slot (a retry): nothing to do, and no model call spent.
+      const { data: already } = await admin.from("staff_agent_messages").select("id")
+        .eq("user_id", userId).eq("kind", "checkin").eq("slot_at", slot.toISOString()).maybeSingle();
+      if (already) continue;
+
+      const { __items, __priority, __lastActivityMs, ...ctx } = (await buildContext(role, userId)) as any;
+      const items: CheckinItem[] = __items ?? [];
+
       const { data: history } = await admin
         .from("staff_agent_messages")
-        .select("sender,content")
+        .select("sender,content,created_at")
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .limit(6);
-      const past = (history ?? []).reverse().map((m: any) => ({
+
+      // Morning and evening always go out. A mid-day one only when the person has gone
+      // quiet or something big is waiting — and never while they are mid-conversation.
+      const lastChatMs = Math.max(0, ...(history ?? []).filter((m: any) => m.sender === "staff").map((m: any) => Date.parse(m.created_at)));
+      const baselineMs = Math.max(Date.parse(clockIns.get(userId) ?? "") || 0, workStartMs, __lastActivityMs ?? 0, lastChatMs);
+      const decision = shouldNudge({
+        slot: slotKind,
+        hasItems: items.length > 0,
+        minutesIdle: role === "service_head" ? null : (nowMs - baselineMs) / 60_000,
+        priorityHit: !!__priority,
+        recentChatMinutes: lastChatMs ? (nowMs - lastChatMs) / 60_000 : Infinity,
+      });
+      if (!decision.send) {
+        skippedQuiet.push(`${nameOf.get(userId) ?? userId}: ${decision.reason}`);
+        continue;
+      }
+
+      if (dryRun) {
+        plan.push({
+          person: nameOf.get(userId) ?? userId, role, reason: decision.reason,
+          idle_minutes: role === "service_head" ? null : Math.round((nowMs - baselineMs) / 60_000),
+          cards: items.map((i) => `${i.title} — ${i.reason}`),
+        });
+        continue;
+      }
+
+      const past = (history ?? []).slice().reverse().map((m: any) => ({
         role: m.sender === "agent" ? "assistant" : "user", content: m.content,
       }));
 
-      const mood = isFirstSlot
-        ? "This is the morning kick-off: greet them, set today's top 3 priorities."
-        : isLastSlot
-          ? "This is the last check-in of the day: ask them to wrap up — what got done, what slips to tomorrow — and name the one thing to start with first thing tomorrow."
-          : "This is a mid-day check-in: react to the last 2 hours of activity, then set the next 2 hours.";
+      const mood = slotKind === "first"
+        ? "This is the morning kick-off: a 2-word greeting, then the first card as the day's first move."
+        : slotKind === "last"
+          ? "This is the last check-in of the day: ask in one line what is still open and name the one thing to start with tomorrow."
+          : "This is a mid-day nudge: one specific next action, nothing else.";
 
       const raw = await callLLM([
         { role: "system", content: systemPromptFor(role) },
@@ -512,19 +594,17 @@ async function handleTick() {
           role: "user",
           content:
             `[SYSTEM CHECK-IN for ${nameOf.get(userId) ?? "the rep"}] ${mood}\n` +
-            (role === "service_head"
-              ? `If the last 2 hours show no activity, be encouraging and point at the single most urgent job — do not scold.\n`
-              : role === "accounts"
-                ? `If nothing was handled in the last 2 hours, be encouraging and point at the single oldest or biggest item to clear next — do not scold.\n`
-                : `If the last 2 hours show no activity, be encouraging and point at the single best next lead — do not scold.\n`) +
+            `Reason this is being sent: ${decision.reason}.\n` +
+            `The app shows tap-cards for "top_items" under your message. Name only the FIRST one and why it matters now; do not list the others. ` +
+            `Keep it to 35 words or fewer. Praise only a real win from the context, in under 8 words. No scolding.\n` +
             `CONTEXT:\n${JSON.stringify(ctx)}`,
         },
       ]);
-      const reply = parseAgentOutput(raw).reply;
+      const reply = trimCheckin(parseAgentOutput(raw).reply, 50);
 
       const { error } = await admin.from("staff_agent_messages").insert({
         user_id: userId, agent_role: role, sender: "agent", kind: "checkin",
-        content: reply, slot_at: slot.toISOString(),
+        content: reply, slot_at: slot.toISOString(), items: items.length ? items : null,
       });
       if (error) {
         // Unique-slot violation means this slot was already sent — fine.
@@ -550,7 +630,7 @@ async function handleTick() {
     }
   }
 
-  return json({ sent, present: present.size, skipped_not_present: skippedNotPresent, failures });
+  return json({ dry_run: dryRun, sent, present: present.length, slot: slotKind, would_send: plan, skipped_not_present: skippedNotPresent, skipped_quiet: skippedQuiet, failures });
 }
 
 // ── chat ────────────────────────────────────────────────────────────────────
@@ -565,7 +645,9 @@ const READING_INSTRUCTION: Record<string, string> = {
 const plainForSpeech = (t: string) =>
   t.replace(/[*_`#>]+/g, "").replace(/\s*\n+\s*/g, " ").trim();
 
-// Voice fallback chain: ElevenLabs -> Gemini TTS -> (client) browser voice.
+// Voice fallback chain: ElevenLabs (Vidya, then the previous voice if she is
+// unavailable) -> Gemini TTS -> (client) browser voice. When ElevenLabs credits
+// run out it is skipped for a few minutes, so replies aren't delayed by it.
 // ElevenLabs goes first because the Gemini key is currently rejected (402), and
 // trying it first would add a failed round-trip to every spoken reply. Returns
 // audio from the first provider that works; if none do, audio is null and the
@@ -591,7 +673,7 @@ async function handleTtsHealth() {
   return json({
     gemini: gemini.audio ? { ok: true } : { ok: false, error: gemini.error },
     elevenlabs: eleven.audio
-      ? { ok: true, key_present: true }
+      ? { ok: true, key_present: true, voice_id: eleven.voiceId }
       : { ok: false, key_present: elevenLabsConfigured(), error: eleven.error },
   });
 }
@@ -624,12 +706,14 @@ async function handleChat(userId: string, role: CoachRole, token: string, messag
     }, 403);
   }
 
-  const [ctx, { data: history }, { data: profile }] = await Promise.all([
+  const [rawCtx, { data: history }, { data: profile }] = await Promise.all([
     buildContext(role, userId),
     admin.from("staff_agent_messages").select("sender,content")
       .eq("user_id", userId).order("created_at", { ascending: false }).limit(12),
     admin.from("profiles").select("name").eq("id", userId).maybeSingle(),
   ]);
+  // __-prefixed fields are for the check-in scheduler, not the model.
+  const { __items, __priority, __lastActivityMs, ...ctx } = rawCtx as any;
   const past = (history ?? []).reverse().map((m: any) => ({
     role: m.sender === "agent" ? "assistant" : "user", content: m.content,
   }));
@@ -721,6 +805,53 @@ async function handleChat(userId: string, role: CoachRole, token: string, messag
   });
 }
 
+// ── tap-cards under a check-in ──────────────────────────────────────────────
+// One tap on a card: set a lead's follow-up (tomorrow / in 3 days) or skip the card.
+// Lead changes go through the same verified, own-leads-only path as chat actions.
+// Job and approval cards only open a screen in the app (no server call); the coach
+// never edits jobs or approvals.
+async function handleQuickAction(userId: string, messageId: string, itemId: string, op: string) {
+  if (!inPilot(userId)) return json({ error: "not_in_pilot", message: "Your coach isn't switched on for you yet." }, 403);
+  const { data: msg } = await admin.from("staff_agent_messages").select("id,items,actions")
+    .eq("id", messageId).eq("user_id", userId).eq("sender", "agent").eq("kind", "checkin").maybeSingle();
+  const items: CheckinItem[] = Array.isArray(msg?.items) ? msg.items : [];
+  const idx = items.findIndex((i) => i.id === itemId);
+  if (!msg || idx < 0) return json({ error: "item_not_found", message: "That card isn't available any more." }, 404);
+  const item = items[idx];
+  if (item.state !== "pending") return json({ items, unchanged: true });
+
+  let state: CheckinItem["state"] = "skipped";
+  let result: string | undefined;
+  let applied: AppliedAction[] = [];
+  if (op === "skip") {
+    state = "skipped";
+  } else if ((op === "tomorrow" || op === "in3") && item.kind === "lead" && item.lead_id) {
+    const present = await presentUserIds([userId]);
+    if (!present.has(userId)) {
+      return json({ error: "not_present", message: "Clock in on the Attendance page to use your coach." }, 403);
+    }
+    const today = istParts().date;
+    const date = addDaysISO(today, op === "tomorrow" ? 1 : 3);
+    const out = await applyActions(admin, userId, [{ type: "set_follow_up", lead_id: item.lead_id, date }], today);
+    if (out.rejected.length > 0) {
+      return json({ error: "action_rejected", message: `Couldn't save the follow-up: ${out.rejected[0].reason}.` }, 422);
+    }
+    applied = out.applied;
+    state = "done";
+    result = `Follow-up set for ${date}`;
+  } else {
+    return json({ error: "unsupported_action", message: "That button doesn't work for this card." }, 400);
+  }
+
+  items[idx] = { ...item, state, ...(result ? { result } : {}) };
+  // Saved follow-ups also go on the message's action list, so they show up in the
+  // admin dashboard's "follow-ups the coach scheduled" like chat ones.
+  const actions = [...(Array.isArray(msg.actions) ? msg.actions : []), ...applied];
+  const { error } = await admin.from("staff_agent_messages").update({ items, actions }).eq("id", messageId);
+  if (error) return json({ error: "save_failed", message: "Saved the follow-up, but couldn't update the card." }, 500);
+  return json({ items, applied });
+}
+
 const voiceOpts = (body: any): VoiceOpts => ({
   voice: body.voice === true,
   language: ["en", "hi", "pa"].includes(body.language) ? body.language : "en",
@@ -738,7 +869,7 @@ Deno.serve(async (req) => {
     const secret = req.headers.get("x-internal-secret");
     if (body.action === "tick") {
       if (!INTERNAL_SECRET || secret !== INTERNAL_SECRET) return json({ error: "unauthorized" }, 401);
-      return await handleTick();
+      return await handleTick(body.dry_run === true);
     }
 
     if (body.action === "tts_health") {
@@ -754,6 +885,15 @@ Deno.serve(async (req) => {
       const coachRole = roleRow?.role;
       if (!isCoachRole(coachRole)) return json({ error: "agent_not_available_for_role" }, 403);
       return await handleChat(user.id, coachRole, token, String(body.message ?? ""), voiceOpts(body));
+    }
+
+    if (body.action === "quick_action") {
+      const token = (req.headers.get("Authorization") ?? "").replace("Bearer ", "");
+      const { data: { user } } = await admin.auth.getUser(token);
+      if (!user) return json({ error: "unauthorized" }, 401);
+      const { data: roleRow } = await admin.from("user_roles").select("role").eq("user_id", user.id).maybeSingle();
+      if (!isCoachRole(roleRow?.role)) return json({ error: "agent_not_available_for_role" }, 403);
+      return await handleQuickAction(user.id, String(body.message_id ?? ""), String(body.item_id ?? ""), String(body.op ?? ""));
     }
 
     if (body.action === "speak") {
