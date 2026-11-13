@@ -4590,6 +4590,7 @@ export type Database = {
           content: string
           created_at: string
           id: string
+          items: Json | null
           kind: string
           read_at: string | null
           sender: string
@@ -4602,6 +4603,7 @@ export type Database = {
           content: string
           created_at?: string
           id?: string
+          items?: Json | null
           kind: string
           read_at?: string | null
           sender: string
@@ -4614,6 +4616,7 @@ export type Database = {
           content?: string
           created_at?: string
           id?: string
+          items?: Json | null
           kind?: string
           read_at?: string | null
           sender?: string
