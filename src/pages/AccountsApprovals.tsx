@@ -11,7 +11,11 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
 } from "@/components/ui/dialog";
 import {
-  CheckCircle2, XCircle, ShieldCheck, Phone, IndianRupee, Loader2, AlertTriangle
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
+} from "@/components/ui/alert-dialog";
+import {
+  CheckCircle2, XCircle, ShieldCheck, Phone, IndianRupee, Loader2, AlertTriangle, Trash2
 } from "lucide-react";
 import { toast } from "@/lib/toast";
 import StatCard from "@/components/StatCard";
@@ -43,7 +47,7 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 const AccountsApprovals = () => {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"pending" | "approved" | "rejected" | "audit" | "dues">("pending");
@@ -52,6 +56,8 @@ const AccountsApprovals = () => {
   const [notes, setNotes] = useState("");
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Job | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [duesByPhone, setDuesByPhone] = useState<Record<string, { total: number; count: number }>>({});
   const [ownersByJob, setOwnersByJob] = useState<Record<string, { owner_name: string | null; assignee_name: string | null }>>({});
   const [auditLog, setAuditLog] = useState<any[]>([]);
@@ -211,6 +217,35 @@ const AccountsApprovals = () => {
     }
   };
 
+  // Admin-only permanent delete of a rejected dispatch. This is a real DELETE
+  // (no soft delete). The row is filtered on accounts_approval_status='rejected'
+  // in the same statement, so approved/pending records can never be removed here.
+  // Dependent rows (accounts_approvals_log, GPS tracking, etc.) cascade via FK.
+  const confirmDeleteRejected = async () => {
+    if (!deleteTarget || !isAdmin()) return;
+    setDeleting(true);
+    try {
+      const { data, error } = await supabase
+        .from("service_jobs")
+        .delete()
+        .eq("id", deleteTarget.id)
+        .eq("accounts_approval_status", "rejected")
+        .select("id");
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error("Nothing deleted: entry is no longer rejected or you lack permission.");
+      }
+      toast.success("Rejected entry permanently deleted");
+      setJobs(prev => prev.filter(j => j.id !== deleteTarget.id));
+      setDeleteTarget(null);
+      load();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -321,6 +356,15 @@ const AccountsApprovals = () => {
                       <Button size="sm" variant="destructive" className="gap-1"
                         onClick={() => openAction(job, "reject")}>
                         <XCircle className="w-4 h-4" /> Reject
+                      </Button>
+                    </div>
+                  )}
+
+                  {job.accounts_approval_status === "rejected" && isAdmin() && (
+                    <div className="flex gap-2 pt-1">
+                      <Button size="sm" variant="outline" className="gap-1 text-destructive border-destructive/40 hover:bg-destructive/10"
+                        onClick={() => setDeleteTarget(job)}>
+                        <Trash2 className="w-4 h-4" /> Delete permanently
                       </Button>
                     </div>
                   )}
@@ -492,6 +536,33 @@ const AccountsApprovals = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={o => !o && !deleting && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Permanently delete this rejected entry?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget && (
+                <>
+                  <strong>{deleteTarget.customer_name}</strong> (₹{Number(deleteTarget.value).toLocaleString("en-IN")})
+                  will be removed from the system entirely, including its approval history.
+                  This cannot be undone and there is no restore.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              onClick={(e) => { e.preventDefault(); confirmDeleteRejected(); }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "Deleting..." : "Delete permanently"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
