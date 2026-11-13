@@ -340,18 +340,37 @@ const AdminProducts = () => {
     return cols;
   };
 
+  // Split into records on line breaks that are outside quotes, so product
+  // names wrapped across several lines in quotes stay in one record.
+  const splitCsvRecords = (text: string): string[] => {
+    const records: string[] = [];
+    let cur = "";
+    let inQ = false;
+    for (const ch of text) {
+      if (ch === '"') { inQ = !inQ; cur += ch; }
+      else if (ch === "\n" && !inQ) { records.push(cur); cur = ""; }
+      else if (ch === "\r" && !inQ) { /* ignore CRLF */ }
+      else cur += ch;
+    }
+    records.push(cur);
+    return records.filter(r => r.trim());
+  };
+
   const parseCsv = (text: string): Record<string, string>[] => {
-    const lines = text.replace(/\r/g, "").split("\n").filter(l => l.trim());
-    if (lines.length === 0) return [];
-    const firstCols = splitCsvLine(lines[0]).map(h => h.trim().toLowerCase());
+    const records = splitCsvRecords(text.replace(/^﻿/, "")); // strip UTF-8 BOM
+    if (records.length === 0) return [];
+    const firstCols = splitCsvLine(records[0]).map(h => h.trim().toLowerCase());
     // Treat the first row as a header only if it names the required columns.
     const hasHeader = firstCols.includes("product_name") || firstCols.includes("category_name");
     const headers = hasHeader ? firstCols : HEADERLESS_LAYOUT;
-    const dataLines = hasHeader ? lines.slice(1) : lines;
-    return dataLines.map(line => {
+    const dataRecords = hasHeader ? records.slice(1) : records;
+    return dataRecords.map(line => {
       const cols = splitCsvLine(line);
       const row: Record<string, string> = {};
-      headers.forEach((h, i) => { row[h] = (cols[i] ?? "").trim(); });
+      headers.forEach((h, i) => {
+        // Collapse line breaks inside quoted fields into single spaces.
+        row[h] = (cols[i] ?? "").replace(/\s*\n\s*/g, " ").trim();
+      });
       return row;
     });
   };
