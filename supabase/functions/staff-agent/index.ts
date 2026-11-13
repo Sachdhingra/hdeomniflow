@@ -32,6 +32,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { DEFAULT_TTS_VOICE, GEMINI_TTS_VOICES, synthesizeSpeech } from "../_shared/gemini-tts.ts";
 import { elevenLabsConfigured, synthesizeElevenLabs } from "../_shared/elevenlabs-tts.ts";
+import { speakWithFallbacks } from "../_shared/speak.ts";
 import { parseLookupRequest, runClientLookup } from "../_shared/client-lookup.ts";
 import { addDaysISO, calendarContext, parseAgentOutput, savedClaims } from "../_shared/agent-text.ts";
 import { autoFlipTimesByLead, isAutoStatusFlip, isAutoTouch } from "../_shared/activity.ts";
@@ -642,27 +643,16 @@ const READING_INSTRUCTION: Record<string, string> = {
   pa: "Speak this in a warm, upbeat, friendly coach voice, in Punjabi:",
 };
 
-const plainForSpeech = (t: string) =>
-  t.replace(/[*_`#>]+/g, "").replace(/\s*\n+\s*/g, " ").trim();
-
-// Voice fallback chain: ElevenLabs (Vidya, then the previous voice if she is
-// unavailable) -> Gemini TTS -> (client) browser voice. When ElevenLabs credits
-// run out it is skipped for a few minutes, so replies aren't delayed by it.
-// ElevenLabs goes first because the Gemini key is currently rejected (402), and
-// trying it first would add a failed round-trip to every spoken reply. Returns
-// audio from the first provider that works; if none do, audio is null and the
-// client speaks with the browser's own voice.
-async function speak(text: string, o: VoiceOpts) {
-  const plain = plainForSpeech(text);
-  const eleven = await synthesizeElevenLabs(plain);
-  if (eleven.audio) return { audio: eleven.audio, mimeType: eleven.mimeType, provider: "elevenlabs", ttsError: null };
-
-  const gemini = await synthesizeSpeech(plain, o.ttsVoice, GEMINI_API_KEY, READING_INSTRUCTION[o.language] ?? READING_INSTRUCTION.en);
-  if (gemini.audio) return { audio: gemini.audio, mimeType: gemini.mimeType, provider: "gemini", ttsError: null };
-
-  console.error("staff-agent TTS: all server voices failed", { elevenlabs: eleven.error, gemini: gemini.error });
-  return { audio: null, mimeType: null, provider: null, ttsError: `elevenlabs: ${eleven.error}; gemini: ${gemini.error}` };
-}
+// Voice fallback chain (shared with Jarvis and the daily briefing): ElevenLabs
+// (Vidya, then the previous voice if she is unavailable) -> Gemini TTS -> (client)
+// browser voice. When ElevenLabs credits run out it is skipped for a few minutes.
+const speak = (text: string, o: VoiceOpts) =>
+  speakWithFallbacks(text, {
+    geminiVoice: o.ttsVoice,
+    geminiKey: GEMINI_API_KEY,
+    geminiInstruction: READING_INSTRUCTION[o.language] ?? READING_INSTRUCTION.en,
+    preferGemini: o.language === "pa",
+  });
 
 // Cron-secret diagnostic: which voice providers work right now (no audio returned).
 async function handleTtsHealth() {
