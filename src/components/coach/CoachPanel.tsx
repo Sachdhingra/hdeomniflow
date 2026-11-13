@@ -131,7 +131,7 @@ const CoachPanel = ({ coach, variant, limit }: Props) => {
   const {
     messages, loading, present, status, transcript, quickReplies, talkMode, language, setLanguage,
     voiceOn, setVoiceOn, sttSupported, send, speakMessage, listenOnce, startTalk, stopVoice,
-    hasMore, loadEarlier, quickAction,
+    hasMore, loadEarlier, quickAction, voiceUsed,
   } = coach;
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -328,6 +328,11 @@ const CoachPanel = ({ coach, variant, limit }: Props) => {
               {voiceOn ? "Voice on" : "Voice off"}
             </Button>
             <div className="flex-1" />
+            {voiceUsed && (
+              <span className="text-[11px] text-muted-foreground max-w-[10rem] truncate" title={voiceUsed}>
+                🔊 {voiceUsed}
+              </span>
+            )}
             <Select value={language} onValueChange={v => setLanguage(v as JarvisLanguage)} disabled={busy}>
               <SelectTrigger className={`h-8 ${variant === "popup" ? "w-[110px]" : "w-[140px]"} text-xs`}>
                 <SelectValue />

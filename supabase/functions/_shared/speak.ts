@@ -11,6 +11,7 @@ export interface SpeakResult {
   audio: string | null;
   mimeType: string | null;
   provider: "elevenlabs" | "gemini" | null;
+  voiceId?: string; // ElevenLabs voice that actually spoke
   ttsError: string | null;
 }
 
@@ -26,7 +27,7 @@ export async function speakWithFallbacks(
   const tryEleven = async (): Promise<{ result?: SpeakResult; error?: string }> => {
     const r = await synthesizeElevenLabs(plain);
     return r.audio
-      ? { result: { audio: r.audio, mimeType: r.mimeType, provider: "elevenlabs", ttsError: null } }
+      ? { result: { audio: r.audio, mimeType: r.mimeType, provider: "elevenlabs", voiceId: r.voiceId, ttsError: null } }
       : { error: r.error };
   };
   const tryGemini = async (): Promise<{ result?: SpeakResult; error?: string }> => {
@@ -40,7 +41,10 @@ export async function speakWithFallbacks(
   const errors: string[] = [];
   for (const attempt of order) {
     const out = await attempt();
-    if (out.result) return out.result;
+    if (out.result) {
+      console.log("TTS spoke with", out.result.provider, out.result.voiceId ?? "");
+      return out.result;
+    }
     errors.push(out.error ?? "failed");
   }
   const [eleven, gemini] = o.preferGemini ? [errors[1], errors[0]] : errors;
