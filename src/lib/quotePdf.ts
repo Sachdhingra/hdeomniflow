@@ -113,6 +113,8 @@ export function buildQuotePdf(lines: QuoteExcelLine[], meta: QuoteExcelMeta, ass
   y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
 
   // Products. Columns follow the Excel quote; prices work back from the GST-inclusive price.
+  // "inclusive" quotes show MRP, discount and final rate only, with no GST breakup.
+  const inclusive = meta.priceFormat === "inclusive";
   const gstHeader = lines.length && lines.every((l) => l.gst_percent === lines[0].gst_percent)
     ? `GST ${lines[0].gst_percent}%`
     : "GST";
@@ -121,11 +123,14 @@ export function buildQuotePdf(lines: QuoteExcelLine[], meta: QuoteExcelMeta, ass
     return [
       String(idx + 1),
       "",
-      `${(l.product_name || "").toUpperCase()}${l.details || l.sku ? `\n${l.details || l.sku}` : ""}${l.discount_percent ? `\nDiscount ${l.discount_percent}%` : ""}`,
-      amount(b.unitBasic),
-      amount(b.specialBasic),
-      amount(b.unitGst),
-      amount(b.unitInclusive),
+      `${(l.product_name || "").toUpperCase()}${l.details || l.sku ? `\n${l.details || l.sku}` : ""}${l.discount_percent && !inclusive ? `\nDiscount ${l.discount_percent}%` : ""}`,
+      ...(inclusive
+        ? [
+            amount(l.unit_price),
+            l.discount_percent ? `${l.discount_percent}%` : "-",
+            amount(b.unitInclusive),
+          ]
+        : [amount(b.unitBasic), amount(b.specialBasic), amount(b.unitGst), amount(b.unitInclusive)]),
       String(l.quantity),
       amount(b.unitInclusive * l.quantity),
     ];
@@ -134,11 +139,71 @@ export function buildQuotePdf(lines: QuoteExcelLine[], meta: QuoteExcelMeta, ass
     (s, l) => s + priceBreakdown(l.unit_price, l.gst_percent, l.discount_percent || 0).unitInclusive * l.quantity,
     0,
   );
+  // Footer rows: the label spans from the product column to the column before the total.
+  const priceCols = inclusive ? 3 : 4;
+  const footRow = (label: string, value: number) => [
+    "",
+    "",
+    label,
+    ...Array<string>(priceCols + 1).fill(""),
+    amount(value),
+  ];
   const foot: string[][] = [];
   if (meta.handlingCharges > 0) {
-    foot.push(["", "", "Outstation handling / packaging charges to destination (incl. GST)", "", "", "", "", "", amount(meta.handlingCharges)]);
+    foot.push(footRow("Outstation handling / packaging charges to destination (incl. GST)", meta.handlingCharges));
   }
-  foot.push(["", "", "TOTAL PRICE in INR (All Inclusive)", "", "", "", "", "", amount(itemsTotal + (meta.handlingCharges || 0))]);
+  foot.push(
+    footRow(
+      inclusive ? "TOTAL PRICE in INR (Inclusive of all taxes)" : "TOTAL PRICE in INR (All Inclusive)",
+      itemsTotal + (meta.handlingCharges || 0),
+    ),
+  );
+
+  const columnStyles = inclusive
+    ? {
+        0: { cellWidth: 24, halign: "center" as const },
+        1: { cellWidth: IMG_W + 6, minCellHeight: IMG_H + 6 },
+        2: { cellWidth: 183, halign: "left" as const },
+        3: { cellWidth: 64 },
+        4: { cellWidth: 48, halign: "center" as const },
+        5: { cellWidth: 66 },
+        6: { cellWidth: 28, halign: "center" as const },
+        7: { cellWidth: WIDTH - (24 + IMG_W + 6 + 183 + 64 + 48 + 66 + 28) },
+      }
+    : {
+        0: { cellWidth: 24, halign: "center" as const },
+        1: { cellWidth: IMG_W + 6, minCellHeight: IMG_H + 6 },
+        2: { cellWidth: 148, halign: "left" as const },
+        3: { cellWidth: 55 },
+        4: { cellWidth: 55 },
+        5: { cellWidth: 50 },
+        6: { cellWidth: 57 },
+        7: { cellWidth: 28, halign: "center" as const },
+        8: { cellWidth: WIDTH - (24 + IMG_W + 6 + 148 + 55 + 55 + 50 + 57 + 28) },
+      };
+  const head = inclusive
+    ? [[
+        "SR.\nNO",
+        "REF. IMAGE",
+        "GODREJ PRODUCT",
+        "MRP\n(INCL. GST)",
+        "DISCOUNT",
+        "FINAL RATE\n(INCL. GST)",
+        "QTY",
+        "TOTAL PRICE\n(INCL. GST)",
+      ]]
+    : [[
+        "SR.\nNO",
+        "REF. IMAGE",
+        "GODREJ PRODUCT",
+        "UNIT PRICE\n(EXCL. GST)",
+        "SPECIAL PRICE\n(EXCL. GST)",
+        gstHeader,
+        "UNIT PRICE\n(GST INCL.)",
+        "QTY",
+        "TOTAL PRICE\n(ALL INCL.)",
+      ]];
+
 
   autoTable(doc, {
     startY: y,
@@ -159,34 +224,14 @@ export function buildQuotePdf(lines: QuoteExcelLine[], meta: QuoteExcelMeta, ass
     },
     headStyles: { fillColor: GREY_FILL, fontStyle: "bold", halign: "center", fontSize: 7 },
     footStyles: { fillColor: [255, 242, 204], fontStyle: "bold", textColor: [0, 0, 0], fontSize: 8 },
-    columnStyles: {
-      0: { cellWidth: 24, halign: "center" },
-      1: { cellWidth: IMG_W + 6, minCellHeight: IMG_H + 6 },
-      2: { cellWidth: 148, halign: "left" },
-      3: { cellWidth: 55 },
-      4: { cellWidth: 55 },
-      5: { cellWidth: 50 },
-      6: { cellWidth: 57 },
-      7: { cellWidth: 28, halign: "center" },
-      8: { cellWidth: WIDTH - (24 + IMG_W + 6 + 148 + 55 + 55 + 50 + 57 + 28) },
-    },
-    head: [[
-      "SR.\nNO",
-      "REF. IMAGE",
-      "GODREJ PRODUCT",
-      "UNIT PRICE\n(EXCL. GST)",
-      "SPECIAL PRICE\n(EXCL. GST)",
-      gstHeader,
-      "UNIT PRICE\n(GST INCL.)",
-      "QTY",
-      "TOTAL PRICE\n(ALL INCL.)",
-    ]],
+    columnStyles,
+    head,
     body,
     foot,
     showFoot: "lastPage",
     didParseCell: (data) => {
       if (data.section === "foot" && data.column.index === 2) {
-        data.cell.colSpan = 6;
+        data.cell.colSpan = priceCols + 2;
         data.cell.styles.halign = "left";
       }
     },
