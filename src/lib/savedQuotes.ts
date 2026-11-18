@@ -1,6 +1,7 @@
 import { plDb, lineTotal, quoteTotals } from "@/lib/productLibrary";
 import { downloadQuoteExcel, type QuoteExcelLine, type QuoteExcelMeta } from "@/lib/quoteExcel";
 import { downloadQuotePdf } from "@/lib/quotePdf";
+import type { QuotePriceFormat } from "@/lib/quoteFormat";
 import type { QuoteLine } from "@/contexts/QuoteContext";
 import { decodeX3Notes, encodeX3Notes, type X3Units } from "@/lib/kreationX3Quote";
 
@@ -247,7 +248,12 @@ export async function deleteQuote(id: string) {
   if (error) throw error;
 }
 
-function exportArgs(lines: QuoteLine[], meta: QuoteMeta, quoteDate: Date): [QuoteExcelLine[], QuoteExcelMeta] {
+function exportArgs(
+  lines: QuoteLine[],
+  meta: QuoteMeta,
+  quoteDate: Date,
+  priceFormat: QuotePriceFormat,
+): [QuoteExcelLine[], QuoteExcelMeta] {
   return [
     lines.map((i) => ({
       image_url: i.image_url,
@@ -267,15 +273,27 @@ function exportArgs(lines: QuoteLine[], meta: QuoteMeta, quoteDate: Date): [Quot
       quoteDate: quoteDate.toLocaleDateString("en-GB"),
       handlingCharges: Number(meta.handlingCharges) || 0,
       contactLine: CONTACT_LINE,
+      priceFormat,
     },
   ];
 }
 
-export function downloadSavedQuoteExcel(lines: QuoteLine[], meta: QuoteMeta, quoteDate = new Date()) {
-  return downloadQuoteExcel(...exportArgs(lines, meta, quoteDate));
+/** `priceFormat`: furniture quote type, with or without the GST breakup (default: with). */
+export function downloadSavedQuoteExcel(
+  lines: QuoteLine[],
+  meta: QuoteMeta,
+  quoteDate = new Date(),
+  priceFormat: QuotePriceFormat = "breakup",
+) {
+  return downloadQuoteExcel(...exportArgs(lines, meta, quoteDate, priceFormat));
 }
 
 /** Quotation PDF on the HDE letterhead. */
-export function downloadSavedQuotePdf(lines: QuoteLine[], meta: QuoteMeta, quoteDate = new Date()) {
-  return downloadQuotePdf(...exportArgs(lines, meta, quoteDate));
+export function downloadSavedQuotePdf(
+  lines: QuoteLine[],
+  meta: QuoteMeta,
+  quoteDate = new Date(),
+  priceFormat: QuotePriceFormat = "breakup",
+) {
+  return downloadQuotePdf(...exportArgs(lines, meta, quoteDate, priceFormat));
 }

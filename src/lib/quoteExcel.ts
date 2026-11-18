@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import { BUCKET_IMAGES, priceBreakdown, resolveUrl } from "@/lib/productLibrary";
 import { fetchWebsiteImage, isWebsiteImageUrl } from "@/lib/websiteCatalog";
+import type { QuotePriceFormat } from "@/lib/quoteFormat";
 
 export interface QuoteExcelLine {
   image_url: string | null;
@@ -22,6 +23,8 @@ export interface QuoteExcelMeta {
   quoteDate: string;
   handlingCharges: number;
   contactLine: string;
+  /** "inclusive": MRP / discount / final rate with no GST breakup. Default: the GST breakup. */
+  priceFormat?: QuotePriceFormat;
 }
 
 export const QUOTE_SUBJECT = "SUBJECT :QUOTE FOR GODREJ FURNITURE";
@@ -161,29 +164,44 @@ export async function buildQuoteWorkbook(lines: QuoteExcelLine[], meta: QuoteExc
     });
   });
 
-  // Header rows 9-10
-  const headers: [string, string][] = [
-    ["B", "SR.NO"],
-    ["C", " REF. IMAGE"],
-    ["D", "GODREJ PRODUCT"],
-    ["F", "UNIT PRICE\n(EXCL. GST)"],
-    ["G", "SPECIAL PRICE\n(EXCL. GST)"],
-    ["H", "GST PRICE"],
-    ["I", "UNIT PRICE"],
-    ["J", "QTY"],
-    ["K", "TOTAL PRICE"],
-  ];
+  // Header rows 9-10. "inclusive" quotes: MRP, discount and final rate, no GST breakup.
+  const inclusive = meta.priceFormat === "inclusive";
+  const headers: [string, string][] = inclusive
+    ? [
+        ["B", "SR.NO"],
+        ["C", " REF. IMAGE"],
+        ["D", "GODREJ PRODUCT"],
+        ["F", "MRP\n(INCL. GST)"],
+        ["G", "DISCOUNT"],
+        ["H", "FINAL RATE\n(INCL. GST)"],
+        ["J", "QTY"],
+        ["K", "TOTAL PRICE\n(INCL. GST)"],
+      ]
+    : [
+        ["B", "SR.NO"],
+        ["C", " REF. IMAGE"],
+        ["D", "GODREJ PRODUCT"],
+        ["F", "UNIT PRICE\n(EXCL. GST)"],
+        ["G", "SPECIAL PRICE\n(EXCL. GST)"],
+        ["H", "GST PRICE"],
+        ["I", "UNIT PRICE"],
+        ["J", "QTY"],
+        ["K", "TOTAL PRICE"],
+      ];
   ["B", "C", "F", "J", "K"].forEach((c) => ws.mergeCells(`${c}9:${c}10`));
   ws.mergeCells("D9:E10");
   ws.mergeCells("G9:G10");
+  if (inclusive) ws.mergeCells("H9:I10");
   headers.forEach(([col, label]) => {
     const cell = ws.getCell(`${col}9`);
     cell.value = label;
   });
-  ws.getCell("H10").value = 0.18;
-  ws.getCell("H10").numFmt = "0%";
-  ws.getCell("I10").value = "(GST INCLUDED)";
-  ws.getCell("K10").value = "(ALL INCLUSIVE)";
+  if (!inclusive) {
+    ws.getCell("H10").value = 0.18;
+    ws.getCell("H10").numFmt = "0%";
+    ws.getCell("I10").value = "(GST INCLUDED)";
+    ws.getCell("K10").value = "(ALL INCLUSIVE)";
+  }
   [9, 10].forEach((r) => {
     ws.getRow(r).height = 22;
     for (let c = 2; c <= 11; c++) {
@@ -205,7 +223,9 @@ export async function buildQuoteWorkbook(lines: QuoteExcelLine[], meta: QuoteExc
     const bottom = row + BLOCK - 1;
     for (let r = top; r <= bottom; r++) ws.getRow(r).height = 20;
 
-    ["B", "C", "F", "G", "H", "I", "J", "K"].forEach((c) => ws.mergeCells(`${c}${top}:${c}${bottom}`));
+    ["B", "C", "F", "G", "J", "K"].forEach((c) => ws.mergeCells(`${c}${top}:${c}${bottom}`));
+    if (inclusive) ws.mergeCells(`H${top}:I${bottom}`);
+    else ["H", "I"].forEach((c) => ws.mergeCells(`${c}${top}:${c}${bottom}`));
 
     ws.getCell(`B${top}`).value = idx + 1;
     ws.getCell(`D${top}`).value = l.product_name?.toUpperCase() || "";
@@ -219,17 +239,26 @@ export async function buildQuoteWorkbook(lines: QuoteExcelLine[], meta: QuoteExc
       ws.mergeCells(`D${top + 2}:E${bottom}`);
     }
 
-    // Omniflow prices include GST: F works back to the basic price, G applies the discount,
-    // H adds GST again, so with no discount I lands exactly on the Omniflow price.
     const gstRate = (l.gst_percent || 0) / 100;
     const discRate = (l.discount_percent || 0) / 100;
     const b = priceBreakdown(l.unit_price, l.gst_percent, l.discount_percent || 0);
-    ws.getCell(`F${top}`).value = { formula: `${l.unit_price || 0}/(1+${gstRate})`, result: b.unitBasic };
-    ws.getCell(`G${top}`).value = { formula: `F${top}-(F${top}*${discRate})`, result: b.specialBasic };
-    ws.getCell(`H${top}`).value = { formula: `G${top}*${gstRate}`, result: b.unitGst };
-    ws.getCell(`I${top}`).value = { formula: `G${top}+H${top}`, result: b.unitInclusive };
-    ws.getCell(`J${top}`).value = l.quantity;
-    ws.getCell(`K${top}`).value = { formula: `I${top}*J${top}`, result: b.unitInclusive * l.quantity };
+    if (inclusive) {
+      // MRP (the GST-inclusive Omniflow price), discount, final rate: no GST breakup.
+      ws.getCell(`F${top}`).value = l.unit_price || 0;
+      ws.getCell(`G${top}`).value = discRate;
+      ws.getCell(`H${top}`).value = { formula: `F${top}*(1-G${top})`, result: b.unitInclusive };
+      ws.getCell(`J${top}`).value = l.quantity;
+      ws.getCell(`K${top}`).value = { formula: `H${top}*J${top}`, result: b.unitInclusive * l.quantity };
+    } else {
+      // Omniflow prices include GST: F works back to the basic price, G applies the discount,
+      // H adds GST again, so with no discount I lands exactly on the Omniflow price.
+      ws.getCell(`F${top}`).value = { formula: `${l.unit_price || 0}/(1+${gstRate})`, result: b.unitBasic };
+      ws.getCell(`G${top}`).value = { formula: `F${top}-(F${top}*${discRate})`, result: b.specialBasic };
+      ws.getCell(`H${top}`).value = { formula: `G${top}*${gstRate}`, result: b.unitGst };
+      ws.getCell(`I${top}`).value = { formula: `G${top}+H${top}`, result: b.unitInclusive };
+      ws.getCell(`J${top}`).value = l.quantity;
+      ws.getCell(`K${top}`).value = { formula: `I${top}*J${top}`, result: b.unitInclusive * l.quantity };
+    }
 
     for (let r = top; r <= bottom; r++) {
       for (let c = 2; c <= 11; c++) {
@@ -241,6 +270,7 @@ export async function buildQuoteWorkbook(lines: QuoteExcelLine[], meta: QuoteExc
         if (c === 11) cell.numFmt = "#,##0.00";
       }
     }
+    if (inclusive) ws.getCell(`G${top}`).numFmt = "0%";
     ws.getCell(`D${top}`).font = { ...base, bold: true };
     if (l.details) ws.getCell(`D${top + 1}`).alignment = { vertical: "top", wrapText: true, horizontal: "left" };
 
@@ -277,7 +307,9 @@ export async function buildQuoteWorkbook(lines: QuoteExcelLine[], meta: QuoteExc
   // Total
   const totalRow = row;
   ws.mergeCells(`B${totalRow}:J${totalRow}`);
-  ws.getCell(`B${totalRow}`).value = "TOTAL PRICE in IND ₹ ( All Inclusive)";
+  ws.getCell(`B${totalRow}`).value = inclusive
+    ? "TOTAL PRICE in IND ₹ ( Inclusive of all taxes)"
+    : "TOTAL PRICE in IND ₹ ( All Inclusive)";
   ws.getCell(`K${totalRow}`).value = { formula: `SUM(K${firstRow}:K${totalRow - 1})` };
   ws.getCell(`K${totalRow}`).numFmt = "#,##0.00";
   ws.getRow(totalRow).height = 26;

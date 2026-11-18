@@ -34,6 +34,13 @@ import {
   type SavedQuoteRow,
 } from "@/lib/savedQuotes";
 import { toast } from "@/lib/toast";
+import { isX3QuoteLine } from "@/lib/kreationX3Quote";
+import {
+  QUOTE_PRICE_FORMATS,
+  rememberPriceFormat,
+  rememberedPriceFormat,
+  type QuotePriceFormat,
+} from "@/lib/quoteFormat";
 
 const STATUS_STYLE: Record<QuoteStatus, string> = {
   draft: "bg-muted text-muted-foreground",
@@ -58,6 +65,7 @@ const SavedQuotes = () => {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [priceFormat, setPriceFormat] = useState<QuotePriceFormat>(rememberedPriceFormat);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"all" | QuoteStatus>("all");
 
@@ -132,8 +140,10 @@ const SavedQuotes = () => {
     setBusyId(q.id);
     try {
       const { meta: m, lines } = await loadQuote(q.id);
-      if (format === "pdf") await downloadSavedQuotePdf(lines, m, new Date(q.created_at));
-      else await downloadSavedQuoteExcel(lines, m, new Date(q.created_at));
+      // Quote type applies to furniture quotes; Kreation X3 quotes keep their own layout.
+      const f: QuotePriceFormat = lines.some(isX3QuoteLine) ? "breakup" : priceFormat;
+      if (format === "pdf") await downloadSavedQuotePdf(lines, m, new Date(q.created_at), f);
+      else await downloadSavedQuoteExcel(lines, m, new Date(q.created_at), f);
     } catch (e) {
       toast.error(errorText(e, format === "pdf" ? "Could not generate PDF" : "Could not generate Excel"));
     } finally {
@@ -201,6 +211,24 @@ const SavedQuotes = () => {
             className="pl-9"
           />
         </div>
+        <Select
+          value={priceFormat}
+          onValueChange={(v) => {
+            setPriceFormat(v as QuotePriceFormat);
+            rememberPriceFormat(v as QuotePriceFormat);
+          }}
+        >
+          <SelectTrigger className="sm:w-48" aria-label="Quote type for downloads">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {QUOTE_PRICE_FORMATS.map((f) => (
+              <SelectItem key={f.value} value={f.value}>
+                Quote type: {f.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Select value={status} onValueChange={(v) => setStatus(v as "all" | QuoteStatus)}>
           <SelectTrigger className="sm:w-40">
             <SelectValue />
