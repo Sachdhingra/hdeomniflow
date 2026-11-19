@@ -44,7 +44,7 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
 
 const SalesDashboard = () => {
   const { user } = useAuth();
-  const { leads, updateLead, softDeleteLead, hasMoreLeads, loadMoreLeads, error, retryLoad, loading, profiles, summary } = useData();
+  const { leads, updateLead, softDeleteLead, hasMoreLeads, loadMoreLeads, loadAllLeads, error, retryLoad, loading, profiles, summary } = useData();
   const [searchParams, setSearchParams] = useSearchParams();
   const quickFilter = searchParams.get("filter"); // overdue | followup-today | followup-week
   const ownerName = (id: string | null) => profiles.find(p => p.id === id)?.name || "Unknown";
@@ -230,6 +230,12 @@ const SalesDashboard = () => {
       return true;
     });
   }, [leads, categoryFilter, statusFilter, fromDate, toDate, viewMode, user, phoneSearch, quickFilter, todayStr, weekAhead]);
+
+  // Overdue view: pull every remaining page in one go so nothing hides behind
+  // "Load more" and the whole overdue list can be worked through (and closed) daily.
+  useEffect(() => {
+    if (quickFilter === "overdue" && hasMoreLeads) void loadAllLeads();
+  }, [quickFilter, hasMoreLeads, loadAllLeads]);
 
   const totalValue = filteredLeads.reduce((s, l) => s + Number(l.value_in_rupees), 0);
   const wonLeads = filteredLeads.filter(l => l.status === "won");
@@ -590,8 +596,9 @@ const SalesDashboard = () => {
       </div>
 
       {hasMoreLeads && (
-        <div className="flex justify-center">
+        <div className="flex justify-center gap-2">
           <Button variant="outline" onClick={loadMoreLeads}>Load More Leads</Button>
+          <Button variant="ghost" onClick={loadAllLeads}>Load all</Button>
         </div>
       )}
 

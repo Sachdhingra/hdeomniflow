@@ -56,7 +56,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 const ServiceDashboard = () => {
   const { user } = useAuth();
-  const { serviceJobs, addServiceJob, updateServiceJob, softDeleteServiceJob, getProfilesByRole, profiles, leads, hasMoreJobs, loadMoreJobs, error, retryLoad, loading } = useData();
+  const { serviceJobs, addServiceJob, updateServiceJob, softDeleteServiceJob, getProfilesByRole, profiles, leads, hasMoreJobs, loadMoreJobs, loadAllJobs, error, retryLoad, loading } = useData();
   const getLeadOwner = (sourceLeadId: string | null) => {
     if (!sourceLeadId) return null;
     const lead = leads.find(l => l.id === sourceLeadId);
@@ -65,7 +65,8 @@ const ServiceDashboard = () => {
   };
   const [dateFilter, setDateFilter] = useState("");
   const [phoneSearch, setPhoneSearch] = useState("");
-  const [tab, setTab] = useState("all");
+  // /service-jobs?tab=overdue (coach link) opens straight on that tab.
+  const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get("tab") || "all");
   const [addOpen, setAddOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState("");
@@ -171,6 +172,11 @@ const ServiceDashboard = () => {
     }
     return jobs;
   }, [serviceJobs, dateFilter, phoneSearch, tab, isServiceHead, isAdmin]);
+
+  // Overdue tab: load every remaining page at once so no overdue job hides behind "Load more".
+  useEffect(() => {
+    if (tab === "overdue" && hasMoreJobs) void loadAllJobs();
+  }, [tab, hasMoreJobs, loadAllJobs]);
 
   const todayStr = new Date().toISOString().split("T")[0];
   const todayJobs = serviceJobs.filter(j => j.date_to_attend === todayStr);
@@ -638,8 +644,9 @@ const ServiceDashboard = () => {
       )}
 
       {tab !== "app_requests" && hasMoreJobs && (
-        <div className="flex justify-center">
+        <div className="flex justify-center gap-2">
           <Button variant="outline" onClick={loadMoreJobs}>Load More Jobs</Button>
+          <Button variant="ghost" onClick={loadAllJobs}>Load all</Button>
         </div>
       )}
 

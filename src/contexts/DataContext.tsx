@@ -28,6 +28,8 @@ export type Notification = Tables<"notifications">;
 export type Profile = Tables<"profiles">;
 
 const PAGE_SIZE = 20;
+// "Load all" pulls this many pages per request (200 rows) until nothing is left.
+const LOAD_ALL_PAGES = 10;
 
 // --- Local cache helpers ---
 const CACHE_PREFIX = "furncrm_cache_";
@@ -106,6 +108,8 @@ interface DataContextType {
   hasMoreJobs: boolean;
   loadMoreLeads: () => Promise<void>;
   loadMoreJobs: () => Promise<void>;
+  loadAllLeads: () => Promise<void>;
+  loadAllJobs: () => Promise<void>;
   deletedLeads: Lead[];
   deletedServiceJobs: ServiceJob[];
   deletedSiteVisits: SiteVisit[];
@@ -175,12 +179,15 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   // --- Stage 2: Role-based data fetching ---
-  const fetchLeads = useCallback(async (reset = true) => {
-    if (!user) return;
+  // `pages` = how many PAGE_SIZE pages to pull in one request (used by "load all").
+  // Returns whether more rows remain on the server.
+  const fetchLeads = useCallback(async (reset = true, pages = 1): Promise<boolean> => {
+    if (!user) return false;
     try {
       const page = reset ? 0 : leadsPageRef.current;
       const from = page * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
+      const to = from + (reset ? PAGE_SIZE : pages * PAGE_SIZE) - 1;
+      let more = false;
 
       let query = supabase
         .from("leads")
@@ -214,7 +221,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
             return result;
           });
           leadsPageRef.current = Math.max(leadsPageRef.current, 1);
-          setHasMoreLeads((count || 0) > leads.length + (data.length - leads.length));
+          more = (count || 0) > leads.length + (data.length - leads.length);
+          setHasMoreLeads(more);
         } else {
           setLeads(prev => {
             const existingIds = new Set(prev.map(l => l.id));
@@ -223,13 +231,18 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
             setCache("leads", updated);
             return updated;
           });
-          leadsPageRef.current = page + 1;
-          setHasMoreLeads((count || 0) > (page + 1) * PAGE_SIZE);
+          leadsPageRef.current = page + pages;
+          more = (count || 0) > (page + pages) * PAGE_SIZE;
+          setHasMoreLeads(more);
         }
+        setError(null);
+        return more;
       }
       setError(null);
+      return false;
     } catch (err: any) {
       setError("Failed to load leads. Tap retry.");
+      return false;
     }
   }, [user, leads.length]);
 
@@ -237,12 +250,28 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     await fetchLeads(false);
   }, [fetchLeads]);
 
-  const fetchServiceJobs = useCallback(async (reset = true) => {
-    if (!user) return;
+  // One click / one open pulls every remaining page (e.g. the overdue view), so
+  // nothing overdue hides behind "Load more". Guarded so it never runs twice at once.
+  const loadingAllLeadsRef = useRef(false);
+  const loadAllLeads = useCallback(async () => {
+    if (loadingAllLeadsRef.current) return;
+    loadingAllLeadsRef.current = true;
+    try {
+      for (let i = 0; i < 100; i++) {
+        if (!(await fetchLeads(false, LOAD_ALL_PAGES))) break;
+      }
+    } finally {
+      loadingAllLeadsRef.current = false;
+    }
+  }, [fetchLeads]);
+
+  const fetchServiceJobs = useCallback(async (reset = true, pages = 1): Promise<boolean> => {
+    if (!user) return false;
     try {
       const page = reset ? 0 : jobsPageRef.current;
       const from = page * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
+      const to = from + (reset ? PAGE_SIZE : pages * PAGE_SIZE) - 1;
+      let more = false;
 
       const { data, count, error: fetchError } = await supabase
         .from("service_jobs")
@@ -264,18 +293,34 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
             setCache("serviceJobs", updated);
             return updated;
           });
-          jobsPageRef.current = page + 1;
+          jobsPageRef.current = page + pages;
         }
-        setHasMoreJobs((count || 0) > (page + 1) * PAGE_SIZE);
+        more = (count || 0) > (reset ? 1 : page + pages) * PAGE_SIZE;
+        setHasMoreJobs(more);
       }
       setError(null);
+      return more;
     } catch (err: any) {
       setError("Failed to load service jobs. Tap retry.");
+      return false;
     }
   }, [user]);
 
   const loadMoreJobs = useCallback(async () => {
     await fetchServiceJobs(false);
+  }, [fetchServiceJobs]);
+
+  const loadingAllJobsRef = useRef(false);
+  const loadAllJobs = useCallback(async () => {
+    if (loadingAllJobsRef.current) return;
+    loadingAllJobsRef.current = true;
+    try {
+      for (let i = 0; i < 100; i++) {
+        if (!(await fetchServiceJobs(false, LOAD_ALL_PAGES))) break;
+      }
+    } finally {
+      loadingAllJobsRef.current = false;
+    }
   }, [fetchServiceJobs]);
 
   const fetchSiteVisits = useCallback(async () => {
@@ -742,7 +787,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       addSiteVisit, updateSiteVisit, softDeleteSiteVisit, restoreSiteVisit, permanentDeleteSiteVisit,
       addNotification, markNotificationRead,
       getProfilesByRole, refreshAll, retryLoad,
-      hasMoreLeads, hasMoreJobs, loadMoreLeads, loadMoreJobs,
+      hasMoreLeads, hasMoreJobs, loadMoreLeads, loadMoreJobs, loadAllLeads, loadAllJobs,
       deletedLeads, deletedServiceJobs, deletedSiteVisits, fetchDeletedRecords,
     }}>
       {children}

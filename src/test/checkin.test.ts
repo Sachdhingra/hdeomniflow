@@ -133,3 +133,20 @@ describe("trimCheckin", () => {
     expect(out.split(" ")).toHaveLength(10);
   });
 });
+
+import { overdueDigestItem } from "../../supabase/functions/_shared/checkin";
+
+describe("overdueDigestItem", () => {
+  it("is null when nothing is overdue", () => {
+    expect(overdueDigestItem("sales", 0, null)).toBeNull();
+  });
+  it("names the total and opens the overdue view", () => {
+    const s = overdueDigestItem("sales", 42, 9)!;
+    expect(s.title).toBe("42 overdue leads");
+    expect(s.reason).toContain("oldest 9 days");
+    expect(s.route).toBe("/sales?filter=overdue");
+    const j = overdueDigestItem("service", 1, null)!;
+    expect(j.title).toBe("1 overdue job");
+    expect(j.route).toBe("/service-jobs?tab=overdue");
+  });
+});

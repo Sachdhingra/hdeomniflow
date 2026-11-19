@@ -42,6 +42,25 @@ export function phoneDigits(raw: string | null | undefined): string | null {
   return null;
 }
 
+// Pinned first on every sales / service check-in while anything is overdue, so the
+// whole backlog is named daily (the 3 picked cards only show the top of it). One tap
+// opens the overdue view, which loads every overdue row at once.
+export function overdueDigestItem(
+  kind: "sales" | "service", count: number, oldestDays: number | null,
+): CheckinItem | null {
+  if (!count || count < 1) return null;
+  const noun = kind === "sales" ? "lead" : "job";
+  const oldest = oldestDays && oldestDays > 0 ? ` · oldest ${plural(oldestDays, "day")}` : "";
+  return {
+    id: `overdue:${kind}`,
+    kind: "job",
+    title: `${plural(count, `overdue ${noun}`)}`,
+    reason: `clear today so none pile up${oldest}`,
+    route: kind === "sales" ? "/sales?filter=overdue" : "/service-jobs?tab=overdue",
+    state: "pending",
+  };
+}
+
 // ── sales ────────────────────────────────────────────────────────────────────
 export interface LeadLite {
   id: string;

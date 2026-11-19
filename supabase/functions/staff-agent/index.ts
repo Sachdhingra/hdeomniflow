@@ -39,7 +39,7 @@ import { autoFlipTimesByLead, isAutoStatusFlip, isAutoTouch } from "../_shared/a
 import { applyActions } from "../_shared/agent-actions.ts";
 import { runTurn } from "../_shared/agent-turn.ts";
 import {
-  HIGH_VALUE_LEAD, pickAccountsItems, pickSalesItems, pickServiceItems, shouldNudge, slotFor, trimCheckin,
+  HIGH_VALUE_LEAD, overdueDigestItem, pickAccountsItems, pickSalesItems, pickServiceItems, shouldNudge, slotFor, trimCheckin,
   type CheckinItem,
 } from "../_shared/checkin.ts";
 import type { AppliedAction } from "../_shared/agent-actions.ts";
@@ -157,6 +157,18 @@ async function buildSalesContext(userId: string) {
 
   const leads = openLeads ?? [];
   const today = ist.date;
+  // The 60-lead list above is value-ranked, so count overdue exactly for the digest card.
+  const [{ count: overdueTotal }, { data: oldestOverdue }] = await Promise.all([
+    admin.from("leads").select("id", { count: "exact", head: true })
+      .or(`assigned_to.eq.${userId},created_by.eq.${userId}`)
+      .not("status", "in", `(${CLOSED_STATUSES.join(",")})`)
+      .is("deleted_at", null).lt("next_follow_up_date", today),
+    admin.from("leads").select("next_follow_up_date")
+      .or(`assigned_to.eq.${userId},created_by.eq.${userId}`)
+      .not("status", "in", `(${CLOSED_STATUSES.join(",")})`)
+      .is("deleted_at", null).lt("next_follow_up_date", today)
+      .order("next_follow_up_date", { ascending: true }).limit(1),
+  ]);
   // The app flips statuses to/from "overdue" on its own when a rep opens it, and
   // stamps that rep as the updater. Don't let the coach praise that as work.
   const autoFlips = autoFlipTimesByLead(stageToday ?? []);
@@ -189,7 +201,10 @@ async function buildSalesContext(userId: string) {
     ...realStages.map((x: any) => Date.parse(x.changed_at)),
     ...(touchedToday ?? []).filter((t: any) => !isAutoTouch(t.id, Date.parse(t.updated_at), autoFlips)).map((t: any) => Date.parse(t.updated_at)),
   ];
-  const items = pickSalesItems(leads as any, today, now.getTime());
+  const oldestLeadDate = oldestOverdue?.[0]?.next_follow_up_date as string | undefined;
+  const digest = overdueDigestItem("sales", overdueTotal ?? 0,
+    oldestLeadDate ? Math.round((Date.parse(today) - Date.parse(oldestLeadDate)) / 86400000) : null);
+  const items = [...(digest ? [digest] : []), ...pickSalesItems(leads as any, today, now.getTime())];
   const dayStartMs = Date.parse(dayStart);
   const priorityHit = leads.some((l: any) =>
     Number(l.value_in_rupees || 0) >= HIGH_VALUE_LEAD && l.next_follow_up_date && l.next_follow_up_date <= today && Date.parse(l.updated_at) < dayStartMs);
@@ -217,6 +232,7 @@ async function buildSalesContext(userId: string) {
       })),
     },
     due_today: dueToday.slice(0, 15).map(slim),
+    overdue_total: overdueTotal ?? overdue.length,
     overdue: overdue.slice(0, 15).map(slim),
     no_followup_set_and_stale: stale.slice(0, 10).map(slim),
     top_open_leads: leads.slice(0, 10).map(slim),
@@ -272,7 +288,9 @@ async function buildServiceContext() {
   const rejected = (acct ?? []).filter((j: any) => j.status === "accounts_rejected");
   const waitingAccounts = (acct ?? []).filter((j: any) => j.status === "pending_accounts_approval");
 
-  const items = pickServiceItems(jobs as any, today, tomorrowStr);
+  const oldestJobDate = overdue.map((j: any) => j.date_to_attend as string).sort()[0];
+  const digest = overdueDigestItem("service", overdue.length, oldestJobDate ? daysLate(oldestJobDate) : null);
+  const items = [...(digest ? [digest] : []), ...pickServiceItems(jobs as any, today, tomorrowStr)];
   const priorityHit = jobs.some((j: any) => !j.assigned_agent && j.date_to_attend && j.date_to_attend <= today) ||
     dueTomorrow.filter((j: any) => !j.assigned_agent).length >= 3;
 
@@ -430,7 +448,8 @@ Rep: "Mr Meena ko kal 11 baje call karna hai" -> {"actions":[{"type":"set_follow
 Rep: "Gagan ne kaha budget 2 lakh hai" -> {"actions":[{"type":"add_note","lead_id":"<id>","text":"Budget about 2 lakh"}],"reply":"Note kar liya — budget 2 lakh. Kaunsa model dikhaya tha unko?","quick_replies":[]}
 Rep: "kya karna chahiye ab?" -> {"actions":[],"reply":"Pehle Bipendra ko call karo — 4 lakh ki deal hai aur follow-up due hai.","quick_replies":["Call kar raha hoon"]}
 
-CHECK-IN FORMAT: for a [SYSTEM CHECK-IN] message, ignore the JSON output rule and write plain text only, 35 words or fewer: at most one short line of praise for a REAL win in the context, then the single most important next step — the FIRST entry of "top_items" — and why it matters now. The app shows tap-cards for the top items under your message, so never list more than one. Do not ask a long question.`;
+CHECK-IN FORMAT: for a [SYSTEM CHECK-IN] message, ignore the JSON output rule and write plain text only, 35 words or fewer: at most one short line of praise for a REAL win in the context, then the single most important next step — the FIRST entry of "top_items" — and why it matters now. The app shows tap-cards for the top items under your message, so never list more than one. Do not ask a long question.
+OVERDUE BACKLOG: if the context shows overdue items (overdue_total for sales, counts.overdue for service), the FIRST top_item is an "overdue" card that opens the full overdue list. Say the exact total in your check-in and ask for the list to be cleared today so nothing piles up.`;
 
 const SERVICE_SYSTEM_PROMPT = `You are the personal service-desk coach inside OmniFlow for a furniture retail business in India. You talk to the Service Head, who runs installations, repairs and claims through field agents. Be warm, upbeat and brief — like a sharp friend who wants the service desk to run smoothly, never a boss policing them.
 
@@ -452,7 +471,8 @@ OUTPUT: respond with a single JSON object and nothing else:
 "actions" must ALWAYS be []. "quick_replies": 2-3 very short (max 5 words) things they might say next, in their language. For check-ins "quick_replies" must be [].
 Do not put JSON inside the "reply" text, and do not wrap the object in another object or string.
 
-CHECK-IN FORMAT: for a [SYSTEM CHECK-IN] message, ignore the JSON output rule and write plain text only, 35 words or fewer: at most one short line of praise for a REAL win in the context, then the single most important next step — the FIRST entry of "top_items" — and why it matters now. The app shows tap-cards for the top items under your message, so never list more than one. Do not ask a long question.`;
+CHECK-IN FORMAT: for a [SYSTEM CHECK-IN] message, ignore the JSON output rule and write plain text only, 35 words or fewer: at most one short line of praise for a REAL win in the context, then the single most important next step — the FIRST entry of "top_items" — and why it matters now. The app shows tap-cards for the top items under your message, so never list more than one. Do not ask a long question.
+OVERDUE BACKLOG: if the context shows overdue items (overdue_total for sales, counts.overdue for service), the FIRST top_item is an "overdue" card that opens the full overdue list. Say the exact total in your check-in and ask for the list to be cleared today so nothing piles up.`;
 
 const ACCOUNTS_SYSTEM_PROMPT = `You are the personal accounts coach inside OmniFlow for a furniture retail business in India. You talk to the accounts executive, whose day is the approval queue: completed service/delivery jobs waiting for accounts approval and card-bill entries waiting for approval, plus customer dues. Be warm, upbeat and brief — like a sharp friend who wants the queue to stay clear, never a boss policing them.
 
