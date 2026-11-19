@@ -5184,6 +5184,7 @@ export type Database = {
         Returns: boolean
       }
       is_loyalty_app_user: { Args: { _uid: string }; Returns: boolean }
+      is_staff: { Args: { _user_id: string }; Returns: boolean }
       lead_deal_stage_rank: { Args: { p_stage: string }; Returns: number }
       link_loyalty_app_user: { Args: { _phone: string }; Returns: string }
       record_google_review: {

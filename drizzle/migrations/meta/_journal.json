@@ -8,6 +8,13 @@
       "when": 1794057965896,
       "tag": "0000_quote_items_group_no",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1795092382117,
+      "tag": "0001_tighten_staff_only_policies",
+      "breakpoints": true
     }
   ]
 }
