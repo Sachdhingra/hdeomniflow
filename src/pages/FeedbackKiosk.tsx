@@ -183,7 +183,16 @@ const FeedbackKiosk = () => {
     });
     setSubmitting(false);
     if (error) {
-      toast.error("Could not submit. " + error.message);
+      // submit_kiosk_feedback raises its own validation messages (P0001) and
+      // those are worth showing. Anything else is a database or network fault
+      // the customer can do nothing about, and a kiosk is the last place to
+      // print one — log it and tell them something they can act on.
+      console.error("[kiosk] feedback submit failed", error);
+      toast.error(
+        error.code === "P0001"
+          ? error.message
+          : "Sorry — we couldn't save your feedback. Please try again, or ask a member of staff.",
+      );
       return;
     }
     setFeedbackId((data as string) ?? null);
