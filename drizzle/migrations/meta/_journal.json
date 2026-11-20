@@ -15,6 +15,20 @@
       "when": 1795092382117,
       "tag": "0001_tighten_staff_only_policies",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795172792917,
+      "tag": "0002_fix_kiosk_feedback_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795172806266,
+      "tag": "0003_kiosk_feedback_service_role_only",
+      "breakpoints": true
     }
   ]
 }
