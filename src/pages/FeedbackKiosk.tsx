@@ -173,29 +173,28 @@ const FeedbackKiosk = () => {
     // The insert trigger queues the personalised WhatsApp thank-you and pokes
     // the feedback-whatsapp function, so the message lands on the customer's
     // phone within seconds of them tapping Submit.
-    const { data, error } = await (supabase as any).rpc("submit_kiosk_feedback", {
-      p_customer_name: name.trim(),
-      p_customer_phone: phone,
-      p_overall_rating: overall,
-      p_staff_rating: staff,
-      p_salesperson_name: salesperson,
-      p_comments: comments.trim() || null,
+    const { data, error } = await supabase.functions.invoke("submit-kiosk-feedback", {
+      body: {
+        customerName: name.trim(),
+        customerPhone: phone,
+        overallRating: overall,
+        staffRating: staff,
+        salespersonName: salesperson,
+        comments: comments.trim() || null,
+      },
     });
     setSubmitting(false);
-    if (error) {
-      // submit_kiosk_feedback raises its own validation messages (P0001) and
-      // those are worth showing. Anything else is a database or network fault
-      // the customer can do nothing about, and a kiosk is the last place to
-      // print one — log it and tell them something they can act on.
-      console.error("[kiosk] feedback submit failed", error);
+    if (error || data?.success !== true) {
+      // The function returns a message the customer can act on; a kiosk is the
+      // last place to print a database or network fault, so log that and show
+      // something useful instead.
+      console.error("[kiosk] feedback submit failed", error ?? data);
       toast.error(
-        error.code === "P0001"
-          ? error.message
-          : "Sorry — we couldn't save your feedback. Please try again, or ask a member of staff.",
+        data?.error || "Sorry — we couldn't save your feedback. Please try again, or ask a member of staff.",
       );
       return;
     }
-    setFeedbackId((data as string) ?? null);
+    setFeedbackId((data.feedbackId as string) ?? null);
     setStep(4);
 
     // Start countdown for auto-reset
